@@ -12,6 +12,8 @@ interface Subcategory {
   name: string;
   description: string | null;
   slug: string;
+  icon?: string;
+  category_id: string;
 }
 
 // Mapeamento de slugs das subcategorias para slugs das rotas
@@ -38,7 +40,8 @@ const groupSubcategoriesByType = (subcategories: Subcategory[]) => {
 
   return Array.from(groups.entries()).map(([baseSlug, subs]) => ({
     slug: baseSlug,
-    name: getGroupName(baseSlug),
+    name: subs[0].name, // Usar o nome da primeira subcategoria
+    description: subs[0].description || '', // Usar a descrição da primeira subcategoria
     subcategories: subs
   }));
 };
@@ -64,36 +67,37 @@ export default function InstagramPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Primeiro busca a rede social Instagram
-        const { data: socialData, error: socialError } = await supabase
-          .from('socials')
-          .select(`
-            id,
-            categories:categories (
-              id,
-              subcategories:subcategories (
-                id,
-                name,
-                description,
-                slug,
-                active,
-                order_position
-              )
-            )
-          `)
-          .ilike('name', 'instagram')
-          .single();
+        // Busca diretamente na tabela de subcategorias
+        const { data: subcategoriesData, error: subcategoriesError } = await supabase
+          .from('subcategories')
+          .select('*')
+          .eq('active', true)
+          .order('order_position', { ascending: true });
 
-        if (socialError) throw socialError;
-        if (!socialData) throw new Error('Rede social Instagram não encontrada');
+        console.log('Dados brutos das subcategorias:', subcategoriesData);
+        console.log('Erro nas subcategorias:', subcategoriesError);
 
-        // Filtra e organiza as subcategorias
-        const allSubcategories = socialData.categories
-          .flatMap(category => category.subcategories)
-          .filter(sub => sub.active)
-          .sort((a, b) => a.order_position - b.order_position);
+        if (subcategoriesError) throw subcategoriesError;
 
-        setSubcategories(allSubcategories || []);
+        // Filtra subcategorias de Instagram
+        const instagramSubcategories = subcategoriesData.filter(sub => {
+          // Verifica se o nome ou descrição contém 'instagram'
+          const nameContainsInstagram = sub.name.toLowerCase().includes('instagram');
+          const descriptionContainsInstagram = sub.description 
+            ? sub.description.toLowerCase().includes('instagram') 
+            : false;
+          
+          return nameContainsInstagram || descriptionContainsInstagram;
+        });
+
+        console.log('Subcategorias de Instagram filtradas:', instagramSubcategories);
+
+        // Se não encontrar nada, usa todas as subcategorias ativas
+        setSubcategories(
+          instagramSubcategories.length > 0 
+            ? instagramSubcategories 
+            : subcategoriesData
+        );
       } catch (error) {
         console.error('Erro ao carregar subcategorias:', error);
       } finally {
@@ -104,8 +108,20 @@ export default function InstagramPage() {
     fetchData();
   }, []);
 
-  const getIcon = (slug: string) => {
-    const baseSlug = slugMap[slug] || slug;
+  const getIcon = (subcategory: Subcategory) => {
+    // Se tiver ícone definido, usar o ícone da subcategoria
+    if (subcategory.icon) {
+      return (
+        <img 
+          src={subcategory.icon} 
+          alt={subcategory.name} 
+          className="w-6 h-6"
+        />
+      );
+    }
+
+    // Caso contrário, usar ícones padrão baseados no slug
+    const baseSlug = slugMap[subcategory.slug] || subcategory.slug;
     switch (baseSlug) {
       case 'curtidas':
         return <Heart className="w-6 h-6" />;
@@ -150,38 +166,48 @@ export default function InstagramPage() {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {groupedSubcategories.map((group) => (
-                  <Link 
-                    key={group.slug} 
-                    href={`/instagram/${group.slug}`}
-                    className="transform transition-all duration-200 hover:scale-105"
-                  >
-                    <Card className="p-6 cursor-pointer bg-white hover:shadow-lg transition-shadow duration-200">
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="p-3 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white">
-                          {getIcon(group.slug)}
-                        </div>
-                        <h3 className="text-xl font-semibold text-gray-900">
-                          {group.name}
-                        </h3>
-                      </div>
-                      <p className="text-gray-600 text-sm">
-                        {group.subcategories.length > 1 
-                          ? `${group.subcategories.length} opções disponíveis` 
-                          : '1 opção disponível'}
-                      </p>
-                    </Card>
-                  </Link>
-                ))}
-              </div>
+              <>
+                {groupedSubcategories.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {groupedSubcategories.map((group) => (
+                      <Link 
+                        key={group.slug} 
+                        href={`/instagram/${group.slug}`}
+                        className="transform transition-all duration-200 hover:scale-105"
+                      >
+                        <Card className="p-6 cursor-pointer bg-white hover:shadow-lg transition-shadow duration-200">
+                          <div className="flex items-center gap-4 mb-4">
+                            <div className="p-3 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+                              {getIcon(group.subcategories[0])}
+                            </div>
+                            <h3 className="text-xl font-semibold text-gray-900">
+                              {group.name}
+                            </h3>
+                          </div>
+                          <p className="text-gray-600 text-sm">
+                            {group.description}
+                          </p>
+                          <p className="text-gray-600 text-sm">
+                            {group.subcategories.length > 1 
+                              ? `${group.subcategories.length} opções disponíveis` 
+                              : '1 opção disponível'}
+                          </p>
+                        </Card>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 bg-gray-100 rounded-lg">
+                    <h2 className="text-2xl font-semibold text-gray-700 mb-4">
+                      Nenhum serviço disponível no momento
+                    </h2>
+                    <p className="text-gray-500">
+                      Estamos trabalhando para adicionar novos serviços em breve.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
-
-            <div className="mt-12 text-center">
-              <p className="text-sm text-gray-500">
-                Todos os nossos serviços são entregues de forma gradual e natural para manter a segurança da sua conta.
-              </p>
-            </div>
           </div>
         </div>
       </main>

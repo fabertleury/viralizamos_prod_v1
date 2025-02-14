@@ -634,7 +634,7 @@ export default function HomeV3() {
   // Removido
 
   return (
-    <main className="home-v3 pt-24">
+    <main className="home-v3 pt-0">
       <Header />
       
       <section className="home-banner">
