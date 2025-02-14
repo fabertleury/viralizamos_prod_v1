@@ -57,7 +57,9 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
     checkout_type_id: '',
     featured: false,
     status: true,
-    external_id: ''
+    external_id: '',
+    min_order: '',
+    max_order: ''
   });
 
   const supabase = createClient();
@@ -74,7 +76,9 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
         checkout_type_id: service.checkout_type_id || '',
         featured: service.featured || false,
         status: service.status !== false,
-        external_id: service.external_id || ''
+        external_id: service.external_id || '',
+        min_order: service.min_order?.toString() || '20',
+        max_order: service.max_order?.toString() || '10000'
       });
     }
   }, [service]);
@@ -139,18 +143,34 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
     setLoading(true);
 
     try {
-      const data = {
+      const data: any = {
         name: formData.name,
         descricao: formData.descricao,
         preco: parseFloat(formData.preco),
         quantidade: parseInt(formData.quantidade),
-        category_id: formData.category_id,
-        subcategory_id: formData.subcategory_id || null, // Garante que string vazia vira null
-        checkout_type_id: formData.checkout_type_id,
         featured: formData.featured,
         status: formData.status,
-        external_id: formData.external_id
+        external_id: formData.external_id,
+        min_order: parseInt(formData.min_order) || 20,
+        max_order: parseInt(formData.max_order) || 10000
       };
+
+      // Tratar campos UUID para evitar strings vazias
+      if (formData.category_id) {
+        data.category_id = formData.category_id;
+      }
+
+      if (formData.subcategory_id && formData.subcategory_id.trim() !== '') {
+        data.subcategory_id = formData.subcategory_id;
+      } else {
+        data.subcategory_id = null;
+      }
+
+      if (formData.checkout_type_id && formData.checkout_type_id.trim() !== '') {
+        data.checkout_type_id = formData.checkout_type_id;
+      } else {
+        data.checkout_type_id = null;
+      }
 
       if (service?.id) {
         const { error } = await supabase
@@ -158,21 +178,27 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
           .update(data)
           .eq('id', service.id);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Detailed error:', error);
+          throw error;
+        }
         toast.success('Serviço atualizado com sucesso!');
       } else {
         const { error } = await supabase
           .from('services')
           .insert([data]);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Detailed error:', error);
+          throw error;
+        }
         toast.success('Serviço criado com sucesso!');
       }
 
       onSuccess();
       onClose();
     } catch (error: any) {
-      console.error('Error:', error);
+      console.error('Full error object:', error);
       toast.error(error.message || 'Erro ao salvar serviço');
     } finally {
       setLoading(false);
@@ -237,6 +263,31 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
               required
               placeholder="Ex: 123456"
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Quantidade Mínima</label>
+              <Input
+                type="number"
+                value={formData.min_order}
+                onChange={(e) => setFormData({ ...formData, min_order: e.target.value })}
+                min="20"
+                max="10000"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Quantidade Máxima</label>
+              <Input
+                type="number"
+                value={formData.max_order}
+                onChange={(e) => setFormData({ ...formData, max_order: e.target.value })}
+                min="20"
+                max="10000"
+                required
+              />
+            </div>
           </div>
 
           {/* Seleção de Rede Social */}
