@@ -15,57 +15,140 @@ import './styles.css';
 export default function ProfileAnalyzerPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const searchParams = useSearchParams();
 
+  // Estado para controlar a aba ativa
+  const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('posts');
+
+  // Função para fazer proxy de imagens do Instagram
+  const proxyInstagramImage = (originalUrl: string) => {
+    if (!originalUrl) return '/default-profile.png';
+    
+    try {
+      const url = new URL(originalUrl);
+      
+      // Remove o domínio e deixa apenas o caminho e query
+      let path = url.pathname.replace(/^\//, '');
+      
+      // Adiciona a query string se existir
+      if (url.search) {
+        path += url.search;
+      }
+      
+      // Codifica o caminho para evitar problemas com caracteres especiais
+      const encodedPath = encodeURIComponent(path);
+      
+      return `/proxy/instagram-image/${encodedPath}`;
+    } catch (error) {
+      console.error('Erro ao processar URL da imagem:', error);
+      return '/default-profile.png';
+    }
+  };
+
+  // Função para buscar conteúdo do Instagram
+  const fetchInstagramContent = async (username: string, type: 'posts' | 'reels') => {
+    try {
+      // Busca conteúdo usando a nova API
+      const response = await fetch(`/api/instagram-content?username=${username}&type=${type}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Erro ao buscar ${type}`);
+      }
+
+      const data = await response.json();
+
+      // Processamento dos dados recebidos
+      return {
+        username: data.username,
+        type: data.type,
+        total: data.total,
+        content: data.content.map((item: any) => ({
+          id: item.id,
+          type: item.type,
+          caption: item.caption,
+          likes: item.likes,
+          comments: item.comments,
+          mediaUrl: proxyInstagramImage(item.mediaUrl),
+          timestamp: item.timestamp
+        }))
+      };
+    } catch (error) {
+      console.error(`Erro ao buscar ${type} do Instagram:`, error);
+      throw error;
+    }
+  };
+
+  // Função para buscar dados do perfil do Instagram
+  const fetchInstagramProfile = async (username: string) => {
+    try {
+      // Busca informações do perfil usando a nova API
+      const response = await fetch(`/api/instagram-profile?username=${username}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Erro ao buscar perfil');
+      }
+
+      const data = await response.json();
+
+      // Processamento dos dados recebidos
+      return {
+        username: data.username,
+        fullName: data.fullName,
+        profilePic: proxyInstagramImage(data.profilePicUrl),
+        followers: data.followerCount,
+        biography: data.biography,
+        isVerified: data.isVerified
+      };
+    } catch (error) {
+      console.error('Erro ao buscar perfil do Instagram:', error);
+      throw error;
+    }
+  };
+
+  // Função para lidar com a análise do perfil
   const handleAnalyzeProfile = async (username: string) => {
     setIsLoading(true);
     try {
-      // Buscar informações do perfil
-      const profileResponse = await fetch(`/api/instagram/profile?username=${username}`);
-      
-      if (!profileResponse.ok) {
-        throw new Error('Perfil não encontrado');
-      }
+      // Busca informações do perfil
+      const profileInfo = await fetchInstagramProfile(username);
 
-      const profileInfo = await profileResponse.json();
+      // Busca posts
+      const postsData = await fetchInstagramContent(username, 'posts');
 
-      if (!profileInfo?.data) {
-        throw new Error('Dados do perfil inválidos');
-      }
+      // Busca reels
+      const reelsData = await fetchInstagramContent(username, 'reels');
 
-      // Buscar posts do perfil
-      const postsResponse = await fetch(`/api/instagram/posts?username=${username}`);
-      
-      if (!postsResponse.ok) {
-        throw new Error('Não foi possível carregar os posts');
-      }
+      // Atualiza o estado com os dados
+      setProfileData({
+        profile: {
+          username: profileInfo.username,
+          fullName: profileInfo.fullName,
+          profilePicUrl: profileInfo.profilePic,
+          followerCount: profileInfo.followers,
+          biography: profileInfo.biography,
+          isVerified: profileInfo.isVerified
+        },
+        posts: postsData.content,
+        reels: reelsData.content
+      });
 
-      const posts = await postsResponse.json();
-
-      if (!posts?.data?.items) {
-        throw new Error('Dados dos posts inválidos');
-      }
-
-      // Combinar dados do perfil e posts
-      const combinedData = {
-        username: profileInfo.data.username,
-        full_name: profileInfo.data.full_name,
-        biography: profileInfo.data.biography || '',
-        followers_count: profileInfo.data.follower_count,
-        following_count: profileInfo.data.following_count,
-        media_count: profileInfo.data.media_count || 0,
-        profile_pic_url: profileInfo.data.profile_pic_url,
-        is_verified: profileInfo.data.is_verified || false,
-        posts: posts.data.items
-      };
-
-      setProfileData(combinedData);
-
-    } catch (error: any) {
-      console.error('Erro ao analisar perfil:', error);
-      toast.error(error.message || 'Erro ao analisar perfil');
-      setProfileData(null);
+    } catch (error) {
+      console.error('Erro na análise do perfil:', error);
+      setError(error instanceof Error ? error.message : 'Erro desconhecido');
     } finally {
       setIsLoading(false);
     }
@@ -93,23 +176,28 @@ export default function ProfileAnalyzerPage() {
             
             {profileData && (
               <div className="mt-8 space-y-8">
-                <ProfileHeader profileData={profileData} />
-                <RecentPosts posts={profileData.posts} />
+                <ProfileHeader profileData={profileData.profile} />
+                {activeTab === 'posts' && (
+                  <RecentPosts posts={profileData.posts} />
+                )}
+                {activeTab === 'reels' && (
+                  <RecentPosts posts={profileData.reels} />
+                )}
                 <MetricsAnalysis 
                   profile={{
-                    username: profileData.username,
-                    full_name: profileData.full_name,
-                    biography: profileData.biography,
-                    followers: profileData.followers_count,
-                    following: profileData.following_count,
+                    username: profileData.profile.username,
+                    full_name: profileData.profile.fullName,
+                    biography: profileData.profile.biography,
+                    followers: profileData.profile.followerCount,
+                    following: 0,
                     is_private: false,
-                    is_verified: profileData.is_verified,
-                    posts_count: profileData.media_count,
-                    profile_pic_url: profileData.profile_pic_url
+                    is_verified: profileData.profile.isVerified,
+                    posts_count: profileData.posts.length,
+                    profile_pic_url: profileData.profile.profilePicUrl
                   }}
                   posts={profileData.posts}
                 />
-                <GrowthAnalysis profileData={profileData} />
+                <GrowthAnalysis profileData={profileData.profile} />
                 <ShareReport reportRef={reportRef} />
               </div>
             )}

@@ -22,9 +22,49 @@ const nextConfig = {
       'scontent-gru2-1.cdninstagram.com',
       'scontent-atl3-2.cdninstagram.com',
       'scontent-atl3-1.cdninstagram.com',
-      'scontent-atl3-3.cdninstagram.com'
+      'scontent-atl3-3.cdninstagram.com',
+      'scontent-waw2-1.cdninstagram.com'
     ],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**instagram.com',
+        port: '',
+        pathname: '**'
+      },
+      {
+        protocol: 'https',
+        hostname: '**fbcdn.net',
+        port: '',
+        pathname: '**'
+      }
+    ]
   },
+  async rewrites() {
+    return [
+      {
+        source: '/proxy/instagram-image',
+        destination: 'https://scontent-waw2-1.cdninstagram.com/v/t51.2885-19/:path*'
+      }
+    ];
+  },
+  async headers() {
+    return [
+      {
+        source: '/proxy/instagram-image',
+        headers: [
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*'
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET'
+          }
+        ]
+      }
+    ];
+  }
 }
 
-module.exports = nextConfig
+module.exports = nextConfig;

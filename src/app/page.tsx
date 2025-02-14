@@ -2,20 +2,22 @@
 
 import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/header';
-import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { 
   FaQuestionCircle, 
-  FaTimes, 
-  FaInstagram, 
+  FaLock,
+  FaInstagram,
   FaTiktok,
   FaYoutube,
-  FaUser, 
-  FaCog, 
-  FaLock, 
-  FaUnlock 
+  FaUser,
+  FaCog,
+  FaUnlock,
+  FaTimes
 } from 'react-icons/fa';
 import './styles.css';
+
+// Importar o hook de idioma
+import { useLanguage } from '@/contexts/LanguageContext';
 
 // Interface para as redes sociais
 interface SocialNetwork {
@@ -29,7 +31,7 @@ interface SocialNetwork {
 }
 
 // Hook personalizado para gerenciar cooldown
-const useCooldown = (key: string, cooldownTime: number = 5 * 60 * 1000) => {
+const useCooldown = (key: string, cooldownTime: number = 30 * 1000) => {
   const [canTry, setCanTry] = useState(true);
   const [remainingTime, setRemainingTime] = useState(0);
 
@@ -73,6 +75,59 @@ const useCooldown = (key: string, cooldownTime: number = 5 * 60 * 1000) => {
   return { canTry, remainingTime, startCooldown };
 };
 
+// Hook personalizado para gerenciar tentativas de verificação
+const useProfileCheck = () => {
+  const [lastCheckTimestamp, setLastCheckTimestamp] = useState<number | null>(null);
+  const [consecutiveFailures, setConsecutiveFailures] = useState(0);
+  const [rateLimitReached, setRateLimitReached] = useState(false);
+
+  const canCheckProfile = () => {
+    // Se atingiu o rate limit, não permite novas tentativas
+    if (rateLimitReached) return false;
+
+    // Se nunca foi feita uma verificação, permite
+    if (!lastCheckTimestamp) return true;
+
+    // Permite nova verificação se passou mais de 5 segundos
+    const timeSinceLastCheck = Date.now() - lastCheckTimestamp;
+    return timeSinceLastCheck > 5000;
+  };
+
+  const recordCheck = (success: boolean, isRateLimited: boolean = false) => {
+    setLastCheckTimestamp(Date.now());
+    
+    if (isRateLimited) {
+      // Define rate limit atingido
+      setRateLimitReached(true);
+      // Reseta após 1 minuto
+      setTimeout(() => {
+        setRateLimitReached(false);
+        setConsecutiveFailures(0);
+      }, 60000);
+    } else if (success) {
+      // Reseta falhas consecutivas se sucesso
+      setConsecutiveFailures(0);
+      setRateLimitReached(false);
+    } else {
+      // Incrementa falhas consecutivas
+      setConsecutiveFailures(prev => prev + 1);
+    }
+  };
+
+  const shouldWait = () => {
+    // Aumenta o tempo de espera exponencialmente após falhas consecutivas
+    return consecutiveFailures > 3 || rateLimitReached;
+  };
+
+  return { 
+    canCheckProfile, 
+    recordCheck, 
+    shouldWait,
+    consecutiveFailures,
+    rateLimitReached 
+  };
+};
+
 export default function HomeV3() {
   const [username, setUsername] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -85,9 +140,75 @@ export default function HomeV3() {
 
   const { 
     canTry: canTryAgain, 
-    remainingTime, 
+    remainingTime: cooldownRemainingTime, 
     startCooldown 
-  } = useCooldown('instagram-profile-check', 5 * 60 * 1000); // 5 minutos
+  } = useCooldown('instagram-profile-check', 30 * 1000); // 30 segundos
+
+  const { 
+    canCheckProfile, 
+    recordCheck, 
+    shouldWait,
+    consecutiveFailures,
+    rateLimitReached 
+  } = useProfileCheck();
+
+  // Estados para gerenciamento de carregamento e perfil privado
+  const [isPrivateProfile, setIsPrivateProfile] = useState(false);
+  const [privateProfileData, setPrivateProfileData] = useState<{
+    username: string;
+    profilePicUrl?: string;
+  } | null>(null);
+  const [loadingStage, setLoadingStage] = useState<
+    'idle' | 'checking' | 'validating' | 'fetching' | 'private' | 'error'
+  >('idle');
+
+  // Estado para controlar o temporizador
+  const [remainingTime, setRemainingTime] = useState(120); // 2 minutos = 120 segundos
+  const [isTimerActive, setIsTimerActive] = useState(false);
+
+  // Usar o contexto de idioma
+  const { language, translations, changeLanguage } = useLanguage();
+
+  // Efeito para gerenciar o temporizador
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (isTimerActive && remainingTime > 0) {
+      intervalId = setInterval(() => {
+        setRemainingTime((prev) => prev - 1);
+      }, 1000);
+    } else if (remainingTime === 0) {
+      setIsTimerActive(false);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isTimerActive, remainingTime]);
+
+  // Função para formatar o tempo restante
+  const formatTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+  };
+
+  // Função para iniciar o temporizador
+  const startTimer = () => {
+    setRemainingTime(120);
+    setIsTimerActive(true);
+
+    const timer = setInterval(() => {
+      setRemainingTime((prevTime) => {
+        if (prevTime <= 1) {
+          clearInterval(timer);
+          setIsTimerActive(false);
+          return 0;
+        }
+        return prevTime - 1;
+      });
+    }, 1000);
+  };
 
   // Função para pegar o ícone correto baseado no nome
   const getIconComponent = (iconName: string) => {
@@ -101,11 +222,8 @@ export default function HomeV3() {
 
   // Função para validar username do Instagram
   const validateInstagramUsername = (username: string): boolean => {
-    // Regex para validar username do Instagram:
-    // - Começa com letra ou número
-    // - Pode conter letras, números, pontos e underscores
-    // - 1 a 30 caracteres
-    const instagramUsernameRegex = /^[a-zA-Z0-9](?!.*\.\.|.*\.$)(?!.*\.{2,})[a-zA-Z0-9._]{0,28}[a-zA-Z0-9]$/;
+    // Regex atualizada para permitir underscores no final
+    const instagramUsernameRegex = /^[a-zA-Z0-9](?!.*\.\.|.*\.$)(?!.*\.{2,})[a-zA-Z0-9._]+_?$/;
     return instagramUsernameRegex.test(username);
   };
 
@@ -128,7 +246,6 @@ export default function HomeV3() {
         }
       } catch (error) {
         console.error('Erro ao carregar redes sociais:', error);
-        toast.error('Erro ao carregar redes sociais');
       }
     };
 
@@ -166,93 +283,184 @@ export default function HomeV3() {
   const handleUsernameChange = (e) => {
     const value = e.target.value.replace('@', '').trim();
     setUsername(value);
-
-    // Se o usuário digitou algo, iniciar busca imediatamente
-    if (!validateInstagramUsername(value)) {
-      if (value.length > 0) {
-        toast.error('Username inválido. Use apenas letras, números, pontos e underscores.');
-      }
-      setSearchResults(null);
-      setShowPrivateMessage(false);
-      return;
-    }
-
-    // Se o usuário digitou algo, iniciar busca imediatamente
-    if (value.length > 2) {
-      const fetchProfile = async () => {
-        try {
-          setIsLoading(true);
-          const response = await fetch(`/api/instagram?username=${value}`);
-          const data = await response.json();
-
-          if (data.error) {
-            toast.error(data.error);
-            setSearchResults(null);
-            return;
-          }
-
-          if (data.isPrivate) {
-            setShowPrivateMessage(true);
-            toast.warning('Perfil privado detectado');
-          } else {
-            setShowPrivateMessage(false);
-            toast.success('Perfil público encontrado');
-          }
-
-          setSearchResults(data);
-        } catch (error) {
-          console.error('Erro na busca:', error);
-          setSearchResults(null);
-          toast.error('Erro ao buscar perfil');
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      fetchProfile();
-    } else {
-      setSearchResults(null);
-      setShowPrivateMessage(false);
-    }
+    
+    // Limpa resultados anteriores
+    setSearchResults(null);
+    setShowPrivateMessage(false);
   };
 
   const handleAnalyze = async () => {
-    if (!username) return;
+    // Validações iniciais
+    if (!username) {
+      alert('Por favor, insira um username do Instagram');
+      return;
+    }
+
+    if (!validateInstagramUsername(username)) {
+      alert('Username inválido. Use apenas letras, números, pontos e underscores.');
+      return;
+    }
+
+    // Verificações de cooldown e rate limit
+    if (!canTryAgain || !canCheckProfile()) {
+      setShowPrivateMessage(true);
+      return;
+    }
+
+    // Reinicia os estados
+    setIsLoading(true);
+    setSearchResults(null);
+    setShowPrivateMessage(false);
+    setLoadingStage('searching');
+    setPrivateProfileData(null);
 
     try {
-      setIsLoading(true);
-      const response = await fetch('/api/instagram', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username }),
-      });
+      // Simula um tempo de carregamento para mostrar as mensagens
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setLoadingStage('verifying');
+
+      const response = await fetch(`/api/instagram?username=${username}`);
       const data = await response.json();
 
+      console.log('API Response:', response); // Log de depuração
+      console.log('API Data:', data); // Log de depuração
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro desconhecido');
+      }
+
+      // Registra o sucesso da verificação
+      recordCheck(true);
+      startCooldown();
+
+      // Simula um tempo adicional para mostrar a mensagem de encontrado
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setLoadingStage('found');
+
+      // Diferencia o tratamento para perfis públicos e privados
       if (data.isPrivate) {
-        setShowPrivateMessage(true);
+        console.log('Perfil privado'); // Log de depuração
+        
+        // Aguarda um momento antes de mostrar o perfil privado
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setLoadingStage('private');
+        
+        // Armazena dados do perfil privado
+        setPrivateProfileData({
+          username: data.username,
+          profilePicUrl: data.profilePicUrl
+        });
       } else {
-        // Lógica para análise do perfil público
-        toast.success(`Perfil de ${data.fullName} encontrado!`);
+        console.log('Perfil público', data); // Log de depuração
+        
+        // Redireciona para página de análise com o username
+        window.location.href = `/analisar-perfil?username=${username}`;
       }
     } catch (error) {
       console.error('Erro na análise:', error);
-      toast.error('Erro ao analisar perfil');
+      
+      // Registra a falha da verificação
+      recordCheck(false, error.message.includes('Rate limit'));
+      
+      // Tratamento de erros específicos
+      if (error.message.includes('Rate limit')) {
+        setRateLimitReached(true);
+      } else {
+        alert(error.message || 'Erro ao verificar o perfil');
+      }
+
+      // Reseta o estado de loading
+      setLoadingStage('idle');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleTryAgain = () => {
-    if (!canTryAgain) {
-      toast.warning(`Aguarde ${formatTime(remainingTime)} antes de tentar novamente`);
-      return;
+    if (!shouldWait()) {
+      setShowPrivateMessage(false);
+      handleAnalyze();
     }
-    
-    // Lógica para tentar novamente
-    setShowPrivateMessage(false);
-    startCooldown(); // Inicia o cooldown
+  };
+
+  // Função para buscar dados do perfil do Instagram
+  const fetchInstagramProfile = async (username: string) => {
+    try {
+      // Define o estágio de carregamento
+      setLoadingStage('checking');
+
+      // Busca informações do perfil usando a nova API
+      const response = await fetch(`/api/instagram-profile?username=${username}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // Verifica se a resposta não é ok
+      if (!response.ok) {
+        const errorData = await response.json();
+        
+        // Verifica se é um perfil privado
+        if (errorData.error.includes('privado')) {
+          setLoadingStage('private');
+          setIsPrivateProfile(true);
+          setPrivateProfileData({
+            username: username,
+            profilePicUrl: '' // Pode ser atualizado depois
+          });
+          return null;
+        }
+
+        // Outros tipos de erro
+        setLoadingStage('error');
+        toast.error(errorData.error || 'Erro ao buscar perfil');
+        return null;
+      }
+
+      // Define o estágio de carregamento
+      setLoadingStage('fetching');
+
+      const data = await response.json();
+
+      // Verifica se o perfil é privado
+      if (data.isPrivate) {
+        setLoadingStage('private');
+        setIsPrivateProfile(true);
+        setPrivateProfileData({
+          username: data.username,
+          profilePicUrl: data.profilePicUrl
+        });
+        return null;
+      }
+
+      // Processamento dos dados recebidos
+      const processedData = {
+        username: data.username,
+        profilePicUrl: proxyInstagramImage(data.profilePicUrl),
+        followerCount: data.followerCount,
+        isPrivate: data.isPrivate,
+        biography: data.biography,
+        isVerified: data.isVerified,
+        externalUrl: data.externalUrl,
+        followingCount: data.followingCount,
+        totalPosts: 0 // Não temos essa informação nesta API
+      };
+
+      // Reseta o estágio de carregamento
+      setLoadingStage('idle');
+
+      return processedData;
+
+    } catch (error) {
+      console.error('Erro ao buscar perfil do Instagram:', error);
+      
+      // Define o estágio de erro
+      setLoadingStage('error');
+      toast.error('Erro interno ao processar o perfil');
+      
+      return null;
+    }
   };
 
   const handleNextStep = () => {
@@ -270,14 +478,163 @@ export default function HomeV3() {
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+  const proxyInstagramImage = (originalUrl: string) => {
+    if (!originalUrl) return '/default-profile.png';
+    
+    try {
+      const url = new URL(originalUrl);
+      
+      // Remove o domínio e deixa apenas o caminho e query
+      let path = url.pathname.replace(/^\//, '');
+      
+      // Adiciona a query string se existir
+      if (url.search) {
+        path += url.search;
+      }
+      
+      // Codifica o caminho para evitar problemas com caracteres especiais
+      const encodedPath = encodeURIComponent(path);
+      
+      return `/proxy/instagram-image/${encodedPath}`;
+    } catch (error) {
+      console.error('Erro ao processar URL da imagem:', error);
+      return '/default-profile.png';
+    }
   };
 
+  // Renderização do loading
+  const renderLoading = () => {
+    if (isLoading) {
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg shadow-xl flex flex-col items-center">
+            <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
+            <h2 className="text-xl font-semibold text-gray-800">
+              Buscando dados do perfil...
+            </h2>
+            <p className="text-gray-600 mt-2">
+              Isso pode levar alguns segundos
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Frases motivacionais para exibir durante o carregamento
+  const motivationalPhrases = [
+    "Preparando insights incríveis...",
+    "Analisando métricas do perfil...",
+    "Desvendando o potencial do seu Instagram...",
+    "Carregando dados estratégicos...",
+    "Transformando números em inteligência..."
+  ];
+
+  // Renderização do modal de perfil privado
+  const renderPrivateProfileModal = () => {
+    if (loadingStage !== 'private' || !privateProfileData) return null;
+
+    const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+      // Verifica se o clique foi diretamente no overlay
+      if (e.target === e.currentTarget) {
+        setLoadingStage('idle');
+      }
+    };
+
+    // Função para tentar novamente
+    const handleTryAgain = () => {
+      // Reinicia o estado e tenta novamente
+      setLoadingStage('idle');
+      
+      // Opcional: Você pode adicionar lógica adicional aqui se necessário
+      // Por exemplo, limpar campos ou redefinir algum estado
+    };
+
+    return (
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+        onClick={handleOverlayClick}
+      >
+        <div 
+          className="bg-white rounded-lg max-w-md w-full p-6 text-center shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex justify-center mb-4">
+            <img 
+              src={proxyInstagramImage(privateProfileData.profilePicUrl || '')} 
+              alt={`Perfil de ${privateProfileData.username}`} 
+              className="w-24 h-24 rounded-full border-4 border-gray-300 object-cover"
+              onError={(e) => {
+                e.currentTarget.src = '/default-profile.png';
+              }}
+            />
+          </div>
+          <h2 className="text-xl font-bold mb-2">{privateProfileData.username}</h2>
+          <div className="flex items-center justify-center text-red-600 mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            <p className="font-semibold">Perfil Privado</p>
+          </div>
+          <p className="text-sm text-gray-600 mb-4">
+            Seu perfil está configurado como privado. Para continuar a análise, 
+            você precisa tornar seu perfil público temporariamente.
+          </p>
+
+          {/* Seção do temporizador */}
+          {!isTimerActive ? (
+            <div className="space-y-2">
+              <button 
+                onClick={startTimer}
+                className="w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition"
+              >
+                Iniciar Contagem Regressiva
+              </button>
+              <button 
+                onClick={() => setLoadingStage('idle')}
+                className="w-full bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <div>
+              {remainingTime > 0 ? (
+                <div>
+                  <p className="text-lg font-bold text-blue-600 mb-4">
+                    Tempo Restante: {formatTime(remainingTime)}
+                  </p>
+                  <button 
+                    onClick={handleTryAgain}
+                    className="w-full bg-green-500 text-white py-2 rounded-lg hover:bg-green-600 transition"
+                    disabled={remainingTime > 0}
+                  >
+                    {remainingTime > 0 
+                      ? `Aguarde ${formatTime(remainingTime)}` 
+                      : 'Tentar Novamente'}
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={handleTryAgain}
+                  className="w-full bg-green-500 text-white py-2 rounded-lg hover:bg-green-600 transition"
+                >
+                  Tentar Novamente
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Renderização dos seletores de idioma
+  // Removido
+
   return (
-    <main className="home-v3">
+    <main className="home-v3 pt-24">
       <Header />
       
       <section className="home-banner">
@@ -300,11 +657,27 @@ export default function HomeV3() {
                   <button 
                     className="btn-analyze"
                     onClick={handleAnalyze}
-                    disabled={isLoading}
+                    disabled={isLoading || rateLimitReached}
                   >
-                    {isLoading ? 'Analisando...' : 'Analisar Agora'}
+                    {isLoading ? 'Analisando...' : 
+                     rateLimitReached ? 'Limite Excedido' : 
+                     'Analisar Agora'}
                   </button>
                 </div>
+                
+                {rateLimitReached && (
+                  <div className="bg-red-50 border-l-4 border-red-400 p-4 mt-4 rounded-lg flex items-center">
+                    <div className="flex-shrink-0 mr-4">
+                      <FaLock className="text-red-600 text-2xl" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-red-700 font-semibold">
+                        Limite de requisições excedido. Tente novamente em 1 minuto.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {showPrivateMessage && (
                   <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mt-4 rounded-lg flex items-center">
                     <div className="flex-shrink-0 mr-4">
@@ -322,22 +695,16 @@ export default function HomeV3() {
                           <FaQuestionCircle className="mr-2" /> Ver Tutorial
                         </button>
                         
-                        {!canTryAgain && (
-                          <div className="text-yellow-800 text-sm">
-                            Próxima tentativa em: {formatTime(remainingTime)}
-                          </div>
-                        )}
-                        
                         <button
                           className={`inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-full shadow-sm 
-                            ${canTryAgain 
-                              ? 'bg-green-600 hover:bg-green-700 text-white' 
-                              : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                            ${shouldWait() 
+                              ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                              : 'bg-green-600 hover:bg-green-700 text-white'
                             }`}
                           onClick={handleTryAgain}
-                          disabled={!canTryAgain}
+                          disabled={shouldWait()}
                         >
-                          {canTryAgain ? 'Tentar Novamente' : 'Aguarde'}
+                          {shouldWait() ? 'Aguarde' : 'Tentar Novamente'}
                         </button>
                       </div>
                     </div>
@@ -435,7 +802,7 @@ export default function HomeV3() {
         </div>
       </section>
 
-      {/* Tutorial Modal */}
+      {/* Renderização do tutorial Modal */}
       {showTutorial && (
         <div className="tutorial-overlay">
           <div className="tutorial-modal">
@@ -478,6 +845,9 @@ export default function HomeV3() {
           </div>
         </div>
       )}
+      
+      {renderLoading()}
+      {renderPrivateProfileModal()}
     </main>
   );
 }

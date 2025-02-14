@@ -3,6 +3,54 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
+  // Proxy para imagens do Instagram
+  if (request.nextUrl.pathname.startsWith('/proxy/instagram-image')) {
+    // Decodifica o caminho da imagem
+    const encodedPath = request.nextUrl.pathname.replace('/proxy/instagram-image/', '');
+    const imagePath = decodeURIComponent(encodedPath);
+
+    // Lista de domínios possíveis do Instagram
+    const instagramDomains = [
+      'scontent-waw2-1.cdninstagram.com',
+      'scontent.cdninstagram.com',
+      'scontent-gru1-1.cdninstagram.com',
+      'scontent-gru2-1.cdninstagram.com',
+      'instagram.fmci2-1.fna.fbcdn.net',
+      'instagram.fcgh2-1.fna.fbcdn.net',
+      'instagram.fpoa1-1.fna.fbcdn.net'
+    ];
+
+    // Tenta buscar a imagem de diferentes domínios
+    for (const domain of instagramDomains) {
+      const imageUrl = `https://${domain}/${imagePath}`;
+
+      try {
+        const imageResponse = await fetch(imageUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          }
+        });
+
+        if (imageResponse.ok) {
+          const imageBlob = await imageResponse.blob();
+          return new NextResponse(imageBlob, {
+            status: 200,
+            headers: {
+              'Content-Type': imageResponse.headers.get('Content-Type') || 'image/jpeg',
+              'Cache-Control': 'public, max-age=31536000, immutable',
+              'Access-Control-Allow-Origin': '*'
+            }
+          });
+        }
+      } catch (error) {
+        console.error(`Erro ao buscar imagem do domínio ${domain}:`, error);
+      }
+    }
+
+    // Se nenhum domínio funcionar, retorna 404
+    return new NextResponse(null, { status: 404 });
+  }
+
   const res = NextResponse.next();
   
   // Adiciona o pathname aos headers para uso no layout
@@ -36,5 +84,6 @@ export const config = {
     '/admin/:path*',
     '/cliente/:path*',
     '/suporte/:path*',
+    '/proxy/instagram-image/:path*'
   ]
 };

@@ -7,6 +7,7 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Footer } from '@/components/layout/footer';
+import { LanguageProvider } from '@/contexts/LanguageContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -42,7 +43,9 @@ export default async function RootLayout({
         </head>
         <body className={inter.className} suppressHydrationWarning>
           <div className="min-h-screen flex flex-col w-full">
-            <main className="flex-grow">{children}</main>
+            <LanguageProvider>
+              <main className="flex-grow">{children}</main>
+            </LanguageProvider>
             <Footer />
             <Toaster richColors position="top-right" />
           </div>
@@ -72,7 +75,9 @@ export default async function RootLayout({
       </head>
       <body className={inter.className} suppressHydrationWarning>
         <div className="min-h-screen flex flex-col w-full">
-          <main className="flex-grow">{children}</main>
+          <LanguageProvider>
+            <main className="flex-grow">{children}</main>
+          </LanguageProvider>
           <Footer />
           <Toaster richColors position="top-right" />
         </div>
