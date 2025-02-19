@@ -24,6 +24,7 @@ import {
   FaRocket 
 } from 'react-icons/fa';
 import { FaUsers, FaHandshake, FaChartLine, FaMoneyBillWave } from 'react-icons/fa';
+import { FaTicketAlt } from 'react-icons/fa';
 import './styles.css';
 
 // Interface para as redes sociais
@@ -165,7 +166,7 @@ const ServicosSection = () => {
             href="https://www.instagram.com/viralizamos.com" 
             target="_blank"
             rel="noopener noreferrer"
-            className="bg-purple-600 text-white px-8 py-3 rounded-full text-xl font-bold hover:bg-purple-700 transition"
+            className="bg-[#C43582] text-white px-8 py-3 rounded-full text-xl font-bold hover:bg-[#a62c6c] transition"
           >
             Clique aqui e Comece agora
           </a>
@@ -286,6 +287,14 @@ export default function HomeV3() {
   const [currentStep, setCurrentStep] = useState(0);
   const [timer, setTimer] = useState(300);
   const [socialNetworks, setSocialNetworks] = useState<SocialNetwork[]>([]);
+  const [whatsappConfig, setWhatsappConfig] = useState({
+    numero: '',
+    ativo: false
+  });
+  const [ticketConfig, setTicketConfig] = useState({
+    link: '',
+    ativo: false
+  });
   const supabase = createClient();
 
   // Função para pegar o ícone correto baseado no nome
@@ -322,6 +331,28 @@ export default function HomeV3() {
     };
 
     fetchSocialNetworks();
+  }, []);
+
+  useEffect(() => {
+    const fetchConfiguracoes = async () => {
+      const { data, error } = await supabase
+        .from('configuracoes')
+        .select('*')
+        .single();
+
+      if (data) {
+        setWhatsappConfig({
+          numero: data.whatsapp_numero || '',
+          ativo: data.whatsapp_ativo || false
+        });
+        setTicketConfig({
+          link: data.ticket_link || '',
+          ativo: data.ticket_ativo || false
+        });
+      }
+    };
+
+    fetchConfiguracoes();
   }, []);
 
   const tutorialSteps = [
@@ -441,8 +472,39 @@ export default function HomeV3() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const [configurations, setConfigurations] = useState<{[key: string]: string}>({});
+
+  useEffect(() => {
+    const fetchConfigurations = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('configurations')
+          .select('key, value')
+          .in('key', [
+            'whatsapp_numero', 
+            'whatsapp_icone_ativo', 
+            'ticket_link', 
+            'ticket_icone_ativo'
+          ]);
+
+        if (error) throw error;
+
+        const configMap = data.reduce((acc, config) => {
+          acc[config.key] = config.value;
+          return acc;
+        }, {});
+
+        setConfigurations(configMap);
+      } catch (error) {
+        console.error('Erro ao buscar configurações:', error);
+      }
+    };
+
+    fetchConfigurations();
+  }, []);
+
   return (
-    <>
+    <div>
       <main className="home-v3">
         <Header />
         
@@ -637,6 +699,31 @@ export default function HomeV3() {
           </div>
         )}
       </main>
-    </>
+
+      {/* Botões flutuantes */}
+      <div className="fixed bottom-8 right-8 flex flex-col space-y-4 z-50">
+        {configurations['whatsapp_icone_ativo'] === 'true' && (
+          <a 
+            href={`https://wa.me/${configurations['whatsapp_numero']?.replace(/\D/g, '')}`} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="bg-green-500 text-white p-4 rounded-full shadow-xl hover:bg-green-600 transition"
+          >
+            <FaWhatsapp className="text-3xl" />
+          </a>
+        )}
+        
+        {configurations['ticket_icone_ativo'] === 'true' && (
+          <a 
+            href={configurations['ticket_link'] || '#'} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="bg-blue-500 text-white p-4 rounded-full shadow-xl hover:bg-blue-600 transition"
+          >
+            <FaTicketAlt className="text-3xl" />
+          </a>
+        )}
+      </div>
+    </div>
   );
 }
