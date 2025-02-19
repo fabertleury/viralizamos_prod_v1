@@ -21,6 +21,7 @@ import {
   ArrowRightOnRectangleIcon,
   CogIcon,
   WrenchScrewdriverIcon,
+  ChatBubbleBottomCenterTextIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -50,6 +51,11 @@ const navigation = [
     href: '/admin/automacoes', 
     icon: WrenchScrewdriverIcon,
     tag: 'ALPHA' 
+  },
+  { 
+    name: 'Depoimentos', 
+    href: '/admin/depoimentos', 
+    icon: ChatBubbleBottomCenterTextIcon 
   },
 ];
 
