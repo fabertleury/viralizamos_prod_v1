@@ -64,12 +64,43 @@ export async function middleware(request: NextRequest) {
     return res;
   }
 
+  // Para rotas de admin, verifica se o usuário tem role de admin
+  if (request.nextUrl.pathname.startsWith('/admin')) {
+    const supabase = createMiddlewareClient({ req: request, res });
+    const { data: { session } } = await supabase.auth.getSession();
+
+    console.log('Sessão de admin:', session);
+
+    if (!session) {
+      console.log('Sem sessão para rota de admin');
+      const redirectUrl = new URL('/login', request.url);
+      redirectUrl.searchParams.set('redirectTo', request.url);
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    // Verificar role do usuário
+    const { data: profileData, error } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .single();
+
+    console.log('Dados do perfil:', { profileData, error });
+
+    if (error || !profileData || profileData.role !== 'admin') {
+      console.log('Usuário sem permissão de admin');
+      const redirectUrl = new URL('/login', request.url);
+      redirectUrl.searchParams.set('error', 'unauthorized');
+      return NextResponse.redirect(redirectUrl);
+    }
+  }
+
   // Para outras rotas, verifica autenticação
   const supabase = createMiddlewareClient({ req: request, res });
   const { data: { session } } = await supabase.auth.getSession();
 
   // Se não houver sessão e for uma rota protegida, redireciona para login
-  if (!session && request.nextUrl.pathname.startsWith('/admin')) {
+  if (!session) {
     const redirectUrl = new URL('/login', request.url);
     redirectUrl.searchParams.set('redirectTo', request.url);
     return NextResponse.redirect(redirectUrl);
