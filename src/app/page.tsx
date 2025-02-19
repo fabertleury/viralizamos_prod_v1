@@ -163,7 +163,7 @@ export default function HomeV3() {
   >('idle');
 
   // Estado para controlar o temporizador
-  const [remainingTime, setRemainingTime] = useState(120); // 2 minutos = 120 segundos
+  const [remainingTime, setRemainingTime] = useState(30); // 30 segundos
   const [isTimerActive, setIsTimerActive] = useState(false);
 
   // Usar o contexto de idioma
@@ -186,6 +186,12 @@ export default function HomeV3() {
     };
   }, [isTimerActive, remainingTime]);
 
+  useEffect(() => {
+    if (remainingTime === 0) {
+      setIsTimerActive(false);
+    }
+  }, [remainingTime]);
+
   // Função para formatar o tempo restante
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -195,7 +201,7 @@ export default function HomeV3() {
 
   // Função para iniciar o temporizador
   const startTimer = () => {
-    setRemainingTime(120);
+    setRemainingTime(30);
     setIsTimerActive(true);
 
     const timer = setInterval(() => {
@@ -376,11 +382,22 @@ export default function HomeV3() {
     }
   };
 
-  const handleTryAgain = () => {
-    if (!shouldWait()) {
-      setShowPrivateMessage(false);
-      handleAnalyze();
+  const handleTryAgain = async () => {
+    // Verifica se o username está disponível
+    if (!privateProfileData?.username) {
+      setLoadingStage('idle');
+      return;
     }
+
+    // Define o username do perfil privado
+    setUsername(privateProfileData.username);
+    
+    // Reinicia o estado do timer
+    setIsTimerActive(false);
+    setRemainingTime(30);
+
+    // Chama a função de análise diretamente
+    await handleAnalyze();
   };
 
   // Função para buscar dados do perfil do Instagram
@@ -543,12 +560,22 @@ export default function HomeV3() {
     };
 
     // Função para tentar novamente
-    const handleTryAgain = () => {
-      // Reinicia o estado e tenta novamente
-      setLoadingStage('idle');
+    const handleTryAgain = async () => {
+      // Verifica se o username está disponível
+      if (!privateProfileData?.username) {
+        setLoadingStage('idle');
+        return;
+      }
+
+      // Define o username do perfil privado
+      setUsername(privateProfileData.username);
       
-      // Opcional: Você pode adicionar lógica adicional aqui se necessário
-      // Por exemplo, limpar campos ou redefinir algum estado
+      // Reinicia o estado do timer
+      setIsTimerActive(false);
+      setRemainingTime(30);
+
+      // Chama a função de análise diretamente
+      await handleAnalyze();
     };
 
     return (
@@ -587,9 +614,9 @@ export default function HomeV3() {
             <div className="space-y-2">
               <button 
                 onClick={startTimer}
-                className="w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition"
+                className="w-full bg-green-500 text-white py-2 rounded-lg hover:bg-green-600 transition"
               >
-                Iniciar Contagem Regressiva
+                Confirmo que meu perfil está público
               </button>
               <button 
                 onClick={() => setLoadingStage('idle')}
@@ -605,15 +632,9 @@ export default function HomeV3() {
                   <p className="text-lg font-bold text-blue-600 mb-4">
                     Tempo Restante: {formatTime(remainingTime)}
                   </p>
-                  <button 
-                    onClick={handleTryAgain}
-                    className="w-full bg-green-500 text-white py-2 rounded-lg hover:bg-green-600 transition"
-                    disabled={remainingTime > 0}
-                  >
-                    {remainingTime > 0 
-                      ? `Aguarde ${formatTime(remainingTime)}` 
-                      : 'Tentar Novamente'}
-                  </button>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Aguarde o tempo restante para tentar novamente
+                  </p>
                 </div>
               ) : (
                 <button 
@@ -685,7 +706,8 @@ export default function HomeV3() {
                     </div>
                     <div className="flex-1">
                       <p className="text-yellow-700 font-semibold">
-                        Seu perfil está privado. Para continuar a análise, torne-o público.
+                        Seu perfil está privado. Para continuar a análise, 
+                        você precisa tornar seu perfil público temporariamente.
                       </p>
                       <div className="mt-2 flex items-center space-x-4">
                         <button

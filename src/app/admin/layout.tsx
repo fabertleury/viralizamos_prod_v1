@@ -19,6 +19,8 @@ import {
   CubeIcon,
   UserCircleIcon,
   ArrowRightOnRectangleIcon,
+  CogIcon,
+  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -42,6 +44,13 @@ const navigation = [
   { name: 'Usuários', href: '/admin/users', icon: UserGroupIcon },
   { name: 'Sessões', href: '/admin/sessions', icon: UserCircleIcon },
   { name: 'Reposições', href: '/admin/reposicoes', icon: ArrowPathIcon },
+  { name: 'Configurações', href: '/admin/configuracoes', icon: CogIcon },
+  { 
+    name: 'Automações', 
+    href: '/admin/automacoes', 
+    icon: WrenchScrewdriverIcon,
+    tag: 'ALPHA' 
+  },
 ];
 
 export default function AdminLayout({
@@ -121,6 +130,11 @@ export default function AdminLayout({
                                   aria-hidden="true"
                                 />
                                 {item.name}
+                                {item.tag && (
+                                  <span className="ml-2 rounded bg-indigo-600 px-2 py-1 text-xs text-white">
+                                    {item.tag}
+                                  </span>
+                                )}
                               </Link>
                             </li>
                           ))}
@@ -171,6 +185,11 @@ export default function AdminLayout({
                           aria-hidden="true"
                         />
                         {item.name}
+                        {item.tag && (
+                          <span className="ml-2 rounded bg-indigo-600 px-2 py-1 text-xs text-white">
+                            {item.tag}
+                          </span>
+                        )}
                       </Link>
                     </li>
                   ))}

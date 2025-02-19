@@ -10,6 +10,9 @@ let supabaseInstance: SupabaseClient | null = null;
 export const createClient = () => {
   if (supabaseInstance) return supabaseInstance;
 
+  console.log('Supabase URL:', SUPABASE_URL);
+  console.log('Supabase Anon Key Length:', SUPABASE_ANON_KEY.length);
+
   supabaseInstance = createSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
       persistSession: true,

@@ -110,6 +110,15 @@ export default function CurtidasPage() {
     fetchServices();
   }, []);
 
+  useEffect(() => {
+    const initialSelectedServices = services.reduce((acc, service) => {
+      const minQuantity = Math.min(...Object.values(service.quantities));
+      acc[service.id] = minQuantity;
+      return acc;
+    }, {});
+    setSelectedServices(initialSelectedServices);
+  }, [services]);
+
   const updateServiceQuantity = (serviceId: string, quantity: number) => {
     setSelectedServices(prev => ({
       ...prev,
@@ -135,111 +144,153 @@ export default function CurtidasPage() {
     return selectedServices[serviceId] && selectedServices[serviceId] > 0;
   };
 
+  const getServiceDetails = (service: Service) => {
+    const details = [
+      { 
+        icon: '🌍', 
+        label: 'Alcance Global', 
+        active: service.metadata?.service_details?.global_reach ?? false 
+      },
+      { 
+        icon: '⚡', 
+        label: 'Entrega Rápida', 
+        active: service.metadata?.service_details?.fast_delivery ?? false 
+      },
+      { 
+        icon: '🔒', 
+        label: 'Segurança Garantida', 
+        active: service.metadata?.service_details?.guaranteed_security ?? false 
+      }
+    ];
+
+    return details.filter(detail => detail.active);
+  };
+
   return (
     <>
       <Header />
       <main className="min-h-screen bg-gray-50 py-12">
-        {/* Banner de destaque */}
-        <div className="container mx-auto px-4 mb-12">
-          <div className="relative bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl overflow-hidden shadow-xl animate-gradient-x">
-            <div className="absolute inset-0 bg-black opacity-20"></div>
-            <div className="relative z-10 flex items-center justify-center p-12 text-center">
-              <div className="text-white max-w-2xl">
-                <h2 className="text-4xl md:text-5xl font-bold mb-6">
-                  Curtidas para Instagram
-                </h2>
-                <p className="text-xl md:text-2xl mb-0">
-                  Aumente o engajamento do seu perfil com curtidas de alta qualidade
-                </p>
+        <div className="w-full">
+          <div className="container mx-auto px-4 mb-12">
+            <div className="relative bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl overflow-hidden shadow-xl animate-gradient-x">
+              <div className="absolute inset-0 bg-black opacity-20"></div>
+              <div className="relative z-10 flex items-center justify-center p-12 text-center">
+                <div className="text-white max-w-2xl">
+                  <h2 className="text-4xl md:text-5xl font-bold mb-6">
+                    Curtidas para Instagram
+                  </h2>
+                  <p className="text-xl md:text-2xl mb-0">
+                    Aumente o engajamento do seu perfil com curtidas de alta qualidade
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto text-center">
-            {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1, 2, 3].map((i) => (
-                  <Card key={i} className="p-6 animate-pulse h-full">
-                    <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
-                    <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
-                    <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {services.map((service) => (
-                  <Card 
-                    key={service.id} 
-                    className={`p-6 bg-white hover:shadow-lg transition-shadow duration-200 h-full flex flex-col ${
-                      isServiceSelected(service.id) ? 'border-2 border-purple-600' : ''
-                    }`}
-                  >
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="p-3 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white">
-                        <Heart className="w-6 h-6" />
-                      </div>
-                      <h3 className="text-xl font-semibold text-gray-900">
-                        {service.name}
-                      </h3>
-                    </div>
-                    <p className="text-gray-600 text-sm mb-4 flex-grow">
-                      {service.description}
-                    </p>
-                    
-                    <div className="mb-4">
-                      <p className="text-center text-gray-600 mb-2">
-                        Escolha a quantidade
-                      </p>
-                      <div className="flex flex-wrap justify-center gap-2">
-                        {Object.entries(service.quantities).map(([key, value]) => (
-                          <Button
-                            key={key}
-                            variant={selectedServices[service.id] === value ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => updateServiceQuantity(service.id, value)}
-                          >
-                            {key}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    {isServiceSelected(service.id) && (
-                      <div className="text-center mb-4">
-                        {service.discount_price && (
-                          <p className="text-gray-500 line-through mb-1">
-                            De: R$ {service.price.toFixed(2)}
-                          </p>
-                        )}
-                        <p className="text-2xl font-bold text-purple-600">
-                          Por: R$ {calculateTotalPrice(service)} 
-                          <span className="text-sm ml-2 text-gray-600">
-                            para {selectedServices[service.id]} curtidas
-                          </span>
-                        </p>
-                      </div>
-                    )}
-                    
-                    {isServiceSelected(service.id) && (
-                      <Link 
-                        href={`/checkout/instagram/curtidas/step1?service=${service.id}&quantity=${selectedServices[service.id]}`}
-                        className="w-full mt-auto"
+          <div className="w-full px-4 md:px-8 lg:px-12">
+            <div className="container mx-auto px-4 md:px-8 lg:px-12">
+              {loading ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {[1, 2, 3].map((i) => (
+                    <Card key={i} className="p-6 animate-pulse h-full">
+                      <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
+                      <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                      <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-12">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                    {services.map((service, index) => (
+                      <Card 
+                        key={service.id} 
+                        className="flex flex-col p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 ease-in-out relative"
                       >
-                        <Button 
-                          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transition-all duration-300 ease-in-out transform hover:scale-105"
-                          size="lg"
-                        >
-                          Comprar Agora
-                        </Button>
-                      </Link>
-                    )}
-                  </Card>
-                ))}
-              </div>
-            )}
+                        {/* Badge de Mais Vendido */}
+                        {index === 0 && (
+                          <div className="absolute top-0 right-0 m-2 px-3 py-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-xs font-bold rounded-full shadow-md z-10">
+                            Mais Vendido
+                          </div>
+                        )}
+
+                        <div className="flex-grow flex flex-col">
+                          {/* Título do Serviço */}
+                          <div className="mb-4 text-center">
+                            <h3 className="text-2xl font-bold text-gray-900 break-words">
+                              {service.name}
+                            </h3>
+                          </div>
+
+                          {/* Detalhes adicionais do serviço */}
+                          <div className="flex justify-between mb-4">
+                            {getServiceDetails(service).map((detail, idx) => (
+                              <div 
+                                key={idx} 
+                                className="flex items-center text-sm text-gray-600"
+                              >
+                                <span className="mr-2">{detail.icon}</span>
+                                {detail.label}
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="mb-4">
+                            <p className="text-center text-gray-600 mb-2 font-semibold">
+                              Escolha a quantidade
+                            </p>
+                            <div className="flex flex-wrap justify-center gap-3">
+                              {Object.entries(service.quantities).map(([key, value]) => (
+                                <Button
+                                  key={key}
+                                  variant={selectedServices[service.id] === value ? 'default' : 'outline'}
+                                  size="sm"
+                                  onClick={() => updateServiceQuantity(service.id, value)}
+                                  className={`min-w-[80px] transition-all duration-300 ease-in-out ${
+                                    selectedServices[service.id] === value 
+                                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transform scale-105' 
+                                      : 'hover:bg-purple-100'
+                                  }`}
+                                >
+                                  {key}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {isServiceSelected(service.id) && (
+                            <div className="text-center mb-4">
+                              {service.discount_price && (
+                                <p className="text-gray-500 line-through mb-1">
+                                  De: R$ {service.price.toFixed(2)}
+                                </p>
+                              )}
+                              <p className="text-2xl font-bold text-purple-600">
+                                Por: R$ {calculateTotalPrice(service)}
+                              </p>
+                            </div>
+                          )}
+
+                          {isServiceSelected(service.id) && (
+                            <Link 
+                              href={`/checkout/instagram/curtidas/step1?service_id=${service.id}&quantity=${selectedServices[service.id]}`}
+                              className="w-full mt-auto"
+                            >
+                              <Button 
+                                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transition-all duration-300 ease-in-out transform hover:scale-105"
+                                size="lg"
+                              >
+                                Comprar Agora
+                              </Button>
+                            </Link>
+                          )}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </main>

@@ -38,7 +38,9 @@ const navigation = [
   { name: "FAQ's", href: '/admin/faqs', icon: QuestionMarkCircleIcon },
   { name: 'Usuários', href: '/admin/users', icon: UsersIcon },
   { name: 'Reposições', href: '/admin/reposicoes', icon: ArrowPathIcon },
-];
+].filter((item, index, self) => 
+  index === self.findIndex((t) => t.href === item.href)
+);
 
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(' ');

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { createClient } from '@/lib/supabase/client';
-import { Heart, Eye, Users, Play, Clock } from 'lucide-react';
+import { Heart, Eye, Users, Play, Clock, MessageCircle } from 'lucide-react';
 
 interface Subcategory {
   id: string;
@@ -16,47 +16,80 @@ interface Subcategory {
   category_id: string;
 }
 
-// Mapeamento de slugs das subcategorias para slugs das rotas
-const slugMap: { [key: string]: string } = {
+// Mapeamento de categorias principais
+const serviceCategoryMap: { [key: string]: string } = {
   'curtidas-brasileiras': 'curtidas',
+  'curtidas-brasileiras-premium': 'curtidas',
   'curtidas-mundiais': 'curtidas',
   'seguidores-brasileiros': 'seguidores',
   'seguidores-mundiais': 'seguidores',
-  'visualizacoes-reels': 'visualizacao',
-  'visualizacoes-stories': 'visualizacao',
+  'visualizacoes-reels': 'visualizacoes',
+  'visualizacoes-stories': 'visualizacoes',
+  'comentarios-brasileiros': 'comentarios',
+  'comentarios-mundiais': 'comentarios',
 };
 
-// Função para agrupar subcategorias por tipo
-const groupSubcategoriesByType = (subcategories: Subcategory[]) => {
-  const groups = new Map<string, Subcategory[]>();
+// Configurações de ícones e descrições para cada categoria
+const categoryConfig = {
+  curtidas: {
+    icon: <Heart className="w-6 h-6" />,
+    name: 'Curtidas',
+    description: 'Aumente o engajamento do seu perfil com curtidas de qualidade.'
+  },
+  seguidores: {
+    icon: <Users className="w-6 h-6" />,
+    name: 'Seguidores',
+    description: 'Expanda seu alcance com seguidores reais e ativos.'
+  },
+  visualizacoes: {
+    icon: <Eye className="w-6 h-6" />,
+    name: 'Visualizações',
+    description: 'Impulsione a visibilidade dos seus Reels e Stories.'
+  },
+  comentarios: {
+    icon: <MessageCircle className="w-6 h-6" />,
+    name: 'Comentários',
+    description: 'Aumente a interação e o engajamento com comentários.'
+  }
+};
+
+// Função para agrupar subcategorias por categoria principal
+const groupSubcategoriesByCategory = (subcategories: Subcategory[]) => {
+  const categories = new Map<string, Subcategory[]>();
   
   subcategories.forEach(sub => {
-    const baseSlug = slugMap[sub.slug] || sub.slug;
-    if (!groups.has(baseSlug)) {
-      groups.set(baseSlug, []);
+    const mainCategory = serviceCategoryMap[sub.slug] || 'outros';
+    if (!categories.has(mainCategory)) {
+      categories.set(mainCategory, []);
     }
-    groups.get(baseSlug)?.push(sub);
+    categories.get(mainCategory)?.push(sub);
   });
 
-  return Array.from(groups.entries()).map(([baseSlug, subs]) => ({
-    slug: baseSlug,
-    name: subs[0].name, // Usar o nome da primeira subcategoria
-    description: subs[0].description || '', // Usar a descrição da primeira subcategoria
-    subcategories: subs
-  }));
-};
+  return Array.from(categories.entries()).map(([categorySlug, subs]) => {
+    // Configurações padrão para categorias não mapeadas
+    const defaultConfig = {
+      icon: <Heart className="w-6 h-6" />,
+      name: categorySlug.charAt(0).toUpperCase() + categorySlug.slice(1),
+      description: `Serviços de ${categorySlug}`
+    };
 
-const getGroupName = (slug: string): string => {
-  switch (slug) {
-    case 'curtidas':
-      return 'Curtidas';
-    case 'seguidores':
-      return 'Seguidores';
-    case 'visualizacao':
-      return 'Visualizações';
-    default:
-      return slug.charAt(0).toUpperCase() + slug.slice(1);
-  }
+    const config = categoryConfig[categorySlug] || defaultConfig;
+
+    // Encontrar o nome mais descritivo
+    const mainSub = subs.find(s => 
+      s.name.toLowerCase().includes('premium') || 
+      s.name.toLowerCase().includes('brasileiras') || 
+      s.name.toLowerCase().includes('mundiais')
+    ) || subs[0];
+
+    return {
+      slug: categorySlug,
+      name: config.name,
+      description: config.description,
+      icon: config.icon,
+      subcategories: subs
+    };
+  }).filter(category => category.subcategories.length > 0);
 };
 
 export default function InstagramPage() {
@@ -81,13 +114,22 @@ export default function InstagramPage() {
 
         // Filtra subcategorias de Instagram
         const instagramSubcategories = subcategoriesData.filter(sub => {
-          // Verifica se o nome ou descrição contém 'instagram'
-          const nameContainsInstagram = sub.name.toLowerCase().includes('instagram');
-          const descriptionContainsInstagram = sub.description 
-            ? sub.description.toLowerCase().includes('instagram') 
-            : false;
+          const validCategories = [
+            'curtidas', 
+            'seguidores', 
+            'visualizacoes', 
+            'views', 
+            'reels', 
+            'stories', 
+            'comentarios'
+          ];
           
-          return nameContainsInstagram || descriptionContainsInstagram;
+          const hasValidCategory = validCategories.some(category => 
+            sub.name.toLowerCase().includes(category) || 
+            (sub.description && sub.description.toLowerCase().includes(category))
+          );
+          
+          return hasValidCategory;
         });
 
         console.log('Subcategorias de Instagram filtradas:', instagramSubcategories);
@@ -108,37 +150,7 @@ export default function InstagramPage() {
     fetchData();
   }, []);
 
-  const getIcon = (subcategory: Subcategory) => {
-    // Se tiver ícone definido, usar o ícone da subcategoria
-    if (subcategory.icon) {
-      return (
-        <img 
-          src={subcategory.icon} 
-          alt={subcategory.name} 
-          className="w-6 h-6"
-        />
-      );
-    }
-
-    // Caso contrário, usar ícones padrão baseados no slug
-    const baseSlug = slugMap[subcategory.slug] || subcategory.slug;
-    switch (baseSlug) {
-      case 'curtidas':
-        return <Heart className="w-6 h-6" />;
-      case 'visualizacao':
-        return <Eye className="w-6 h-6" />;
-      case 'seguidores':
-        return <Users className="w-6 h-6" />;
-      case 'views-reels':
-        return <Play className="w-6 h-6" />;
-      case 'views-stories':
-        return <Clock className="w-6 h-6" />;
-      default:
-        return <Heart className="w-6 h-6" />;
-    }
-  };
-
-  const groupedSubcategories = groupSubcategoriesByType(subcategories);
+  const groupedSubcategories = groupSubcategoriesByCategory(subcategories);
 
   return (
     <>
@@ -186,7 +198,7 @@ export default function InstagramPage() {
                         <Card className="p-6 cursor-pointer bg-white hover:shadow-lg transition-shadow duration-200 h-full flex flex-col">
                           <div className="flex items-center gap-4 mb-4">
                             <div className="p-3 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white">
-                              {getIcon(group.subcategories[0])}
+                              {group.icon}
                             </div>
                             <h3 className="text-xl font-semibold text-gray-900">
                               {group.name}

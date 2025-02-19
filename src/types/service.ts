@@ -19,5 +19,10 @@ export interface Service {
     requires_public_profile?: boolean;
     quality_score?: number;
     tags?: string[];
+    service_details?: {
+      global_reach?: boolean;
+      fast_delivery?: boolean;
+      guaranteed_security?: boolean;
+    };
   };
 }

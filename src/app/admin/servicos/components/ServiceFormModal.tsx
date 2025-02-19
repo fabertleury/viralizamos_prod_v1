@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from '@/components/ui/label';
 
 interface Category {
   id: string;
@@ -59,7 +60,10 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
     status: true,
     external_id: '',
     min_order: '',
-    max_order: ''
+    max_order: '',
+    global_reach: false,
+    fast_delivery: false,
+    guaranteed_security: false
   });
 
   const supabase = createClient();
@@ -78,7 +82,10 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
         status: service.status !== false,
         external_id: service.external_id || '',
         min_order: service.min_order?.toString() || '20',
-        max_order: service.max_order?.toString() || '10000'
+        max_order: service.max_order?.toString() || '10000',
+        global_reach: service.metadata?.service_details?.global_reach || false,
+        fast_delivery: service.metadata?.service_details?.fast_delivery || false,
+        guaranteed_security: service.metadata?.service_details?.guaranteed_security || false
       });
     }
   }, [service]);
@@ -152,7 +159,14 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
         status: formData.status,
         external_id: formData.external_id,
         min_order: parseInt(formData.min_order) || 20,
-        max_order: parseInt(formData.max_order) || 10000
+        max_order: parseInt(formData.max_order) || 10000,
+        metadata: {
+          service_details: {
+            global_reach: formData.global_reach,
+            fast_delivery: formData.fast_delivery,
+            guaranteed_security: formData.guaranteed_security
+          }
+        }
       };
 
       // Tratar campos UUID para evitar strings vazias
@@ -199,7 +213,7 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
       onClose();
     } catch (error: any) {
       console.error('Full error object:', error);
-      toast.error(error.message || 'Erro ao salvar serviço');
+      toast.error(error.message || 'Erro ao salvar o serviço');
     } finally {
       setLoading(false);
     }
@@ -209,14 +223,14 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-white sm:max-w-[425px]">
+      <DialogContent className="bg-white sm:max-w-[625px]">
         <DialogHeader>
           <DialogTitle>
             {service ? 'Editar' : 'Novo'} Serviço
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="grid gap-4 py-4">
           <div>
             <label className="block text-sm font-medium mb-1">Nome</label>
             <Input
@@ -386,6 +400,38 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="grid grid-cols-3 items-center gap-4">
+            <Label>Alcance Global</Label>
+            <input
+              type="checkbox"
+              checked={formData.global_reach}
+              onChange={(e) => 
+                setFormData(prev => ({ ...prev, global_reach: e.target.checked }))
+              }
+              className="form-checkbox h-5 w-5 text-purple-600"
+            />
+            
+            <Label>Entrega Rápida</Label>
+            <input
+              type="checkbox"
+              checked={formData.fast_delivery}
+              onChange={(e) => 
+                setFormData(prev => ({ ...prev, fast_delivery: e.target.checked }))
+              }
+              className="form-checkbox h-5 w-5 text-purple-600"
+            />
+            
+            <Label>Segurança Garantida</Label>
+            <input
+              type="checkbox"
+              checked={formData.guaranteed_security}
+              onChange={(e) => 
+                setFormData(prev => ({ ...prev, guaranteed_security: e.target.checked }))
+              }
+              className="form-checkbox h-5 w-5 text-purple-600"
+            />
           </div>
 
           <div className="flex items-center gap-2">
