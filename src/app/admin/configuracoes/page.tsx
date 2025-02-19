@@ -299,12 +299,13 @@ export default function ConfiguracoesPage() {
       <h1 className="text-2xl font-semibold mb-6">Configurações do Sistema</h1>
       
       <Tabs defaultValue="logo" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="logo">Logo</TabsTrigger>
           <TabsTrigger value="seo">SEO</TabsTrigger>
           <TabsTrigger value="comunicacao">Comunicação</TabsTrigger>
           <TabsTrigger value="compliance">Compliance</TabsTrigger>
           <TabsTrigger value="aparencia">Aparência</TabsTrigger>
+          <TabsTrigger value="integracoes">Integrações</TabsTrigger>
         </TabsList>
         
         <TabsContent value="logo">
@@ -391,6 +392,47 @@ export default function ConfiguracoesPage() {
             </CardHeader>
             <CardContent>
               {renderConfigGroup('aparencia')}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="integracoes">
+          <Card>
+            <CardHeader>
+              <CardTitle>Configurações de Integrações</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Configure as integrações de APIs externas para sua plataforma
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-6">
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Instagram API</h3>
+                  <div className="grid gap-4">
+                    <div>
+                      <Label htmlFor="instagram_api_key">Chave da API do Instagram</Label>
+                      {renderConfigInput(configurations['instagram_api_key'])}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Chave de autenticação para a API do Instagram
+                      </p>
+                    </div>
+                    <div>
+                      <Label htmlFor="instagram_api_url">URL da API do Instagram</Label>
+                      {renderConfigInput(configurations['instagram_api_url'])}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Endpoint para busca de informações de perfil do Instagram
+                      </p>
+                    </div>
+                    <Button 
+                      onClick={() => handleSaveConfig('integracoes')}
+                      className="mt-4 w-full"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? 'Salvando...' : 'Salvar Configurações de Integrações'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

@@ -1,16 +1,18 @@
-import https from 'https';
+import axios from 'axios';
+import { createClient } from '@supabase/supabase-js';
 
 interface ProfileResult {
-  username?: string;
-  isPrivate?: boolean;
-  fullName?: string;
-  biography?: string;
-  followerCount?: number;
-  followingCount?: number;
-  profilePicUrl?: string;
-  isVerified?: boolean;
-  externalUrl?: string | null;
+  profileData?: {
+    username: string;
+    full_name: string;
+    profile_pic_url: string;
+    follower_count: number;
+    following_count: number;
+    media_count: number;
+    is_private: boolean;
+  };
   error?: string;
+  details?: any;
 }
 
 export async function fetchInstagramProfile(username: string): Promise<ProfileResult> {
@@ -19,91 +21,50 @@ export async function fetchInstagramProfile(username: string): Promise<ProfileRe
   // Remover @ se estiver presente
   const cleanUsername = username.replace(/^@/, '');
 
-  return new Promise((resolve, reject) => {
+  try {
     const options = {
-      method: 'GET',
-      hostname: 'instagram-scraper-20252.p.rapidapi.com',
-      port: null,
-      path: `/v1/info?username_or_id_or_url=${cleanUsername}`,
+      method: 'POST',
+      url: 'https://rocketapi-for-instagram.p.rapidapi.com/instagram/user/get_info',
       headers: {
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-        'x-rapidapi-host': 'instagram-scraper-20252.p.rapidapi.com'
+        'x-rapidapi-key': 'ac2bed47cfmsh79e4935fdffe586p1a8283jsn727e6ff4a6a0',
+        'x-rapidapi-host': 'rocketapi-for-instagram.p.rapidapi.com',
+        'Content-Type': 'application/json'
+      },
+      data: {
+        username: cleanUsername
       }
     };
 
-    const req = https.request(options, function (res) {
-      const chunks: Buffer[] = [];
+    const response = await axios.request(options);
 
-      res.on('data', function (chunk) {
-        chunks.push(chunk);
-      });
+    console.log('[INSTAGRAM PROFILE] Resposta da API:', JSON.stringify(response.data, null, 2));
 
-      res.on('end', function () {
-        try {
-          const body = Buffer.concat(chunks);
-          const responseText = body.toString();
-          
-          console.log('[INSTAGRAM PROFILE] Resposta RAW da API:', responseText);
+    if (response.data.status === 'done' && response.data.response.body.data) {
+      const userData = response.data.response.body.data.user;
 
-          const responseData = JSON.parse(responseText);
-          
-          console.log('[INSTAGRAM PROFILE] Resposta PARSEADA da API:', JSON.stringify(responseData, null, 2));
-
-          // Tratamento específico para erro de assinatura
-          if (responseData.message === "You are not subscribed to this API.") {
-            resolve({ 
-              error: 'Erro de assinatura da API', 
-              details: 'Não foi possível acessar o perfil devido a problemas na assinatura da API' 
-            });
-            return;
-          }
-
-          // Log de todos os campos disponíveis
-          if (responseData.data) {
-            console.log('[INSTAGRAM PROFILE] Campos disponíveis:', Object.keys(responseData.data));
-          }
-
-          if (responseData.status === 'ok' && responseData.data) {
-            const userData = responseData.data;
-
-            // Log de todos os valores dos campos
-            console.log('[INSTAGRAM PROFILE] Valores dos campos:', JSON.stringify(userData, null, 2));
-
-            resolve({
-              username: userData.username,
-              isPrivate: userData.is_private,
-              fullName: userData.full_name,
-              biography: userData.biography,
-              followerCount: userData.edge_followed_by?.count,
-              followingCount: userData.edge_follow?.count,
-              profilePicUrl: userData.profile_pic_url,
-              isVerified: userData.is_verified,
-              externalUrl: userData.external_url
-            });
-          } else {
-            resolve({ 
-              error: 'Perfil não encontrado', 
-              details: responseData 
-            });
-          }
-        } catch (error) {
-          console.error('[INSTAGRAM PROFILE] Erro ao processar resposta:', error);
-          resolve({ 
-            error: 'Erro ao processar resposta da API',
-            details: error 
-          });
+      return {
+        profileData: {
+          username: userData.username,
+          full_name: userData.full_name,
+          profile_pic_url: userData.profile_pic_url_hd || userData.profile_pic_url,
+          follower_count: userData.edge_followed_by?.count || 0,
+          following_count: userData.edge_follow?.count || 0,
+          media_count: userData.edge_owner_to_timeline_media?.count || 0,
+          is_private: userData.is_private
         }
-      });
-    });
-
-    req.on('error', (error) => {
-      console.error('[INSTAGRAM PROFILE] Erro na requisição:', error);
-      resolve({ 
-        error: 'Erro na requisição',
-        details: error 
-      });
-    });
-
-    req.end();
-  });
+      };
+    } else {
+      console.error('[INSTAGRAM PROFILE] Erro ao processar dados:', response.data);
+      return { 
+        error: 'Perfil não encontrado', 
+        details: response.data 
+      };
+    }
+  } catch (error) {
+    console.error('[INSTAGRAM PROFILE] Erro na requisição:', error);
+    return { 
+      error: 'Erro na requisição',
+      details: error 
+    };
+  }
 }
