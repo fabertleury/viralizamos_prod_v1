@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
+import { toast } from 'sonner'; // Import the toast function
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -12,6 +13,15 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClientComponentClient();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirectTo') || '/admin/dashboard';
+  const errorType = searchParams.get('error');
+
+  useEffect(() => {
+    if (errorType === 'unauthorized') {
+      toast.error('Você não tem permissão para acessar esta área. Faça login com uma conta de administrador.');
+    }
+  }, [errorType]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -56,6 +56,46 @@ export async function middleware(request: NextRequest) {
   // Adiciona o pathname aos headers para uso no layout
   res.headers.set('x-pathname', request.nextUrl.pathname);
   
+  // Verifica modo de manutenção
+  const supabase = createMiddlewareClient({ req: request, res });
+  const { data: { session } } = await supabase.auth.getSession();
+
+  // Busca configuração de modo de manutenção
+  const { data: manutencaoConfig, error: configError } = await supabase
+    .from('configurations')
+    .select('value')
+    .eq('key', 'MODO_MANUTENCAO')
+    .single();
+
+  const emModoDeManunutencao = manutencaoConfig?.value === 'true';
+
+  // Se estiver em modo de manutenção, bloqueia acesso exceto para admins
+  if (emModoDeManunutencao) {
+    // Rotas públicas sempre liberadas
+    if (request.nextUrl.pathname === '/' || 
+        request.nextUrl.pathname.startsWith('/login')) {
+      return res;
+    }
+
+    // Verifica se é admin
+    if (session) {
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+
+      // Admins podem acessar tudo
+      if (profileData?.role === 'admin') {
+        return res;
+      }
+    }
+
+    // Redireciona para página de manutenção
+    const manutencaoUrl = new URL('/manutencao', request.url);
+    return NextResponse.redirect(manutencaoUrl);
+  }
+  
   // Se for a rota raiz ou rotas públicas, permite o acesso
   if (request.nextUrl.pathname === '/' || 
       request.nextUrl.pathname.startsWith('/login') || 
@@ -66,9 +106,6 @@ export async function middleware(request: NextRequest) {
 
   // Para rotas de admin, verifica se o usuário tem role de admin
   if (request.nextUrl.pathname.startsWith('/admin')) {
-    const supabase = createMiddlewareClient({ req: request, res });
-    const { data: { session } } = await supabase.auth.getSession();
-
     console.log('Sessão de admin:', session);
 
     if (!session) {
@@ -96,11 +133,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // Para outras rotas, verifica autenticação
-  const supabase = createMiddlewareClient({ req: request, res });
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: outrasRotasSession } = await supabase.auth.getSession();
 
   // Se não houver sessão e for uma rota protegida, redireciona para login
-  if (!session) {
+  if (!outrasRotasSession) {
     const redirectUrl = new URL('/login', request.url);
     redirectUrl.searchParams.set('redirectTo', request.url);
     return NextResponse.redirect(redirectUrl);

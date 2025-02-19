@@ -171,11 +171,16 @@ export function Header() {
             
             {/* Tickets - só aparece se logado */}
             {isLoggedIn && (
-              <Button asChild variant="ghost" className="font-medium bg-[#FF00CE] text-white hover:bg-[#FF00CE]/90">
-                <Link href="/tickets">
-                  {translations.header.tickets}
-                </Link>
-              </Button>
+              <div className="relative group">
+                <Button asChild variant="ghost" className="font-medium bg-[#FF00CE] text-white hover:bg-[#FF00CE]/90">
+                  <Link href="/tickets">
+                    {translations.header.tickets}
+                  </Link>
+                </Button>
+                <div className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs animate-bounce">
+                  1
+                </div>
+              </div>
             )}
 
             {/* Seletores de Idioma */}
@@ -183,7 +188,7 @@ export function Header() {
 
             {/* Mobile Menu Button */}
             <button
-              className="md:hidden p-2"
+              className="md:hidden p-2 z-50"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
               {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -191,68 +196,47 @@ export function Header() {
 
             {/* Mobile Navigation */}
             {isMenuOpen && (
-              <div className="fixed inset-y-0 right-0 w-64 bg-white shadow-lg z-50 transform transition-transform md:hidden">
-                <div className="p-4">
-                  {/* Adicionar seletores de idioma no menu mobile */}
-                  <div className="absolute top-4 right-16">
-                    {renderLanguageSelector()}
-                  </div>
-
-                  <button
-                    className="absolute top-4 right-4"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <X size={24} />
-                  </button>
-
-                  <nav className="flex flex-col gap-4 mt-12">
-                    <Link
-                      href="/"
-                      className="text-gray-700 hover:text-primary py-2"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
+              <div className="fixed inset-0 bg-white z-40 md:hidden">
+                <div className="container mx-auto px-4 py-8">
+                  <div className="flex flex-col space-y-4">
+                    <Link href="/" className="text-gray-700 hover:text-primary">
                       {translations.header.home}
                     </Link>
                     
-                    {/* Social Networks */}
                     {socialNetworks.map((social) => (
                       <Link
                         key={social.id}
                         href={`/${social.name.toLowerCase()}`}
                         className="text-gray-800 hover:text-[#FF00CE] transition-colors"
-                        onClick={() => setIsMenuOpen(false)}
                       >
                         <span>{social.name}</span>
                       </Link>
                     ))}
                     
-                    {/* Action Buttons */}
-                    <Link
-                      href="/analisar-perfil"
-                      className="bg-[#FF00CE] text-white py-2 px-4 rounded-lg hover:bg-[#FF00CE]/90 transition-colors"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      {translations.header.analyzeProfile}
-                    </Link>
-                    <Link
-                      href="/acompanhar-pedido"
-                      className="bg-[#FF00CE] text-white py-2 px-4 rounded-lg hover:bg-[#FF00CE]/90 transition-colors"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      {translations.header.trackOrder}
-                    </Link>
-                    
-                    {/* Tickets - só aparece se logado */}
-                    {isLoggedIn && (
-                      <Link
-                        href="/tickets"
-                        className="bg-[#FF00CE] text-white py-2 px-4 rounded-lg hover:bg-[#FF00CE]/90 transition-colors"
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        {translations.header.tickets}
+                    <Button asChild variant="ghost" className="font-medium bg-[#FF00CE] text-white hover:bg-[#FF00CE]/90">
+                      <Link href="/analisar-perfil">
+                        {translations.header.analyzeProfile}
                       </Link>
+                    </Button>
+                    <Button asChild variant="ghost" className="font-medium bg-[#FF00CE] text-white hover:bg-[#FF00CE]/90">
+                      <Link href="/acompanhar-pedido">
+                        {translations.header.trackOrder}
+                      </Link>
+                    </Button>
+                    
+                    {isLoggedIn && (
+                      <Button asChild variant="ghost" className="font-medium bg-[#FF00CE] text-white hover:bg-[#FF00CE]/90">
+                        <Link href="/tickets">
+                          {translations.header.tickets}
+                        </Link>
+                      </Button>
                     )}
-                  </nav>
+
+                    {/* Seletores de Idioma no Menu Mobile */}
+                    <div className="flex space-x-2">
+                      {renderLanguageSelector()}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

@@ -32,12 +32,32 @@ export default function ConfiguracoesPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  console.log('ConfiguracoesPage: Componente renderizado');
+
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error('Erro global capturado:', event.error);
+      setErrorMessage(event.error?.message || 'Erro desconhecido');
+      toast.error(event.error?.message || 'Erro desconhecido');
+    };
+
+    window.addEventListener('error', handleError);
+    return () => {
+      window.removeEventListener('error', handleError);
+    };
+  }, []);
 
   const fetchConfigurations = useCallback(async () => {
+    console.log('fetchConfigurations: Iniciando busca de configurações');
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
+      console.log('Sessão obtida:', session);
+      
       if (!session) {
+        console.error('Usuário não autenticado');
         toast.error('Usuário não autenticado');
         router.push('/login');
         return;
@@ -49,7 +69,10 @@ export default function ConfiguracoesPage() {
         .eq('id', session.user.id)
         .single();
 
+      console.log('Dados do perfil:', profileData);
+
       if (!profileData || profileData.role !== 'admin') {
+        console.error('Sem permissão de admin');
         toast.error('Você não tem permissão para acessar esta página');
         router.push('/login');
         return;
@@ -60,18 +83,35 @@ export default function ConfiguracoesPage() {
         .select('*')
         .order('key');
 
-      if (error) throw error;
+      console.log('Dados de configurações:', { data, error });
+
+      if (error) {
+        console.error('Erro ao buscar configurações:', error);
+        throw error;
+      }
 
       if (data) {
         const configMap = data.reduce((acc, config) => {
-          acc[config.key] = config;
+          console.log('Processando configuração:', config);
+          
+          // Garantir que editable seja sempre um booleano
+          const safeConfig = {
+            ...config,
+            editable: config.editable === true || config.editable === 'true'
+          };
+          
+          console.log('Configuração segura:', safeConfig);
+          
+          acc[config.key] = safeConfig;
           return acc;
         }, {} as {[key: string]: ConfigItem});
+        
+        console.log('Mapa de configurações final:', configMap);
         
         setConfigurations(configMap);
       }
     } catch (error) {
-      console.error('Erro ao buscar configurações:', error);
+      console.error('Erro completo ao buscar configurações:', error);
       toast.error('Não foi possível carregar as configurações. Tente novamente.');
       router.push('/login');
     } finally {
@@ -80,10 +120,12 @@ export default function ConfiguracoesPage() {
   }, [supabase, router]);
 
   useEffect(() => {
+    console.log('useEffect: Chamando fetchConfigurations');
     fetchConfigurations();
   }, [fetchConfigurations]);
 
   const handleConfigChange = useCallback((key: string, value: string) => {
+    console.log('handleConfigChange: Alterando configuração', key, value);
     setConfigurations(prev => ({
       ...prev,
       [key]: { 
@@ -94,11 +136,15 @@ export default function ConfiguracoesPage() {
   }, []);
 
   const handleSaveConfig = useCallback(async (group: string) => {
+    console.log('handleSaveConfig: Salvando configurações do grupo', group);
     setIsLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
+      console.log('Sessão obtida:', session);
+      
       if (!session) {
+        console.error('Usuário não autenticado');
         toast.error('Usuário não autenticado');
         return;
       }
@@ -109,7 +155,10 @@ export default function ConfiguracoesPage() {
         .eq('id', session.user.id)
         .single();
 
+      console.log('Dados do perfil:', profileData);
+
       if (!profileData || profileData.role !== 'admin') {
+        console.error('Sem permissão de admin');
         toast.error('Você não tem permissão para salvar configurações');
         return;
       }
@@ -120,12 +169,13 @@ export default function ConfiguracoesPage() {
         .map(({ id, ...config }) => ({
           ...config,
           is_public: config.is_public ?? false,
-          editable: config.editable ?? true
+          editable: config.editable === true || config.editable === 'true'
         }));
 
-      console.log(`Salvando configurações do grupo ${group}:`, groupConfigs);
+      console.log(`Configurações do grupo ${group}:`, groupConfigs);
 
       if (groupConfigs.length === 0) {
+        console.log(`Nenhuma configuração encontrada para o grupo ${group}`);
         toast.warning(`Nenhuma configuração encontrada para o grupo ${group}`);
         return;
       }
@@ -157,6 +207,7 @@ export default function ConfiguracoesPage() {
         throw error;
       }
       
+      console.log(`Configurações de ${group} salvas com sucesso!`);
       toast.success(`Configurações de ${group} salvas com sucesso!`);
       await fetchConfigurations();
     } catch (error) {
@@ -164,8 +215,10 @@ export default function ConfiguracoesPage() {
       
       // Mensagens de erro mais detalhadas
       if (error instanceof Error) {
+        console.error(`Erro: ${error.message}`);
         toast.error(`Erro: ${error.message}`);
       } else {
+        console.error(`Não foi possível salvar as configurações de ${group}. Tente novamente.`);
         toast.error(`Não foi possível salvar as configurações de ${group}. Tente novamente.`);
       }
     } finally {
@@ -174,6 +227,7 @@ export default function ConfiguracoesPage() {
   }, [configurations, fetchConfigurations, supabase]);
 
   const handleLogoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('handleLogoUpload: Fazendo upload da logo');
     const file = e.target.files?.[0];
     if (file) {
       setLogoFile(file);
@@ -194,11 +248,15 @@ export default function ConfiguracoesPage() {
             upsert: true 
           });
 
+        console.log('Erro de upload:', uploadError);
+
         if (uploadError) throw uploadError;
 
         const { data: { publicUrl }, error: urlError } = supabase.storage
           .from('system_assets')
           .getPublicUrl(filePath);
+
+        console.log('Erro de URL:', urlError);
 
         if (urlError) throw urlError;
 
@@ -207,6 +265,7 @@ export default function ConfiguracoesPage() {
           .update({ value: publicUrl })
           .eq('key', 'logo_url');
 
+        console.log('Logo atualizada com sucesso!');
         toast.success('Logo atualizada com sucesso!');
         await fetchConfigurations();
       } catch (error) {
@@ -217,6 +276,7 @@ export default function ConfiguracoesPage() {
   }, [fetchConfigurations]);
 
   const renderConfigInput = useCallback((config: ConfigItem) => {
+    console.log('renderConfigInput: Renderizando input para configuração', config.key);
     if (!config.editable) return <p>{config.value}</p>;
 
     switch (config.type) {
@@ -272,171 +332,120 @@ export default function ConfiguracoesPage() {
   }, [handleConfigChange, isLoading]);
 
   const renderConfigGroup = useCallback((group: string) => {
+    console.log('renderConfigGroup: Renderizando grupo de configurações', group);
     const groupConfigs = Object.values(configurations)
       .filter(config => config.group_name === group);
 
+    if (groupConfigs.length === 0) {
+      return null;
+    }
+
     return (
-      <div className="grid gap-4">
-        {groupConfigs.map(config => (
-          <div key={config.key}>
-            <Label htmlFor={config.key}>{config.description}</Label>
-            {renderConfigInput(config)}
+      <Card key={group} className="mb-6">
+        <CardHeader>
+          <CardTitle>
+            {group === 'instagram_api' ? 'Configurações da API do Instagram' : 
+             group.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {groupConfigs.map(config => (
+              <div key={config.key} className="space-y-2">
+                <Label htmlFor={config.key}>
+                  {config.description || config.key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </Label>
+                {renderConfigInput(config)}
+              </div>
+            ))}
           </div>
-        ))}
-        <Button 
-          onClick={() => handleSaveConfig(group)}
-          className="mt-4"
-          disabled={isLoading}
-        >
-          {isLoading ? 'Salvando...' : `Salvar Configurações de ${group}`}
+          <div className="mt-4 flex justify-end">
+            <Button 
+              onClick={() => handleSaveConfig(group)}
+              disabled={isLoading}
+            >
+              {isLoading ? 'Salvando...' : 'Salvar Configurações'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }, [configurations, handleSaveConfig, renderConfigInput, isLoading]);
+
+  if (errorMessage) {
+    return (
+      <div className="p-4 text-red-500">
+        <h2>Erro na página de configurações</h2>
+        <p>{errorMessage}</p>
+        <Button onClick={() => {
+          setErrorMessage(null);
+          router.push('/');
+        }}>
+          Voltar para a página inicial
         </Button>
       </div>
     );
-  }, [configurations, handleSaveConfig, renderConfigInput, isLoading]);
+  }
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-semibold mb-6">Configurações do Sistema</h1>
       
-      <Tabs defaultValue="logo" className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="logo">Logo</TabsTrigger>
-          <TabsTrigger value="seo">SEO</TabsTrigger>
-          <TabsTrigger value="comunicacao">Comunicação</TabsTrigger>
-          <TabsTrigger value="compliance">Compliance</TabsTrigger>
-          <TabsTrigger value="aparencia">Aparência</TabsTrigger>
-          <TabsTrigger value="integracoes">Integrações</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="logo">
-          <Card>
-            <CardHeader>
-              <CardTitle>Configurações de Logo</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {renderConfigGroup('logo')}
-              
-              <div className="mt-4">
-                <Label htmlFor="logo-upload">Upload de Logo</Label>
-                <Input 
-                  id="logo-upload" 
-                  type="file" 
-                  accept="image/*"
-                  onChange={handleLogoUpload}
-                />
-                {logoPreview && (
-                  <div className="mt-4">
-                    <Image 
-                      src={logoPreview} 
-                      alt="Logo Preview" 
-                      width={200} 
-                      height={100} 
-                      className="object-contain"
-                    />
-                  </div>
-                )}
-                {configurations['logo_url']?.value && (
-                  <div className="mt-4">
-                    <Label>Logo Atual</Label>
-                    <Image 
-                      src={configurations['logo_url'].value} 
-                      alt="Logo Atual" 
-                      width={200} 
-                      height={100} 
-                      className="object-contain"
-                    />
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="seo">
-          <Card>
-            <CardHeader>
-              <CardTitle>Configurações de SEO</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {renderConfigGroup('seo')}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="comunicacao">
-          <Card>
-            <CardHeader>
-              <CardTitle>Configurações de Comunicação</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {renderConfigGroup('comunicacao')}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="compliance">
-          <Card>
-            <CardHeader>
-              <CardTitle>Configurações de Compliance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {renderConfigGroup('compliance')}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="aparencia">
-          <Card>
-            <CardHeader>
-              <CardTitle>Configurações de Aparência</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {renderConfigGroup('aparencia')}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="integracoes">
-          <Card>
-            <CardHeader>
-              <CardTitle>Configurações de Integrações</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Configure as integrações de APIs externas para sua plataforma
-              </p>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-6">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">Instagram API</h3>
-                  <div className="grid gap-4">
-                    <div>
-                      <Label htmlFor="instagram_api_key">Chave da API do Instagram</Label>
-                      {renderConfigInput(configurations['instagram_api_key'])}
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Chave de autenticação para a API do Instagram
-                      </p>
-                    </div>
-                    <div>
-                      <Label htmlFor="instagram_api_url">URL da API do Instagram</Label>
-                      {renderConfigInput(configurations['instagram_api_url'])}
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Endpoint para busca de informações de perfil do Instagram
-                      </p>
-                    </div>
-                    <Button 
-                      onClick={() => handleSaveConfig('integracoes')}
-                      className="mt-4 w-full"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? 'Salvando...' : 'Salvar Configurações de Integrações'}
-                    </Button>
-                  </div>
+      {/* Logo */}
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Configurações de Logo</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {renderConfigGroup('logo')}
+            
+            <div className="mt-4">
+              <Label htmlFor="logo-upload">Upload de Logo</Label>
+              <Input 
+                id="logo-upload" 
+                type="file" 
+                accept="image/*"
+                onChange={handleLogoUpload}
+              />
+              {logoPreview && (
+                <div className="mt-4">
+                  <Image 
+                    src={logoPreview} 
+                    alt="Logo Preview" 
+                    width={200} 
+                    height={100} 
+                    className="object-contain"
+                  />
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              )}
+              {configurations['logo_url']?.value && (
+                <div className="mt-4">
+                  <Label>Logo Atual</Label>
+                  <Image 
+                    src={configurations['logo_url'].value} 
+                    alt="Logo Atual" 
+                    width={200} 
+                    height={100} 
+                    className="object-contain"
+                  />
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Renderizar grupos de configurações */}
+        {['seo', 'comunicacao', 'aparencia', 'sistema', 'mercadopago'].map(group => 
+          renderConfigGroup(group)
+        )}
+
+        {/* Instagram API */}
+        {renderConfigGroup('instagram_api')}
+
+        {/* Compliance */}
+        {renderConfigGroup('compliance')}
+      </div>
     </div>
   );
 }

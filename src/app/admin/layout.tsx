@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import {
   Bars3Icon,
@@ -24,11 +24,10 @@ import {
   ChatBubbleBottomCenterTextIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { classNames } from '../lib/helpers';
 
 const navigation = [
@@ -59,6 +58,50 @@ const navigation = [
   },
 ];
 
+function useAdminAuth() {
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
+  const supabase = createClientComponentClient();
+
+  useEffect(() => {
+    const checkAdminPermission = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          router.push('/login');
+          setIsLoading(false);
+          return;
+        }
+
+        const { data: profileData, error } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single();
+
+        if (error || !profileData || profileData.role !== 'admin') {
+          toast.error('Você não tem permissão para acessar esta área');
+          router.push('/login');
+          setIsAdmin(false);
+        } else {
+          setIsAdmin(true);
+        }
+      } catch (error) {
+        console.error('Erro ao verificar permissão de admin:', error);
+        router.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAdminPermission();
+  }, [router, supabase]);
+
+  return { isAdmin, isLoading };
+}
+
 export default function AdminLayout({
   children,
 }: {
@@ -67,15 +110,29 @@ export default function AdminLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  const supabase = createClientComponentClient();
+  const { isAdmin, isLoading } = useAdminAuth();
 
   const handleLogout = async () => {
-    const supabase = createClientComponentClient();
     await supabase.auth.signOut();
     router.push('/login');
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return null;
+  }
+
   return (
     <div className="flex h-full w-full">
+      <Toaster />
       {/* Mobile sidebar */}
       <Transition.Root show={sidebarOpen} as={Fragment}>
         <Dialog as="div" className="relative z-50 lg:hidden" onClose={setSidebarOpen}>

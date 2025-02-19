@@ -26,6 +26,7 @@ import {
 import { FaUsers, FaHandshake, FaChartLine, FaMoneyBillWave } from 'react-icons/fa';
 import { FaTicketAlt } from 'react-icons/fa';
 import './styles.css';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 // Interface para as redes sociais
 interface SocialNetwork {
@@ -472,7 +473,12 @@ export default function HomeV3() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const [configurations, setConfigurations] = useState<{[key: string]: string}>({});
+  const [configurations, setConfigurations] = useState<{[key: string]: string}>({
+    whatsapp_numero: '+5562981287058',
+    whatsapp_ativo: 'true',
+    ticket_link: 'https://suporte.viralizamos.com',
+    ticket_ativo: 'true'
+  });
 
   useEffect(() => {
     const fetchConfigurations = async () => {
@@ -482,9 +488,9 @@ export default function HomeV3() {
           .select('key, value')
           .in('key', [
             'whatsapp_numero', 
-            'whatsapp_icone_ativo', 
+            'whatsapp_ativo', 
             'ticket_link', 
-            'ticket_icone_ativo'
+            'ticket_ativo'
           ]);
 
         if (error) throw error;
@@ -494,7 +500,10 @@ export default function HomeV3() {
           return acc;
         }, {});
 
-        setConfigurations(configMap);
+        setConfigurations(prev => ({
+          ...prev,
+          ...configMap
+        }));
       } catch (error) {
         console.error('Erro ao buscar configurações:', error);
       }
@@ -502,6 +511,43 @@ export default function HomeV3() {
 
     fetchConfigurations();
   }, []);
+
+  const renderFloatingButtons = () => {
+    return (
+      <div className="fixed bottom-8 right-8 flex flex-col space-y-4 z-50">
+        {configurations['whatsapp_ativo'] === 'true' && (
+          <a 
+            href={`https://wa.me/${configurations['whatsapp_numero']?.replace(/\D/g, '')}`} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="bg-green-500 text-white p-4 rounded-full shadow-xl hover:bg-green-600 transition"
+          >
+            <FaWhatsapp size={24} />
+          </a>
+        )}
+        
+        {configurations['ticket_ativo'] === 'true' && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a 
+                  href={configurations['ticket_link'] || '#'} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="bg-blue-500 text-white p-4 rounded-full shadow-xl hover:bg-blue-600 transition"
+                >
+                  <FaTicketAlt size={24} />
+                </a>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Abrir Ticket</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -700,30 +746,7 @@ export default function HomeV3() {
         )}
       </main>
 
-      {/* Botões flutuantes */}
-      <div className="fixed bottom-8 right-8 flex flex-col space-y-4 z-50">
-        {configurations['whatsapp_icone_ativo'] === 'true' && (
-          <a 
-            href={`https://wa.me/${configurations['whatsapp_numero']?.replace(/\D/g, '')}`} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="bg-green-500 text-white p-4 rounded-full shadow-xl hover:bg-green-600 transition"
-          >
-            <FaWhatsapp className="text-3xl" />
-          </a>
-        )}
-        
-        {configurations['ticket_icone_ativo'] === 'true' && (
-          <a 
-            href={configurations['ticket_link'] || '#'} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="bg-blue-500 text-white p-4 rounded-full shadow-xl hover:bg-blue-600 transition"
-          >
-            <FaTicketAlt className="text-3xl" />
-          </a>
-        )}
-      </div>
+      {renderFloatingButtons()}
     </div>
   );
 }

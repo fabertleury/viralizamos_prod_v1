@@ -37,9 +37,9 @@
 }
 
 .social-cards-section .col-lg-4 {
-  flex: 0 0 auto;
-  width: calc(33.333% - 20px);
+  flex: 1;
   max-width: 350px;
+  display: flex;
 }
 
 .social-card {
@@ -51,6 +51,7 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
   margin-bottom: 30px;
   height: 100%;
+  width: 100%;
   display: flex;
   flex-direction: column;
   justify-content: center;

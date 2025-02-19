@@ -34,15 +34,26 @@ export function PostSelector({ username, onSelectPosts, maxPosts, service }: Pos
       try {
         setLoading(true);
         const response = await fetch(`/api/instagram/posts/${username}`);
+        
         if (!response.ok) {
-          throw new Error('Erro ao carregar posts do Instagram');
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao carregar posts do Instagram');
         }
+        
         const postsData = await response.json();
-        if (Array.isArray(postsData) && postsData.length > 0) {
-          setPosts(postsData);
+        
+        // Processar posts
+        const posts = postsData.posts || [];
+        const reels = postsData.reels || [];
+        
+        // Combinar posts e reels, priorizando posts
+        const combinedContent = [...posts, ...reels];
+        
+        if (combinedContent.length > 0) {
+          setPosts(combinedContent);
         } else {
           console.error('Nenhum post retornado da API:', postsData);
-          throw new Error('Nenhum post encontrado');
+          toast.warning('Nenhum post encontrado para este perfil.');
         }
       } catch (error) {
         console.error('Erro ao carregar posts:', error);
