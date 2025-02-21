@@ -1,6 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useInstagramAPI } from '@/hooks/useInstagramAPI';
+import { findAPIByContext } from '@/config/api-mappings';
+import { toast } from 'sonner';
 import { ProfileHeader } from '@/components/profile-analyzer/ProfileHeader';
 import { ProfileInput } from '@/components/profile-analyzer/ProfileInput';
 import { EngagementAnalysis } from '@/components/profile-analyzer/EngagementAnalysis';
@@ -85,9 +88,96 @@ export default function ProfileAnalyzerPage() {
   const [username, setUsername] = useState('');
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [contentData, setContentData] = useState<ContentData[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeContentTab, setActiveContentTab] = useState<'posts' | 'reels'>('posts');
+  const { fetchInstagramProfileInfo, fetchContent } = useInstagramAPI();
+
+  const handleAnalyzeProfile = async (username: string) => {
+    setUsername(username);
+    setLoading(true);
+    setError(null);
+
+    try {
+      const profileInfo = await fetchInstagramProfileInfo(username);
+      console.log('Dados do perfil recebidos:', profileInfo);
+
+      if (!profileInfo) {
+        toast.error('Não foi possível buscar informações do perfil');
+        setError('Falha na busca de informações');
+        setLoading(false);
+        return;
+      }
+
+      // Verificar se o perfil é privado
+      if (profileInfo.is_private) {
+        setError('Perfil privado. Por favor, torne o perfil público.');
+        setLoading(false);
+        return;
+      }
+
+      // Mapear dados do perfil com verificações adicionais
+      const mappedProfileData = {
+        username: profileInfo.username || username,
+        full_name: profileInfo.full_name || profileInfo.username,
+        biography: profileInfo.biography || 'Sem biografia',
+        followers_count: profileInfo.followers || 0,
+        following_count: profileInfo.following || 0,
+        media_count: profileInfo.totalPosts || 0,
+        profile_pic_url: profileInfo.profilePicture || '',
+        is_verified: profileInfo.isVerified || false
+      };
+
+      console.log('Dados do perfil mapeados:', mappedProfileData);
+      setProfileData(mappedProfileData);
+
+      try {
+        const content = await fetchContent(username, 'profile_analysis');
+        console.log('Conteúdo do perfil:', content);
+        
+        // Se não houver conteúdo, definir um aviso
+        if (content.length === 0) {
+          toast.warning('Nenhum conteúdo encontrado para este perfil');
+        }
+
+        setContentData(content);
+      } catch (contentError: any) {
+        // Tratamento específico para erros de conteúdo
+        if (contentError.message.includes('privado')) {
+          setError('Perfil privado. Por favor, torne o perfil público.');
+        } else {
+          setError('Não foi possível buscar o conteúdo do perfil');
+          toast.error(contentError.message);
+        }
+      }
+
+      setLoading(false);
+    } catch (err: any) {
+      console.error('Erro ao buscar dados do perfil:', err);
+      
+      // Tratamento de erros específicos
+      if (err.message.includes('privado')) {
+        setError('Perfil privado. Por favor, torne o perfil público.');
+      } else if (err.message.includes('não encontrado')) {
+        setError('Perfil não encontrado. Verifique o nome de usuário.');
+      } else {
+        setError('Erro ao buscar dados do perfil');
+      }
+      
+      toast.error(err.message);
+      setLoading(false);
+    }
+  };
+
+  // Remover análise automática
+  useEffect(() => {
+    // Limpar qualquer estado inicial
+    setUsername('');
+    setProfileData(null);
+    setContentData([]);
+    setLoading(false);
+    setError(null);
+  }, []);
 
   // Calcular métricas agregadas
   const calculateAggregateMetrics = (data: ContentData[]) => {
@@ -107,61 +197,18 @@ export default function ProfileAnalyzerPage() {
     };
   };
 
-  async function fetchInstagramProfile(username: string) {
-    try {
-      const profileResponse = await fetch(`/api/instagram-profile?username=${username}`);
-      if (!profileResponse.ok) {
-        throw new Error('Erro ao buscar perfil');
-      }
-      return await profileResponse.json();
-    } catch (error) {
-      console.error('Erro na busca do perfil:', error);
-      throw error;
-    }
-  }
+  // Calcular métricas agregadas
+  const metrics = calculateAggregateMetrics(contentData);
 
-  async function fetchInstagramContent(username: string) {
-    try {
-      console.log('[DEBUG] Iniciando busca de conteúdo para:', username);
-      const contentResponse = await fetch(`/api/instagram-content?username=${username}`);
-      
-      console.log('[DEBUG] Status da resposta de conteúdo:', contentResponse.status);
-      
-      if (!contentResponse.ok) {
-        const errorText = await contentResponse.text();
-        console.error('[DEBUG] Erro na resposta de conteúdo:', errorText);
-        throw new Error(`Erro ao buscar conteúdo: ${errorText}`);
-      }
-      
-      const data = await contentResponse.json();
-      console.log('[DEBUG] Dados de conteúdo recebidos:', JSON.stringify(data, null, 2));
-      
-      return data.content || [];
-    } catch (error) {
-      console.error('[DEBUG] Erro completo na busca do conteúdo:', error);
-      throw error;
-    }
-  }
-
-  async function handleAnalyzeProfile(inputUsername: string) {
-    setLoading(true);
-    setError(null);
-    setProfileData(null);
-    setContentData([]);
-
-    try {
-      const profile = await fetchInstagramProfile(inputUsername);
-      const content = await fetchInstagramContent(inputUsername);
-
-      setProfileData(profile);
-      setContentData(content);
-      setUsername(inputUsername);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Erro desconhecido');
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Calcular projeção de engajamento
+  const engagementProjection = profileData?.followers_count
+    ? calculateEngagementProjection(
+        profileData.followers_count, 
+        metrics.totalLikes, 
+        metrics.totalComments,
+        metrics.totalReelViews
+      )
+    : null;
 
   // Função para criar URL de proxy segura
   const proxyImageUrl = (originalUrl: string) => {
@@ -225,25 +272,16 @@ export default function ProfileAnalyzerPage() {
     );
   };
 
-  // Calcular métricas agregadas
-  const metrics = calculateAggregateMetrics(contentData);
-
-  // Calcular projeção de engajamento
-  const engagementProjection = profileData?.followers_count
-    ? calculateEngagementProjection(
-        profileData.followers_count, 
-        metrics.totalLikes, 
-        metrics.totalComments,
-        metrics.totalReelViews
-      )
-    : null;
-
   return (
     <>
       <Header />
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-7xl mx-auto">
-          <ProfileInput onAnalyze={handleAnalyzeProfile} />
+          <ProfileInput 
+            onAnalyze={handleAnalyzeProfile} 
+            isLoading={loading}
+            initialUsername={username}
+          />
 
           {loading && (
             <div className="flex justify-center items-center my-8">
