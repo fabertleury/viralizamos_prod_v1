@@ -150,7 +150,7 @@ export function Header() {
             {socialNetworks.map((social) => (
               <Link
                 key={social.id}
-                href={`/${social.name.toLowerCase()}`}
+                href={social.url}
                 className="text-gray-800 hover:text-[#FF00CE] transition-colors"
               >
                 <span>{social.name}</span>
@@ -158,12 +158,12 @@ export function Header() {
             ))}
             
             {/* Action Buttons */}
-            <Button asChild variant="ghost" className="font-medium bg-[#FF00CE] text-white hover:bg-[#FF00CE]/90">
+            <Button asChild variant="ghost" className="font-medium bg-[#C43582] text-white hover:bg-[#a62c6c]">
               <Link href="/analisar-perfil">
                 {translations.header.analyzeProfile}
               </Link>
             </Button>
-            <Button asChild variant="ghost" className="font-medium bg-[#FF00CE] text-white hover:bg-[#FF00CE]/90">
+            <Button asChild variant="ghost" className="font-medium bg-[#C43582] text-white hover:bg-[#a62c6c]">
               <Link href="/acompanhar-pedido">
                 {translations.header.trackOrder}
               </Link>
@@ -172,7 +172,7 @@ export function Header() {
             {/* Tickets - só aparece se logado */}
             {isLoggedIn && (
               <div className="relative group">
-                <Button asChild variant="ghost" className="font-medium bg-[#FF00CE] text-white hover:bg-[#FF00CE]/90">
+                <Button asChild variant="ghost" className="font-medium bg-[#C43582] text-white hover:bg-[#a62c6c]">
                   <Link href="/tickets">
                     {translations.header.tickets}
                   </Link>
@@ -206,10 +206,10 @@ export function Header() {
                     {socialNetworks.map((social) => (
                       <Link
                         key={social.id}
-                        href={`/${social.name.toLowerCase()}`}
+                        href={social.url}
                         className="text-gray-800 hover:text-[#FF00CE] transition-colors"
                       >
-                        <span>{social.name}</span>
+                        <span>{translations.header.servicesFor} {social.name}</span>
                       </Link>
                     ))}
                     
