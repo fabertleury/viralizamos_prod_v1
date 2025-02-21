@@ -527,7 +527,7 @@ export default function HomeV3() {
               </button>
               <button 
                 onClick={handleContinueAnalysis}
-                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                className="bg-[#C43582] text-white px-6 py-2 rounded-full text-base font-bold hover:bg-[#a62c6c] transition"
               >
                 Continuar Análise
               </button>
