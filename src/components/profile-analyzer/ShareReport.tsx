@@ -4,14 +4,30 @@ import { Button } from '@/components/ui/button';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!, 
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 interface ShareReportProps {
   username: string;
-  reportRef: React.RefObject<HTMLDivElement>;
+  profileData: any;
+  contentData: any[];
+  metrics: any;
+  reportRef: React.RefObject<HTMLDivElement> | null;
 }
 
-export function ShareReport({ username, reportRef }: ShareReportProps) {
+export function ShareReport({ 
+  username, 
+  profileData, 
+  contentData, 
+  metrics, 
+  reportRef 
+}: ShareReportProps) {
   const [isExporting, setIsExporting] = useState(false);
+  const [shareLink, setShareLink] = useState('');
 
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
@@ -45,16 +61,49 @@ export function ShareReport({ username, reportRef }: ShareReportProps) {
     }
   };
 
-  const shareLinks = {
-    whatsapp: `https://api.whatsapp.com/send?text=${encodeURIComponent(
-      `Confira a análise do perfil @${username} no Instagram! ${window.location.href}`
-    )}`,
-    facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-      window.location.href
-    )}`,
-    twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-      `Confira a análise do perfil @${username} no Instagram!`
-    )}&url=${encodeURIComponent(window.location.href)}`,
+  const generateShareLink = async () => {
+    try {
+      // Inserir dados da análise no Supabase
+      const { data, error } = await supabase
+        .from('shared_analyses')
+        .insert({
+          username,
+          profile_data: profileData,
+          content_data: contentData,
+          metrics
+        })
+        .select('id')
+        .single();
+
+      if (error) throw error;
+
+      // Gerar link de compartilhamento
+      const link = `${process.env.NEXT_PUBLIC_SITE_URL}/compartilhar/${data.id}`;
+      setShareLink(link);
+
+      // Links para compartilhamento
+      const shareLinks = {
+        whatsapp: `https://api.whatsapp.com/send?text=${encodeURIComponent(
+          `Confira a análise do perfil @${username} no Instagram: ${link}`
+        )}`,
+        facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+          link
+        )}`,
+        twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+          `Confira a análise do perfil @${username} no Instagram!`
+        )}&url=${encodeURIComponent(link)}`,
+      };
+
+      // Copiar para área de transferência
+      navigator.clipboard.writeText(link);
+      toast.success('Link de compartilhamento copiado!');
+
+      // Abrir WhatsApp
+      window.open(shareLinks.whatsapp, '_blank');
+    } catch (error) {
+      console.error('Erro ao gerar link de compartilhamento:', error);
+      toast.error('Erro ao gerar link. Tente novamente.');
+    }
   };
 
   const handleShare = async () => {
@@ -86,16 +135,16 @@ export function ShareReport({ username, reportRef }: ShareReportProps) {
       {/* Botões de Redes Sociais (Desktop) */}
       {!navigator.share && (
         <div className="flex flex-col gap-2">
-          <a
-            href={shareLinks.whatsapp}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Button
+            onClick={generateShareLink}
             className="bg-green-500 hover:bg-green-600 rounded-full p-4 shadow-lg hover:shadow-xl transition-all duration-200"
           >
             <FaWhatsapp className="w-5 h-5 text-white" />
-          </a>
+          </Button>
           <a
-            href={shareLinks.facebook}
+            href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+              window.location.href
+            )}`}
             target="_blank"
             rel="noopener noreferrer"
             className="bg-blue-600 hover:bg-blue-700 rounded-full p-4 shadow-lg hover:shadow-xl transition-all duration-200"
@@ -103,7 +152,9 @@ export function ShareReport({ username, reportRef }: ShareReportProps) {
             <FaFacebook className="w-5 h-5 text-white" />
           </a>
           <a
-            href={shareLinks.twitter}
+            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
+              `Confira a análise do perfil @${username} no Instagram!`
+            )}&url=${encodeURIComponent(window.location.href)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="bg-blue-400 hover:bg-blue-500 rounded-full p-4 shadow-lg hover:shadow-xl transition-all duration-200"
