@@ -270,35 +270,19 @@ export default function HomeV3() {
   const router = useRouter();
   const { fetchInstagramProfileInfo } = useInstagramAPI();
 
-  const handleAnalyze = async () => {
-    // Remover @ do início do username, se existir
-    const cleanUsername = username.replace(/^@/, '').trim().toLowerCase();
+  const [showProfilePreviewModal, setShowProfilePreviewModal] = useState(false);
+  const [profilePreviewData, setProfilePreviewData] = useState<any>(null);
 
-    if (!cleanUsername) {
-      toast.error('Por favor, insira um nome de usuário válido');
-      return;
-    }
+  // Função para continuar análise após visualizar preview
+  const handleContinueAnalysis = () => {
+    if (profilePreviewData) {
+      // Extrair username de forma mais flexível
+      const cleanUsername = 
+        profilePreviewData.username || 
+        username.replace(/^@/, '').trim().toLowerCase();
 
-    setIsLoading(true);
-    setShowPrivateMessage(false);
-
-    try {
-      const profileInfo = await fetchInstagramProfileInfo(cleanUsername);
-
-      // Verificar se o perfil é público
-      if (profileInfo.is_private) {
-        setShowPrivateMessage(true);
-        setTimer(300); // 5 minutos
-      } else {
-        // Redirecionar para página de análise
-        router.push(`/analisar-perfil?username=${cleanUsername}`);
-      }
-    } catch (error) {
-      console.error('Erro ao validar perfil:', error);
-      toast.error('Erro ao validar perfil. Tente novamente.');
-      setShowPrivateMessage(false);
-    } finally {
-      setIsLoading(false);
+      setShowProfilePreviewModal(false);
+      router.push(`/analisar-perfil?username=${cleanUsername}`);
     }
   };
 
@@ -470,11 +454,136 @@ export default function HomeV3() {
     );
   };
 
+  // Modal de preview do perfil
+  const renderProfilePreviewModal = () => {
+    if (!profilePreviewData) return null;
+
+    // Função para obter URL de imagem segura via proxy
+    const getProfileImageUrl = () => {
+      const imageUrls = [
+        profilePreviewData.profilePicture,
+        profilePreviewData.profile_pic_url_hd,
+        profilePreviewData.profile_pic_url
+      ];
+
+      // Encontrar a primeira URL que não seja undefined ou vazia
+      const validUrl = imageUrls.find(url => url && url.trim() !== '');
+
+      // Se nenhuma URL válida for encontrada, retornar uma imagem padrão
+      if (!validUrl) return '/default-profile.png';
+
+      // Usar proxy para URL da imagem
+      return `/api/image-proxy?url=${encodeURIComponent(validUrl)}`;
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center">
+        <div className="bg-white rounded-lg p-8 max-w-md w-full">
+          <div className="flex flex-col items-center">
+            <img 
+              src={getProfileImageUrl()} 
+              alt="Foto de Perfil" 
+              className="w-32 h-32 rounded-full mb-4 object-cover"
+              onError={(e) => {
+                // Se a imagem falhar ao carregar, usar imagem padrão
+                const imgElement = e.target as HTMLImageElement;
+                imgElement.src = '/default-profile.png';
+              }}
+            />
+            <h2 className="text-2xl font-bold mb-2">
+              {profilePreviewData.full_name || profilePreviewData.username}
+            </h2>
+            <p className="text-gray-600 mb-4 text-center">
+              @{profilePreviewData.username}
+            </p>
+
+            <div className="flex justify-between w-full mb-4">
+              <div className="text-center">
+                <strong>{profilePreviewData.totalPosts || 0}</strong>
+                <p className="text-sm text-gray-500">Posts</p>
+              </div>
+              <div className="text-center">
+                <strong>{profilePreviewData.followers || 0}</strong>
+                <p className="text-sm text-gray-500">Seguidores</p>
+              </div>
+              <div className="text-center">
+                <strong>{profilePreviewData.following || 0}</strong>
+                <p className="text-sm text-gray-500">Seguindo</p>
+              </div>
+            </div>
+
+            {profilePreviewData.biography && (
+              <p className="text-center text-gray-700 mb-4 italic">
+                "{profilePreviewData.biography}"
+              </p>
+            )}
+
+            <div className="flex space-x-4">
+              <button 
+                onClick={() => setShowProfilePreviewModal(false)}
+                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleContinueAnalysis}
+                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+              >
+                Continuar Análise
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const handleAnalyze = async () => {
+    // Remover @ do início do username, se existir
+    const cleanUsername = username.replace(/^@/, '').trim().toLowerCase();
+
+    if (!cleanUsername) {
+      toast.error('Por favor, insira um nome de usuário válido');
+      return;
+    }
+
+    setIsLoading(true);
+    setShowPrivateMessage(false);
+
+    try {
+      const profileInfo = await fetchInstagramProfileInfo(cleanUsername);
+      
+      // Log completo da resposta para debug
+      console.log('Resposta completa da API:', JSON.stringify(profileInfo, null, 2));
+
+      // Verificação robusta da privacidade do perfil
+      const isPrivate = profileInfo.is_private ?? false;
+
+      // Verificar se o perfil é público
+      if (isPrivate) {
+        setShowPrivateMessage(true);
+        setTimer(60); // 1 minuto
+      } else {
+        // Mostrar modal de confirmação
+        setProfilePreviewData(profileInfo);
+        setShowProfilePreviewModal(true);
+      }
+    } catch (error) {
+      console.error('Erro ao validar perfil:', error);
+      toast.error('Erro ao validar perfil. Tente novamente.');
+      setShowPrivateMessage(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div>
       <main className="home-v3">
         <Header />
         
+        {renderProfilePreviewModal()}
+
         <section className="home-banner">
           <div className="container boxed">
             <div className="row align-items-center">
