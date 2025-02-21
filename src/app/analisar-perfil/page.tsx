@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useInstagramAPI } from '@/hooks/useInstagramAPI';
-import { findAPIByContext } from '@/config/api-mappings';
 import { toast } from 'sonner';
 import { ProfileHeader } from '@/components/profile-analyzer/ProfileHeader';
 import { ProfileInput } from '@/components/profile-analyzer/ProfileInput';
@@ -10,8 +10,10 @@ import { EngagementAnalysis } from '@/components/profile-analyzer/EngagementAnal
 import { EngagementProjectionChart } from '@/components/profile-analyzer/EngagementProjectionChart';
 import { AdvancedMetrics } from '@/components/profile-analyzer/AdvancedMetrics';
 import { PDFShareButton } from '@/components/profile-analyzer/PDFShareButton';
+import { ShareReport } from '@/components/profile-analyzer/ShareReport';
 import { FaSpinner, FaPlus, FaHeart } from 'react-icons/fa';
 import { Header } from '@/components/layout/header';
+import Link from 'next/link';
 
 interface ProfileData {
   username?: string;
@@ -75,7 +77,7 @@ function calculateEngagementProjection(
   currentComments: number,
   currentReelViews?: number
 ) {
-  // Projeção conservadora com os serviços da Viralizai
+  // Projeção conservadora com os serviços da Viralizamos
   return {
     followers: Math.round(currentFollowers * 1.5), // 50% de crescimento
     likes: Math.round(currentLikes * 2), // Dobrar curtidas
@@ -92,6 +94,110 @@ export default function ProfileAnalyzerPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeContentTab, setActiveContentTab] = useState<'posts' | 'reels'>('posts');
   const { fetchInstagramProfileInfo, fetchContent } = useInstagramAPI();
+  const searchParams = useSearchParams();
+
+  // Estado para controlar o modal de confirmação
+  const [showProfilePreviewModal, setShowProfilePreviewModal] = useState(false);
+  const [profilePreviewData, setProfilePreviewData] = useState<any>(null);
+
+  // Efeito para iniciar análise ou mostrar modal de confirmação
+  useEffect(() => {
+    const initializeAnalysis = async () => {
+      const username = searchParams.get('username');
+      const isPreview = searchParams.get('preview') === 'true';
+
+      if (!username) return;
+
+      try {
+        // Buscar informações do perfil
+        const profileInfo = await fetchInstagramProfileInfo(username);
+        
+        if (isPreview) {
+          // Mostrar modal de confirmação
+          setProfilePreviewData(profileInfo);
+          setShowProfilePreviewModal(true);
+        } else {
+          // Iniciar análise diretamente
+          await startProfileAnalysis(username);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar informações do perfil:', error);
+        toast.error('Erro ao buscar informações do perfil');
+      }
+    };
+
+    initializeAnalysis();
+  }, [searchParams]);
+
+  // Função para continuar análise após visualizar preview
+  const handleContinueAnalysis = async () => {
+    const username = searchParams.get('username');
+    if (username) {
+      setShowProfilePreviewModal(false);
+      await startProfileAnalysis(username);
+    }
+  };
+
+  // Modal de preview do perfil
+  const renderProfilePreviewModal = () => {
+    if (!profilePreviewData) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center">
+        <div className="bg-white rounded-lg p-8 max-w-md w-full">
+          <div className="flex flex-col items-center">
+            <img 
+              src={profilePreviewData.profile_pic_url} 
+              alt="Foto de Perfil" 
+              className="w-32 h-32 rounded-full mb-4 object-cover"
+            />
+            <h2 className="text-2xl font-bold mb-2">
+              {profilePreviewData.full_name || profilePreviewData.username}
+            </h2>
+            <p className="text-gray-600 mb-4 text-center">
+              @{profilePreviewData.username}
+            </p>
+
+            <div className="flex justify-between w-full mb-4">
+              <div className="text-center">
+                <strong>{profilePreviewData.posts_count || 0}</strong>
+                <p className="text-sm text-gray-500">Posts</p>
+              </div>
+              <div className="text-center">
+                <strong>{profilePreviewData.followers_count || 0}</strong>
+                <p className="text-sm text-gray-500">Seguidores</p>
+              </div>
+              <div className="text-center">
+                <strong>{profilePreviewData.following_count || 0}</strong>
+                <p className="text-sm text-gray-500">Seguindo</p>
+              </div>
+            </div>
+
+            {profilePreviewData.biography && (
+              <p className="text-center text-gray-700 mb-4 italic">
+                "{profilePreviewData.biography}"
+              </p>
+            )}
+
+            <div className="flex space-x-4">
+              <button 
+                onClick={() => setShowProfilePreviewModal(false)}
+                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleContinueAnalysis}
+                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+              >
+                Continuar Análise
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const handleAnalyzeProfile = async (username: string) => {
     setUsername(username);
@@ -272,9 +378,44 @@ export default function ProfileAnalyzerPage() {
     );
   };
 
+  // Função para iniciar análise do perfil
+  const startProfileAnalysis = async (username: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Buscar informações do perfil
+      const profileInfo = await fetchInstagramProfileInfo(username);
+      
+      // Atualizar estado com dados do perfil
+      setProfileData({
+        username: profileInfo.username,
+        full_name: profileInfo.full_name,
+        biography: profileInfo.biography,
+        followers_count: profileInfo.followers,
+        following_count: profileInfo.following,
+        media_count: profileInfo.totalPosts,
+        profile_pic_url: profileInfo.profilePicture,
+        is_verified: profileInfo.isVerified
+      });
+
+      // Buscar conteúdo do perfil
+      const contentResult = await fetchContent(username, 'profile_analysis');
+      setContentData(contentResult);
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Erro na análise do perfil:', error);
+      setError('Não foi possível analisar o perfil. Tente novamente.');
+      setLoading(false);
+      toast.error('Erro na análise do perfil');
+    }
+  };
+
   return (
     <>
       <Header />
+      {renderProfilePreviewModal()}
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-7xl mx-auto">
           <ProfileInput 
@@ -325,20 +466,22 @@ export default function ProfileAnalyzerPage() {
                   {renderContentGrid(activeContentTab)}
 
                   {/* Botões de Ação */}
-                  <div className="mt-6 flex justify-center space-x-4">
-                    <button 
-                      className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition"
-                      onClick={() => {/* Lógica para adicionar seguidores */}}
-                    >
-                      <FaPlus className="mr-2" /> Adicionar Seguidores
-                    </button>
-                    <button 
-                      className="flex items-center bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition"
-                      onClick={() => {/* Lógica para adicionar curtidas */}}
-                    >
-                      <FaHeart className="mr-2" /> Adicionar Curtidas
-                    </button>
-                  </div>
+                  {profileData && (
+                    <div className="flex flex-col md:flex-row justify-center items-center gap-4 mt-6">
+                      <Link 
+                        href="/instagram/seguidores" 
+                        className="flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105"
+                      >
+                        <FaPlus className="mr-2" /> Adicionar Seguidores
+                      </Link>
+                      <Link 
+                        href="/instagram/curtidas" 
+                        className="flex items-center justify-center bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105"
+                      >
+                        <FaHeart className="mr-2" /> Adicionar Curtidas
+                      </Link>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -380,6 +523,17 @@ export default function ProfileAnalyzerPage() {
                   contentData={contentData}
                   metrics={metrics}
                   engagementProjection={engagementProjection}
+                />
+              )}
+
+              {/* Relatório de Compartilhamento */}
+              {profileData && contentData.length > 0 && (
+                <ShareReport 
+                  username={profileData.username || ''} 
+                  profileData={profileData}
+                  contentData={contentData}
+                  metrics={metrics}
+                  reportRef={null}
                 />
               )}
             </div>
