@@ -4,29 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/header';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
-import { 
-  FaQuestionCircle, 
-  FaTimes, 
-  FaInstagram, 
-  FaTiktok,
-  FaYoutube,
-  FaUser, 
-  FaCog, 
-  FaLock, 
-  FaUnlock 
-} from 'react-icons/fa';
-import { FaQuoteLeft, FaQuoteRight } from 'react-icons/fa';
-import { 
-  FaClock, 
-  FaWhatsapp, 
-  FaShieldAlt, 
-  FaCreditCard, 
-  FaRocket 
-} from 'react-icons/fa';
-import { FaUsers, FaHandshake, FaChartLine, FaMoneyBillWave } from 'react-icons/fa';
-import { FaTicketAlt } from 'react-icons/fa';
+import { FaInstagram, FaTiktok, FaYoutube, FaWhatsapp, FaTicketAlt, FaTimes, FaEdit, FaLock, FaSave, FaQuestionCircle, FaUser, FaCog, FaUnlock, FaQuoteLeft, FaQuoteRight, FaClock, FaShieldAlt, FaCreditCard, FaRocket, FaUsers, FaHandshake, FaChartLine, FaMoneyBillWave } from 'react-icons/fa';
 import './styles.css';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useInstagramAPI } from '@/hooks/useInstagramAPI';
+import { useRouter } from 'next/navigation';
 
 // Interface para as redes sociais
 interface SocialNetwork {
@@ -284,9 +266,65 @@ export default function HomeV3() {
   const [username, setUsername] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPrivateMessage, setShowPrivateMessage] = useState(false);
-  const [showTutorial, setShowTutorial] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
   const [timer, setTimer] = useState(300);
+  const router = useRouter();
+  const { fetchInstagramProfileInfo } = useInstagramAPI();
+
+  const handleAnalyze = async () => {
+    // Remover @ do início do username, se existir
+    const cleanUsername = username.replace(/^@/, '').trim().toLowerCase();
+
+    if (!cleanUsername) {
+      toast.error('Por favor, insira um nome de usuário válido');
+      return;
+    }
+
+    setIsLoading(true);
+    setShowPrivateMessage(false);
+
+    try {
+      const profileInfo = await fetchInstagramProfileInfo(cleanUsername);
+
+      // Verificar se o perfil é público
+      if (profileInfo.is_private) {
+        setShowPrivateMessage(true);
+        setTimer(300); // 5 minutos
+      } else {
+        // Redirecionar para página de análise
+        router.push(`/analisar-perfil?username=${cleanUsername}`);
+      }
+    } catch (error) {
+      console.error('Erro ao validar perfil:', error);
+      toast.error('Erro ao validar perfil. Tente novamente.');
+      setShowPrivateMessage(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTryAgain = () => {
+    // Resetar estado
+    setShowPrivateMessage(false);
+    setTimer(0);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Contador regressivo para o timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (showPrivateMessage && timer > 0) {
+      interval = setInterval(() => {
+        setTimer((prevTimer) => prevTimer - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [showPrivateMessage, timer]);
+
   const [socialNetworks, setSocialNetworks] = useState<SocialNetwork[]>([]);
   const [whatsappConfig, setWhatsappConfig] = useState({
     numero: '',
@@ -355,123 +393,6 @@ export default function HomeV3() {
 
     fetchConfiguracoes();
   }, []);
-
-  const tutorialSteps = [
-    {
-      title: "Abra o Instagram",
-      description: "Acesse o aplicativo do Instagram no seu celular",
-      icon: FaInstagram
-    },
-    {
-      title: "Acesse seu Perfil",
-      description: "Toque no ícone do seu perfil no canto inferior direito",
-      icon: FaUser
-    },
-    {
-      title: "Menu de Configurações",
-      description: "Toque no menu (três linhas) e depois em 'Configurações e privacidade'",
-      icon: FaCog
-    },
-    {
-      title: "Privacidade da Conta",
-      description: "Selecione 'Privacidade da conta' nas configurações",
-      icon: FaLock
-    },
-    {
-      title: "Conta Pública",
-      description: "Desative a opção 'Conta privada' para tornar seu perfil público",
-      icon: FaUnlock
-    }
-  ];
-
-  const handleAnalyze = async () => {
-    if (!username) {
-      toast.error('Digite seu @usuario');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('instagram_profiles')
-        .select('*')
-        .eq('username', username);
-
-      if (error) {
-        throw error;
-      }
-
-      if (data && data.length > 0) {
-        const profile = data[0];
-        if (profile.is_private) {
-          setShowPrivateMessage(true);
-          setTimer(300);
-          toast.error('Perfil privado! Torne-o público para continuar.');
-          setIsLoading(false);
-          return;
-        }
-
-        window.location.href = `/analisar-perfil?username=${username}`;
-      } else {
-        toast.error('Perfil não encontrado');
-        setIsLoading(false);
-      }
-    } catch (error: any) {
-      toast.error(error.message || 'Erro ao verificar perfil');
-      setIsLoading(false);
-    }
-  };
-
-  const handleTryAgain = () => {
-    if (timer === 0) {
-      setShowPrivateMessage(false);
-      handleAnalyze();
-    }
-  };
-
-  const handleNextStep = () => {
-    if (currentStep < tutorialSteps.length - 1) {
-      setCurrentStep(prev => prev + 1);
-    } else {
-      setShowTutorial(false);
-      setCurrentStep(0);
-    }
-  };
-
-  const handlePrevStep = () => {
-    if (currentStep > 0) {
-      setCurrentStep(prev => prev - 1);
-    }
-  };
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    
-    if (showPrivateMessage && timer > 0) {
-      interval = setInterval(() => {
-        setTimer((prev) => {
-          if (prev <= 1) {
-            clearInterval(interval);
-            setShowPrivateMessage(false);
-            return 300;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [showPrivateMessage, timer]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const [configurations, setConfigurations] = useState<{[key: string]: string}>({
     whatsapp_numero: '+5562981287058',
@@ -584,16 +505,18 @@ export default function HomeV3() {
                       <div className="message-content">
                         <img src="/assets/hourglass.svg" alt="Timer" className="hourglass-icon" />
                         <p>
-                          Seu perfil está privado! Torne-o público para continuar a análise.
-                          <button
-                            className="tutorial-button"
-                            onClick={() => setShowTutorial(true)}
-                          >
-                            <FaQuestionCircle className="tutorial-icon" />
-                            Como fazer?
-                          </button>
+                          Seu perfil está privado! Para continuar a análise, siga estas instruções:
                         </p>
-                        <p>Tente novamente em: <span className="timer">{formatTime(timer)}</span></p>
+                        <ol className="text-left pl-6 list-decimal space-y-2 mb-4">
+                          <li>Abra o Instagram no seu celular</li>
+                          <li>Vá para o seu perfil</li>
+                          <li>Toque em "Editar Perfil"</li>
+                          <li>Desative a opção "Conta Privada"</li>
+                          <li>Salve as alterações</li>
+                        </ol>
+                        <p>
+                          Tente novamente em: <span className="timer">{formatTime(timer)}</span>
+                        </p>
                         <button 
                           className="btn-try-again"
                           onClick={handleTryAgain}
@@ -701,49 +624,6 @@ export default function HomeV3() {
         <DepoimentosSection />
         <FAQSection />
 
-        {/* Tutorial Modal */}
-        {showTutorial && (
-          <div className="tutorial-overlay">
-            <div className="tutorial-modal">
-              <button className="close-tutorial" onClick={() => setShowTutorial(false)}>
-                <FaTimes />
-              </button>
-              
-              <div className="tutorial-content">
-                <div className="tutorial-header">
-                  <h3>Como tornar seu perfil público</h3>
-                  <p className="step-indicator">
-                    Passo {currentStep + 1} de {tutorialSteps.length}
-                  </p>
-                </div>
-
-                <div className="tutorial-step">
-                  <h4>{tutorialSteps[currentStep].title}</h4>
-                  <div className="tutorial-icon-container">
-                    {tutorialSteps[currentStep].icon}
-                  </div>
-                  <p>{tutorialSteps[currentStep].description}</p>
-                </div>
-
-                <div className="tutorial-navigation">
-                  <button
-                    className="nav-button prev"
-                    onClick={handlePrevStep}
-                    disabled={currentStep === 0}
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    className="nav-button next"
-                    onClick={handleNextStep}
-                  >
-                    {currentStep === tutorialSteps.length - 1 ? 'Concluir' : 'Próximo'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
 
       {renderFloatingButtons()}
