@@ -20,7 +20,7 @@ interface Service {
   categoria: string;
   status: boolean;
   discount_price?: number;
-  quantities: { [key: string]: number };
+  quantidade_preco: { quantidade: number; preco: number }[];
 }
 
 export default function CurtidasPage() {
@@ -85,16 +85,7 @@ export default function CurtidasPage() {
             categoria: service.categoria,
             status: service.status,
             discount_price: metadata['discount_price'],
-            quantities: {
-              '20': 20,
-              '50': 50,
-              '100': 100,
-              '250': 250,
-              '500': 500,
-              '1000': 1000,
-              '2500': 2500,
-              '5000': 5000
-            }
+            quantidade_preco: metadata['quantidade_preco'] || []
           };
         });
 
@@ -112,7 +103,7 @@ export default function CurtidasPage() {
 
   useEffect(() => {
     const initialSelectedServices = services.reduce((acc, service) => {
-      const minQuantity = Math.min(...Object.values(service.quantities));
+      const minQuantity = Math.min(...service.quantidade_preco.map(variation => variation.quantidade));
       acc[service.id] = minQuantity;
       return acc;
     }, {});
@@ -128,16 +119,10 @@ export default function CurtidasPage() {
 
   const calculateTotalPrice = (service: Service) => {
     const quantity = selectedServices[service.id] || 0;
-    const basePrice = service.discount_price || service.price;
-    const baseQuantity = 20; // Quantidade base de referência
+    const variation = service.quantidade_preco.find(variation => variation.quantidade === quantity);
+    const price = variation ? variation.preco : service.price;
 
-    // Calcular preço proporcional
-    const proportionalPrice = (basePrice / baseQuantity) * quantity;
-    
-    // Arredondar para 2 casas decimais
-    const roundedPrice = Math.ceil(proportionalPrice * 100) / 100;
-
-    return roundedPrice.toFixed(2);
+    return price.toFixed(2);
   };
 
   const isServiceSelected = (serviceId: string) => {
@@ -240,19 +225,19 @@ export default function CurtidasPage() {
                               Escolha a quantidade
                             </p>
                             <div className="flex flex-wrap justify-center gap-3">
-                              {Object.entries(service.quantities).map(([key, value]) => (
+                              {service.quantidade_preco.map((variation) => (
                                 <Button
-                                  key={key}
-                                  variant={selectedServices[service.id] === value ? 'default' : 'outline'}
+                                  key={variation.quantidade}
+                                  variant={selectedServices[service.id] === variation.quantidade ? 'default' : 'outline'}
                                   size="sm"
-                                  onClick={() => updateServiceQuantity(service.id, value)}
+                                  onClick={() => updateServiceQuantity(service.id, variation.quantidade)}
                                   className={`min-w-[80px] transition-all duration-300 ease-in-out ${
-                                    selectedServices[service.id] === value 
+                                    selectedServices[service.id] === variation.quantidade 
                                       ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transform scale-105' 
                                       : 'hover:bg-purple-100'
                                   }`}
                                 >
-                                  {key}
+                                  {variation.quantidade} un
                                 </Button>
                               ))}
                             </div>
@@ -260,11 +245,6 @@ export default function CurtidasPage() {
 
                           {isServiceSelected(service.id) && (
                             <div className="text-center mb-4">
-                              {service.discount_price && (
-                                <p className="text-gray-500 line-through mb-1">
-                                  De: R$ {service.price.toFixed(2)}
-                                </p>
-                              )}
                               <p className="text-2xl font-bold text-purple-600">
                                 Por: R$ {calculateTotalPrice(service)}
                               </p>
