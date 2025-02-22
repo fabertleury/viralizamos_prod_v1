@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, useEffect } from 'react';
+import React, { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import {
   Bars3Icon,
@@ -18,10 +18,17 @@ import {
   BuildingStorefrontIcon,
   CubeIcon,
   UserCircleIcon,
+  Settings,
+  Users,
+  Image as ImageIcon,
+  BarChart,
   ArrowRightOnRectangleIcon,
   CogIcon,
   WrenchScrewdriverIcon,
-  ChatBubbleBottomCenterTextIcon
+  ChatBubbleBottomCenterTextIcon,
+  NetworkIcon,
+  ChartBarIcon,
+  ServerIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -31,20 +38,25 @@ import { Toaster, toast } from 'sonner';
 import { classNames } from '../lib/helpers';
 
 const navigation = [
-  { name: 'Dashboard', href: '/admin/dashboard', icon: HomeIcon },
+  { name: 'Dashboard', href: '/admin/dashboard', icon: ChartBarIcon },
+  { name: 'APIs', href: '/admin/apis', icon: ServerIcon },
   { name: 'Pedidos', href: '/admin/pedidos', icon: ShoppingCartIcon },
   { name: 'Transações', href: '/admin/transacoes', icon: CurrencyDollarIcon },
   { name: 'Redes Sociais', href: '/admin/socials', icon: ShareIcon },
   { name: 'Categorias', href: '/admin/categories', icon: TagIcon },
   { name: 'Provedores', href: '/admin/provedores', icon: BuildingStorefrontIcon },
-  { name: 'Serviços', href: '/admin/servicos', icon: CubeIcon },
+  { name: 'Serviços', href: '/admin/servicos_v1', icon: CubeIcon },
   { name: 'Clientes', href: '/admin/clientes', icon: UsersIcon },
   { name: 'Tickets de Suporte', href: '/admin/tickets', icon: ChatBubbleLeftRightIcon },
   { name: "FAQ's", href: '/admin/faqs', icon: QuestionMarkCircleIcon },
   { name: 'Usuários', href: '/admin/users', icon: UserGroupIcon },
   { name: 'Sessões', href: '/admin/sessions', icon: UserCircleIcon },
   { name: 'Reposições', href: '/admin/reposicoes', icon: ArrowPathIcon },
-  { name: 'Configurações', href: '/admin/configuracoes', icon: CogIcon },
+  { 
+    name: 'Configurações', 
+    href: '/admin/configuracoes', 
+    icon: CogIcon  
+  },
   { 
     name: 'Automações', 
     href: '/admin/automacoes', 
@@ -55,8 +67,15 @@ const navigation = [
     name: 'Depoimentos', 
     href: '/admin/depoimentos', 
     icon: ChatBubbleBottomCenterTextIcon 
-  },
+  }
 ];
+
+// Adicionar log detalhado de ícones
+console.log('Navigation Icons:', navigation.map(item => ({
+  name: item.name,
+  icon: item.icon ? item.icon.name : 'UNDEFINED',
+  iconComponent: item.icon ? React.createElement(item.icon, { className: 'h-6 w-6' }) : null
+})));
 
 function useAdminAuth() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -185,13 +204,14 @@ export default function AdminLayout({
                                   'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold'
                                 )}
                               >
-                                <item.icon
-                                  className={classNames(
+                                {item.icon ? React.createElement(item.icon, {
+                                  className: classNames(
                                     pathname === item.href ? 'text-indigo-600' : 'text-gray-400 group-hover:text-indigo-600',
                                     'h-6 w-6 shrink-0'
-                                  )}
-                                  aria-hidden="true"
-                                />
+                                  )
+                                }) : (
+                                  <span className="text-red-500">No Icon</span>
+                                )}
                                 {item.name}
                                 {item.tag && (
                                   <span className="ml-2 rounded bg-indigo-600 px-2 py-1 text-xs text-white">
@@ -240,13 +260,14 @@ export default function AdminLayout({
                           'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold'
                         )}
                       >
-                        <item.icon
-                          className={classNames(
+                        {item.icon ? React.createElement(item.icon, {
+                          className: classNames(
                             pathname === item.href ? 'text-indigo-600' : 'text-gray-400 group-hover:text-indigo-600',
                             'h-6 w-6 shrink-0'
-                          )}
-                          aria-hidden="true"
-                        />
+                          )
+                        }) : (
+                          <span className="text-red-500">No Icon</span>
+                        )}
                         {item.name}
                         {item.tag && (
                           <span className="ml-2 rounded bg-indigo-600 px-2 py-1 text-xs text-white">

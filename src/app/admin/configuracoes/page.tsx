@@ -8,9 +8,27 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { AlertCircle } from 'lucide-react';
+import { apiLogger } from '@/lib/api-logger';
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Tooltip, 
+  TooltipContent, 
+  TooltipProvider, 
+  TooltipTrigger 
+} from '@/components/ui/tooltip';
 
 type ConfigItem = {
   id?: string;
@@ -33,6 +51,8 @@ export default function ConfiguracoesPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('geral');
+  const [apiLogs, setApiLogs] = useState<any[]>([]);
 
   console.log('ConfiguracoesPage: Componente renderizado');
 
@@ -47,6 +67,42 @@ export default function ConfiguracoesPage() {
     return () => {
       window.removeEventListener('error', handleError);
     };
+  }, []);
+
+  useEffect(() => {
+    console.log('Configurações carregadas:', configurations);
+    
+    // Log detalhado de cada configuração
+    Object.entries(configurations).forEach(([key, config]) => {
+      console.log(`Configuração ${key}:`, {
+        key: config.key,
+        value: config.value,
+        type: config.type,
+        description: config.description,
+        group_name: config.group_name,
+        editable: config.editable,
+        is_public: config.is_public
+      });
+    });
+
+    // Contar configurações por grupo
+    const groupCounts = Object.values(configurations).reduce((acc, config) => {
+      acc[config.group_name] = (acc[config.group_name] || 0) + 1;
+      return acc;
+    }, {});
+    console.log('Contagem de configurações por grupo:', groupCounts);
+  }, [configurations]);
+
+  useEffect(() => {
+    // Atualizar logs periodicamente
+    const updateLogs = () => {
+      setApiLogs(apiLogger.getLogs().reverse());
+    };
+
+    updateLogs();
+    const intervalId = setInterval(updateLogs, 5000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   const fetchConfigurations = useCallback(async () => {
@@ -372,17 +428,18 @@ export default function ConfiguracoesPage() {
     );
   }, [configurations, handleSaveConfig, renderConfigInput, isLoading]);
 
+  const handleClearLogs = () => {
+    apiLogger.clearLogs();
+    setApiLogs([]);
+  };
+
   if (errorMessage) {
     return (
-      <div className="p-4 text-red-500">
-        <h2>Erro na página de configurações</h2>
-        <p>{errorMessage}</p>
-        <Button onClick={() => {
-          setErrorMessage(null);
-          router.push('/');
-        }}>
-          Voltar para a página inicial
-        </Button>
+      <div className="flex items-center justify-center h-screen">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <AlertCircle className="h-6 w-6 inline-block mr-2" />
+          <span className="block sm:inline">{errorMessage}</span>
+        </div>
       </div>
     );
   }
@@ -445,6 +502,100 @@ export default function ConfiguracoesPage() {
 
         {/* Compliance */}
         {renderConfigGroup('compliance')}
+
+        {/* Logs de API */}
+        <Card className="mb-6">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xl font-medium">Logs de Uso de APIs</CardTitle>
+            <Button 
+              variant="destructive" 
+              size="sm"
+              onClick={handleClearLogs}
+            >
+              Limpar Logs
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Página</TableHead>
+                  <TableHead>Nome da API</TableHead>
+                  <TableHead>Endpoint</TableHead>
+                  <TableHead className="text-right">Timestamp</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {apiLogs.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      Nenhum log de API encontrado
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  apiLogs.map((log, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Badge variant="secondary">{log.page}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <span className="truncate max-w-[150px] block">
+                                {log.apiName}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {log.apiName}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </TableCell>
+                      <TableCell>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <span className="truncate max-w-[200px] block">
+                                {log.endpoint}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {log.endpoint}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {new Date(log.timestamp).toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl font-medium">Resumo de Uso</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-gray-100 p-4 rounded">
+                <h3 className="text-lg font-semibold mb-2">Total de Logs</h3>
+                <p className="text-2xl font-bold">{apiLogs.length}</p>
+              </div>
+              <div className="bg-gray-100 p-4 rounded">
+                <h3 className="text-lg font-semibold mb-2">Páginas Únicas</h3>
+                <p className="text-2xl font-bold">
+                  {new Set(apiLogs.map(log => log.page)).size}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

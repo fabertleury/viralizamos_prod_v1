@@ -31,36 +31,73 @@ export function PostSelector({ username, onSelectPosts, maxPosts, service }: Pos
     async function loadPosts() {
       if (!username) return;
       
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/instagram/posts/${username}`);
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Erro ao carregar posts do Instagram');
+      const MAX_RETRIES = 3;
+      let retryCount = 0;
+
+      const fetchWithRetry = async () => {
+        try {
+          setLoading(true);
+          const response = await fetch(`/api/instagram/posts/${username}`, {
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            }
+          });
+          
+          if (!response.ok) {
+            const status = response.status;
+            const errorData = await response.json();
+
+            if (status === 429 && retryCount < MAX_RETRIES) {
+              // Exponential backoff
+              const delay = Math.pow(2, retryCount) * 1000;
+              retryCount++;
+              
+              console.warn(`Rate limit hit. Retrying in ${delay/1000} seconds. Attempt ${retryCount}`);
+              
+              await new Promise(resolve => setTimeout(resolve, delay));
+              return fetchWithRetry();
+            }
+
+            throw new Error(errorData.error || `Erro ao carregar posts (${status})`);
+          }
+          
+          const postsData = await response.json();
+          
+          // Processar posts
+          const posts = postsData.posts || [];
+          const reels = postsData.reels || [];
+          
+          // Combinar posts e reels, priorizando posts
+          const combinedContent = [...posts, ...reels];
+          
+          if (combinedContent.length > 0) {
+            setPosts(combinedContent);
+          } else {
+            console.error('Nenhum post retornado da API:', postsData);
+            toast.warning('Nenhum post encontrado para este perfil.');
+          }
+        } catch (error) {
+          console.error('Erro ao carregar posts:', error);
+          
+          if (retryCount < MAX_RETRIES) {
+            const delay = Math.pow(2, retryCount) * 1000;
+            retryCount++;
+            
+            console.warn(`Erro detectado. Retrying in ${delay/1000} seconds. Attempt ${retryCount}`);
+            
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return fetchWithRetry();
+          }
+          
+          toast.error('Erro ao carregar os posts. Por favor, tente novamente mais tarde.');
+        } finally {
+          setLoading(false);
         }
-        
-        const postsData = await response.json();
-        
-        // Processar posts
-        const posts = postsData.posts || [];
-        const reels = postsData.reels || [];
-        
-        // Combinar posts e reels, priorizando posts
-        const combinedContent = [...posts, ...reels];
-        
-        if (combinedContent.length > 0) {
-          setPosts(combinedContent);
-        } else {
-          console.error('Nenhum post retornado da API:', postsData);
-          toast.warning('Nenhum post encontrado para este perfil.');
-        }
-      } catch (error) {
-        console.error('Erro ao carregar posts:', error);
-        toast.error('Erro ao carregar os posts. Por favor, tente novamente.');
-      } finally {
-        setLoading(false);
-      }
+      };
+
+      await fetchWithRetry();
     }
 
     loadPosts();

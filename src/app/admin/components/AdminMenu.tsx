@@ -31,7 +31,7 @@ const navigation = [
   { name: 'Redes Sociais', href: '/admin/socials', icon: HashtagIcon },
   { name: 'Categorias', href: '/admin/categories', icon: FolderIcon },
   { name: 'Provedores', href: '/admin/provedores', icon: ServerIcon },
-  { name: 'Serviços', href: '/admin/servicos', icon: CogIcon },
+  { name: 'Serviços', href: '/admin/servicos_v1', icon: CogIcon },
   { name: 'Clientes', href: '/admin/clientes', icon: UserGroupIcon },
   { name: 'Tickets de Suporte', href: '/admin/tickets', icon: TicketIcon },
   { name: 'Configurações', href: '/admin/configuracoes', icon: Cog6ToothIcon },

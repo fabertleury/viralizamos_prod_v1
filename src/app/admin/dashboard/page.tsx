@@ -11,6 +11,8 @@ import {
   ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 import { Card } from '@/components/ui/card';
+import { useInstagramAPI } from '@/hooks/useInstagramAPI';
+import { CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 
 interface Stats {
   totalClients: number;
@@ -46,6 +48,70 @@ interface Stats {
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(' ');
 }
+
+const InstagramAPIStatusCard = () => {
+  const { checkInstagramAPIStatus } = useInstagramAPI();
+  const [apiStatus, setApiStatus] = useState({
+    status: 'offline',
+    detail: 'Verificando...',
+    last_checked: new Date()
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAPIStatus = async () => {
+      try {
+        setIsLoading(true);
+        const status = await checkInstagramAPIStatus();
+        setApiStatus(status);
+      } catch (error) {
+        console.error('Erro ao buscar status da API:', error);
+        setApiStatus({
+          status: 'offline',
+          detail: 'Falha na verificação',
+          last_checked: new Date()
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchAPIStatus();
+    const intervalId = setInterval(fetchAPIStatus, 5 * 60 * 1000); // Atualiza a cada 5 minutos
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  const getStatusIcon = () => {
+    switch (apiStatus.status) {
+      case 'online':
+        return <CheckCircleIcon className="h-8 w-8 text-green-500" />;
+      case 'degraded':
+        return <ExclamationTriangleIcon className="h-8 w-8 text-yellow-500" />;
+      default:
+        return <XCircleIcon className="h-8 w-8 text-red-500" />;
+    }
+  };
+
+  return (
+    <div className="bg-white shadow rounded-lg p-4 flex items-center space-x-4">
+      <div>
+        {getStatusIcon()}
+      </div>
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900">
+          Status da API do Instagram
+        </h3>
+        <p className="text-sm text-gray-600">
+          {apiStatus.detail}
+        </p>
+        <p className="text-xs text-gray-500 mt-1">
+          Última verificação: {apiStatus.last_checked.toLocaleString()}
+        </p>
+      </div>
+    </div>
+  );
+};
 
 export default function DashboardPage() {
   const supabase = createClientComponentClient();
@@ -345,6 +411,9 @@ export default function DashboardPage() {
             </div>
           </Card>
         </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <InstagramAPIStatusCard />
       </div>
     </div>
   );

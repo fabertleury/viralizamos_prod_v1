@@ -1,71 +1,66 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 
 export async function GET(
-  request: Request,
-  { params }: { params: { username: string } }
+  request: NextRequest,
+  context: { params: { username: string } }
 ) {
+  const supabase = createClient();
+
   try {
+    // Buscar configurações dinâmicas
+    const { data: apiConfigs, error: configError } = await supabase
+      .from('configurations')
+      .select('key, value')
+      .in('key', ['instagram_api_endpoint', 'instagram_api_key'])
+      .throwOnError();
+
+    if (configError) throw configError;
+
+    const configMap = apiConfigs.reduce((acc, config) => {
+      acc[config.key] = config.value;
+      return acc;
+    }, {});
+
+    const { params } = context;
     const username = params.username;
 
     const response = await fetch(
-      `https://instagram-scraper-api2.p.rapidapi.com/v1/posts?username_or_id_or_url=${username}`,
+      `${configMap['instagram_api_endpoint']}?username_or_id_or_url=${username}`,
       {
         headers: {
           'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com',
-          'x-rapidapi-key': process.env.RAPIDAPI_KEY || ''
+          'x-rapidapi-key': configMap['instagram_api_key']
         }
       }
     );
 
     if (!response.ok) {
-      return NextResponse.json(
-        { message: 'Erro ao buscar posts no Instagram' },
-        { status: response.status }
-      );
+      const status = response.status;
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Erro ao carregar posts (${status})`);
     }
 
-    const responseData = await response.json();
-
-    console.log('Resposta bruta da API:', JSON.stringify(responseData, null, 2));
-
-    if (!responseData?.data?.items || !Array.isArray(responseData.data.items)) {
-      console.error('Dados inválidos da API:', responseData);
-      return NextResponse.json({ error: 'Formato de dados inválido' }, { status: 400 });
-    }
-
-    // Mapear os dados incluindo o link do post
-    const posts = responseData.data.items.map((post: any) => {
-      console.log('Post original:', JSON.stringify(post, null, 2));
-      
-      if (!post.code) {
-        console.error('Post sem código:', post);
-        throw new Error('Post sem código detectado na API do Instagram');
-      }
-
-      const formattedPost = {
-        id: post.id,
-        code: post.code,
-        image_versions: post.image_versions,
-        like_count: post.like_count,
-        comment_count: post.comment_count,
-        caption: post.caption,
-        taken_at: post.taken_at,
-        link: `https://www.instagram.com/p/${post.code}/`
-      };
-
-      console.log('Post formatado:', JSON.stringify(formattedPost, null, 2));
-      return formattedPost;
-    });
-
-    console.log('Total de posts processados:', posts.length);
-
-    console.log('Posts processados:', JSON.stringify(posts[0], null, 2));
+    const postsData = await response.json();
+    
+    // Processar posts
+    const posts = postsData.data.items.map((post: any) => ({
+      id: post.pk,
+      code: post.code,
+      image_versions: {
+        items: [{ url: post.image_versions2.candidates[0].url }]
+      },
+      like_count: post.like_count,
+      comment_count: post.comment_count,
+      caption: { text: post.caption?.text || '' },
+      link: `https://www.instagram.com/p/${post.code}/`
+    }));
 
     return NextResponse.json(posts);
   } catch (error) {
     console.error('Erro ao buscar posts:', error);
     return NextResponse.json(
-      { message: 'Erro ao buscar posts' },
+      { message: 'Erro ao buscar posts', error: error.message },
       { status: 500 }
     );
   }
