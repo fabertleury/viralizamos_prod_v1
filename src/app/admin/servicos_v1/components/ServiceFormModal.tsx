@@ -218,6 +218,13 @@ export function ServiceFormModal({
     }
   };
 
+  const handleMetadataChange = (key: string, value: string) => {
+    setFormData(prev => ({ 
+      ...prev, 
+      metadata: { ...prev.metadata, [key]: value } 
+    }));
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[600px]">
@@ -421,6 +428,24 @@ export function ServiceFormModal({
               onChange={handleInputChange}
               type="number"
               required
+            />
+          </div>
+
+          <div className="mb-4">
+            <Label>Entrega Imediata</Label>
+            <Input 
+              type="text"
+              value={formData.metadata?.immediateDelivery || ''}
+              onChange={(e) => handleMetadataChange('immediateDelivery', e.target.value)}
+            />
+          </div>
+
+          <div className="mb-4">
+            <Label>Perfil Seguro</Label>
+            <Input 
+              type="text"
+              value={formData.metadata?.secureProfile || ''}
+              onChange={(e) => handleMetadataChange('secureProfile', e.target.value)}
             />
           </div>
 

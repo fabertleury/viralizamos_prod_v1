@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase-client';
 import axios from 'axios';
 import Link from 'next/link';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
+import { faArrowLeft, faCoffee, faApple, faCar, faHeart, faStar } from '@fortawesome/free-solid-svg-icons';
 
 interface FamaService {
   service: number;
@@ -23,6 +23,11 @@ interface FamaService {
 interface ServiceQuantityPrice {
   quantidade: number;
   preco: number;
+}
+
+interface ServiceDetail {
+  icon: string;
+  title: string;
 }
 
 export default function EditarServicoImportadoPage() {
@@ -43,6 +48,7 @@ export default function EditarServicoImportadoPage() {
   const [refill, setRefill] = useState(false);
   const [checkoutTypeId, setCheckoutTypeId] = useState('');
   const [status, setStatus] = useState(true);
+  const [serviceDetails, setServiceDetails] = useState<ServiceDetail[]>([{ icon: '', title: '' }]);
 
   // Estado para quantidades e preços
   const [quantityPrices, setQuantityPrices] = useState<ServiceQuantityPrice[]>([
@@ -190,6 +196,16 @@ export default function EditarServicoImportadoPage() {
     setQuantityPrices(newRows);
   };
 
+  const addServiceDetail = () => {
+    setServiceDetails([...serviceDetails, { icon: '', title: '' }]);
+  };
+
+  const updateServiceDetail = (index: number, field: 'icon' | 'title', value: string) => {
+    const newDetails = [...serviceDetails];
+    newDetails[index][field] = value;
+    setServiceDetails(newDetails);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -230,7 +246,8 @@ export default function EditarServicoImportadoPage() {
         metadata: {
           origem: 'fama_redes',
           refill,
-          quantidade_preco: validQuantityPrices
+          quantidade_preco: validQuantityPrices,
+          serviceDetails
         }
       };
 
@@ -441,6 +458,30 @@ export default function EditarServicoImportadoPage() {
               className="w-full p-2 border rounded"
               rows={3}
             />
+          </div>
+
+          {/* Detalhes do Serviço */}
+          <div className="col-span-2">
+            <h2 className="text-lg font-bold mb-4">Detalhes do Serviço</h2>
+            {serviceDetails.map((detail, index) => (
+              <div key={index} className="flex items-center mb-4">
+                <input
+                  type="text"
+                  placeholder="Código do Ícone"
+                  value={detail.icon}
+                  onChange={(e) => updateServiceDetail(index, 'icon', e.target.value)}
+                  className="mt-1 block w-1/2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                />
+                <input
+                  type="text"
+                  placeholder="Título"
+                  value={detail.title}
+                  onChange={(e) => updateServiceDetail(index, 'title', e.target.value)}
+                  className="mt-1 block w-1/2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm ml-2"
+                />
+                <button type="button" onClick={addServiceDetail} className="ml-2 bg-blue-500 text-white rounded-md px-2">+</button>
+              </div>
+            ))}
           </div>
 
           {/* Status */}

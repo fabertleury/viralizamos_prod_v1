@@ -9,6 +9,7 @@ import { Header } from '@/components/layout/header';
 import { useForm } from 'react-hook-form';
 import { fetchInstagramProfile } from '@/lib/services/instagram-profile';
 import { useRouter } from 'next/navigation';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 
 interface Service {
   id: string;
@@ -16,6 +17,14 @@ interface Service {
   description: string;
   preco: number;
   quantidade: number;
+  icon: any;
+  title: string;
+  metadata: {
+    quantidade_preco: {
+      quantidade: number;
+      preco: number;
+    }[];
+  };
 }
 
 interface FormData {
@@ -69,10 +78,18 @@ export default function Step1Page() {
       }
 
       setService(data);
+
+      // Verificar preço com base na quantidade escolhida
+      const selectedVariation = data.metadata.quantidade_preco.find(v => v.quantidade === parseInt(quantity));
+      if (selectedVariation) {
+        setService(prev => ({ ...prev, preco: selectedVariation.preco }));
+      } else {
+        toast.error('Variação de quantidade não encontrada');
+      }
     };
 
     fetchServiceData();
-  }, [serviceId, supabase]);
+  }, [serviceId, quantity, supabase]);
 
   const onSubmit = async (formData: FormData) => {
     if (!formData.is_public_confirmed) {
@@ -171,7 +188,7 @@ export default function Step1Page() {
               <div className="flex justify-between items-center">
                 <div>
                   <span className="text-sm text-gray-500">Quantidade</span>
-                  <p className="text-lg font-semibold text-gray-800">{service?.quantidade} curtidas</p>
+                  <p className="text-lg font-semibold text-gray-800">{quantity} curtidas</p>
                 </div>
                 <div className="text-right">
                   <span className="text-sm text-gray-500">Preço</span>
@@ -185,20 +202,7 @@ export default function Step1Page() {
             <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Detalhes do Serviço</h3>
-                <ul className="space-y-2">
-                  <li className="flex items-center text-green-600">
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                    Entrega Imediata
-                  </li>
-                  <li className="flex items-center text-blue-600">
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                    Perfil Seguro
-                  </li>
-                </ul>
+                <p>{service?.description}</p>
               </div>
             </div>
           </div>
