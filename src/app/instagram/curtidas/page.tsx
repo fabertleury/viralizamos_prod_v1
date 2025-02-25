@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Heart, ChevronRight, Plus, Minus } from 'lucide-react';
+// import { Heart, ChevronRight, Plus, Minus } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { createClient } from '@/lib/supabase/client';
@@ -21,6 +21,15 @@ interface Service {
   status: boolean;
   discount_price?: number;
   quantidade_preco: { quantidade: number; preco: number }[];
+  metadata?: {
+    service_details?: {
+      global_reach?: boolean;
+      fast_delivery?: boolean;
+      guaranteed_security?: boolean;
+      [key: string]: any;
+    };
+    [key: string]: any;
+  };
 }
 
 export default function CurtidasPage() {
@@ -47,7 +56,8 @@ export default function CurtidasPage() {
             max_order,
             categoria,
             status,
-            metadata
+            metadata,
+            service_variations
           `)
           .or(`categoria.ilike.%curtida%,name.ilike.%curtida%`)
           .eq('status', true)
@@ -65,7 +75,7 @@ export default function CurtidasPage() {
           service.name.toLowerCase().includes('curtida')
         ).map(service => {
           // Tratar metadata de forma segura
-          let metadata = {};
+          let metadata: Record<string, any> = {};
           try {
             metadata = service.metadata && typeof service.metadata === 'string' 
               ? JSON.parse(service.metadata) 
@@ -73,6 +83,9 @@ export default function CurtidasPage() {
           } catch (parseError) {
             console.error('Erro ao parsear metadata:', parseError);
           }
+
+          // Verificar se service_variations existe, senão usar metadata.quantidade_preco
+          const variations = service.service_variations || (metadata.quantidade_preco as any[]) || [];
 
           return {
             id: service.id,
@@ -84,8 +97,11 @@ export default function CurtidasPage() {
             slug: service.name.toLowerCase().replace(/\s+/g, '-'),
             categoria: service.categoria,
             status: service.status,
-            discount_price: metadata['discount_price'],
-            quantidade_preco: metadata['quantidade_preco'] || []
+            discount_price: metadata.discount_price,
+            quantidade_preco: variations,
+            metadata: {
+              service_details: metadata.service_details || {}
+            }
           };
         });
 

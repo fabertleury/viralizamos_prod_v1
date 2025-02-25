@@ -8,8 +8,23 @@ import { toast } from 'sonner';
 import { Header } from '@/components/layout/header';
 import { useForm } from 'react-hook-form';
 import { fetchInstagramProfile } from '@/lib/services/instagram-profile';
-import { useRouter } from 'next/navigation';
+// import { useRouter } from 'next/navigation';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { 
+  faCoffee, faLemon, faCar, faHeart, faStar, faClock, faCheck, 
+  faShield, faRocket, faGlobe, faUsers, faThumbsUp, faEye, faComment, 
+  faBolt, faMedal, faTrophy, faGem, faCrown, faFire, faSmile, faLock, faUnlock 
+} from '@fortawesome/free-solid-svg-icons';
+
+interface ServiceDetail {
+  icon: string;
+  title: string;
+}
+
+interface QuantidadePreco {
+  quantidade: number;
+  preco: number;
+}
 
 interface Service {
   id: string;
@@ -17,13 +32,11 @@ interface Service {
   description: string;
   preco: number;
   quantidade: number;
-  icon: any;
-  title: string;
-  metadata: {
-    quantidade_preco: {
-      quantidade: number;
-      preco: number;
-    }[];
+  service_variations?: QuantidadePreco[];
+  service_details?: ServiceDetail[];
+  metadata?: {
+    quantidade_preco?: QuantidadePreco[];
+    serviceDetails?: ServiceDetail[];
   };
 }
 
@@ -32,24 +45,27 @@ interface FormData {
   is_public_confirmed: boolean;
 }
 
-const messages = [
-  "Estamos buscando seu perfil...",
-  "Encontramos o seu perfil...",
-  "Estamos verificando se o perfil é público...",
-  "Perfil verificado"
-];
+interface ProfileData {
+  username: string;
+  full_name?: string;
+  profile_pic_url?: string;
+  follower_count?: number;
+  following_count?: number;
+  media_count?: number;
+  is_private: boolean;
+}
 
 export default function Step1Page() {
   const [isLoading, setIsLoading] = useState(false);
   const [service, setService] = useState<Service | null>(null);
   const [loadingStage, setLoadingStage] = useState<'searching' | 'checking' | 'loading' | 'done' | 'error'>('searching');
-  const [profileData, setProfileData] = useState<any>(null);
+  const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   
   const searchParams = useSearchParams();
   const supabase = useSupabase();
-  const router = useRouter();
+  // const router = useRouter(); // Não utilizado por enquanto
   const serviceId = searchParams.get('service_id');
   const quantity = searchParams.get('quantity');
 
@@ -66,7 +82,7 @@ export default function Step1Page() {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await supabase.client
         .from('services')
         .select('*')
         .eq('id', serviceId)
@@ -77,12 +93,21 @@ export default function Step1Page() {
         return;
       }
 
+      // Definir o serviço com todos os dados
       setService(data);
 
       // Verificar preço com base na quantidade escolhida
-      const selectedVariation = data.metadata.quantidade_preco.find(v => v.quantidade === parseInt(quantity));
+      const variations = data.service_variations || data.metadata?.quantidade_preco || [];
+      const selectedVariation = variations.find(
+        (v: QuantidadePreco) => v.quantidade === parseInt(quantity || '0')
+      );
       if (selectedVariation) {
-        setService(prev => ({ ...prev, preco: selectedVariation.preco }));
+        setService(prevService => {
+          if (prevService) {
+            return { ...prevService, preco: selectedVariation.preco };
+          }
+          return prevService;
+        });
       } else {
         toast.error('Variação de quantidade não encontrada');
       }
@@ -108,13 +133,13 @@ export default function Step1Page() {
       if (result.error) {
         setLoadingStage('error');
         setError(result.error);
-        setProfileData(result.profileData);
+        setProfileData(result.profileData || null);
         return;
       }
 
-      setProfileData(result.profileData);
+      setProfileData(result.profileData || null);
       setLoadingStage('done');
-    } catch (err) {
+    } catch {
       setLoadingStage('error');
       setError('Erro ao verificar perfil');
     } finally {
@@ -203,6 +228,52 @@ export default function Step1Page() {
               <div>
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Detalhes do Serviço</h3>
                 <p>{service?.description}</p>
+                <ul className="space-y-2 mt-2">
+                  {service?.service_details || service?.metadata?.serviceDetails ? (
+                    (service.service_details || service.metadata?.serviceDetails || []).map((detail, index) => {
+                      // Mapeamento de nomes de ícones para objetos de ícone
+                      const iconMap = {
+                        'faCoffee': faCoffee,
+                        'faLemon': faLemon,
+                        'faCar': faCar,
+                        'faHeart': faHeart,
+                        'faStar': faStar,
+                        'faClock': faClock,
+                        'faCheck': faCheck,
+                        'faShield': faShield,
+                        'faRocket': faRocket,
+                        'faGlobe': faGlobe,
+                        'faUsers': faUsers,
+                        'faThumbsUp': faThumbsUp,
+                        'faEye': faEye,
+                        'faComment': faComment,
+                        'faBolt': faBolt,
+                        'faMedal': faMedal,
+                        'faTrophy': faTrophy,
+                        'faGem': faGem,
+                        'faCrown': faCrown,
+                        'faFire': faFire,
+                        'faSmile': faSmile,
+                        'faLock': faLock,
+                        'faUnlock': faUnlock,
+                      };
+                      
+                      // Usar o ícone mapeado ou um ícone padrão se não encontrado
+                      const iconObject = detail.icon && iconMap[detail.icon as keyof typeof iconMap] 
+                        ? iconMap[detail.icon as keyof typeof iconMap] 
+                        : faHeart;
+                      
+                      return (
+                        <li key={index} className="flex items-center">
+                          <FontAwesomeIcon icon={iconObject} className="mr-2" />
+                          <span className="font-semibold text-gray-800">{detail.title}</span>
+                        </li>
+                      );
+                    })
+                  ) : (
+                    <li className="text-gray-500">Nenhum detalhe disponível</li>
+                  )}
+                </ul>
               </div>
             </div>
           </div>

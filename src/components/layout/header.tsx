@@ -54,11 +54,11 @@ export function Header() {
     const fetchData = async () => {
       try {
         // Verificar se usuário está logado
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await supabase.client.auth.getUser();
         setIsLoggedIn(!!user);
 
         // Buscar redes sociais ativas
-        const { data: socialsData } = await supabase
+        const { data: socialsData } = await supabase.client
           .from('socials')
           .select('*')
           .eq('active', true)
@@ -209,7 +209,7 @@ export function Header() {
                         href={social.url}
                         className="text-gray-800 hover:text-[#FF00CE] transition-colors"
                       >
-                        <span>{translations.header.servicesFor} {social.name}</span>
+                        <span>{social.name}</span>
                       </Link>
                     ))}
                     
