@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { createClient } from '@/lib/supabase/client';
-import { Heart, Eye, Users, Play, Clock, MessageCircle } from 'lucide-react';
+import { Heart, Eye, Users, MessageCircle } from 'lucide-react';
 
 interface Subcategory {
   id: string;
@@ -14,6 +14,9 @@ interface Subcategory {
   slug: string;
   icon?: string;
   category_id: string;
+  services?: {
+    count: number;
+  };
 }
 
 // Mapeamento de categorias principais
@@ -73,14 +76,7 @@ const groupSubcategoriesByCategory = (subcategories: Subcategory[]) => {
       description: `Serviços de ${categorySlug}`
     };
 
-    const config = categoryConfig[categorySlug] || defaultConfig;
-
-    // Encontrar o nome mais descritivo
-    const mainSub = subs.find(s => 
-      s.name.toLowerCase().includes('premium') || 
-      s.name.toLowerCase().includes('brasileiras') || 
-      s.name.toLowerCase().includes('mundiais')
-    ) || subs[0];
+    const config = (categoryConfig as any)[categorySlug] || defaultConfig;
 
     return {
       slug: categorySlug,
@@ -100,10 +96,33 @@ export default function InstagramPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Busca diretamente na tabela de subcategorias
+        // Buscar categorias relacionadas ao Instagram
+        const { data: instagramCategory, error: categoryError } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('name', 'Instagram')
+          .single();
+
+        if (categoryError) {
+          console.error('Erro ao buscar categoria Instagram:', categoryError);
+          throw categoryError;
+        }
+
+        console.log('Categoria Instagram encontrada:', instagramCategory);
+
+        // Buscar subcategorias relacionadas à categoria Instagram
         const { data: subcategoriesData, error: subcategoriesError } = await supabase
           .from('subcategories')
-          .select('*')
+          .select(`
+            id, 
+            name, 
+            description, 
+            slug, 
+            icon, 
+            category_id,
+            services(count)
+          `)
+          .eq('category_id', instagramCategory.id)
           .eq('active', true)
           .order('order_position', { ascending: true });
 
@@ -112,34 +131,27 @@ export default function InstagramPage() {
 
         if (subcategoriesError) throw subcategoriesError;
 
-        // Filtra subcategorias de Instagram
-        const instagramSubcategories = subcategoriesData.filter(sub => {
-          const validCategories = [
-            'curtidas', 
-            'seguidores', 
-            'visualizacoes', 
-            'views', 
-            'reels', 
-            'stories', 
-            'comentarios'
-          ];
+        // Se não encontrar nada, busca todas as subcategorias ativas
+        if (!subcategoriesData || subcategoriesData.length === 0) {
+          const { data: allSubcategories, error } = await supabase
+            .from('subcategories')
+            .select(`
+              id, 
+              name, 
+              description, 
+              slug, 
+              icon, 
+              category_id,
+              services(count)
+            `)
+            .eq('active', true)
+            .order('order_position', { ascending: true });
           
-          const hasValidCategory = validCategories.some(category => 
-            sub.name.toLowerCase().includes(category) || 
-            (sub.description && sub.description.toLowerCase().includes(category))
-          );
-          
-          return hasValidCategory;
-        });
-
-        console.log('Subcategorias de Instagram filtradas:', instagramSubcategories);
-
-        // Se não encontrar nada, usa todas as subcategorias ativas
-        setSubcategories(
-          instagramSubcategories.length > 0 
-            ? instagramSubcategories 
-            : subcategoriesData
-        );
+          if (error) throw error;
+          setSubcategories(allSubcategories || []);
+        } else {
+          setSubcategories(subcategoriesData);
+        }
       } catch (error) {
         console.error('Erro ao carregar subcategorias:', error);
       } finally {
@@ -208,9 +220,21 @@ export default function InstagramPage() {
                             {group.description}
                           </p>
                           <p className="text-gray-600 text-sm mt-auto">
-                            {group.subcategories.length > 1 
-                              ? `${group.subcategories.length} opções disponíveis` 
-                              : '1 opção disponível'}
+                            {(() => {
+                              // Contar o número total de serviços para esta categoria
+                              const totalServices = group.subcategories.reduce((total, sub) => 
+                                total + (sub.services?.count || 0), 0);
+                              
+                              if (totalServices > 0) {
+                                return totalServices > 1 
+                                  ? `${totalServices} serviços disponíveis` 
+                                  : '1 serviço disponível';
+                              } else {
+                                return group.subcategories.length > 1 
+                                  ? `${group.subcategories.length} opções disponíveis` 
+                                  : '1 opção disponível';
+                              }
+                            })()}
                           </p>
                         </Card>
                       </Link>
