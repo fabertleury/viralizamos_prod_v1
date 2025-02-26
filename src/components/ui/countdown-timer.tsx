@@ -10,6 +10,11 @@ interface CountdownTimerProps {
 export function CountdownTimer({ initialSeconds, onComplete }: CountdownTimerProps) {
   const [seconds, setSeconds] = useState(initialSeconds);
 
+  // Reiniciar o timer quando initialSeconds mudar
+  useEffect(() => {
+    setSeconds(initialSeconds);
+  }, [initialSeconds]);
+
   useEffect(() => {
     if (seconds <= 0) {
       onComplete?.();

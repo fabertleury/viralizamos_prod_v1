@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { getProxiedImageUrl } from '../utils/proxy-image';
 import { CountdownTimer } from '@/components/ui/countdown-timer';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 
 interface LoadingProfileModalProps {
   open: boolean;
@@ -29,6 +30,26 @@ export function LoadingProfileModal({
 }: LoadingProfileModalProps) {
   const router = useRouter();
 
+  const [canRetry, setCanRetry] = useState(false);
+  const [timerKey, setTimerKey] = useState(0); // Chave para forçar reinício do timer
+
+  useEffect(() => {
+    // Resetar o timer quando o modal for aberto
+    if (open && profileData?.is_private) {
+      setCanRetry(false);
+      setTimerKey(prev => prev + 1);
+    }
+  }, [open, profileData]);
+
+  console.log('LoadingProfileModal - Dados recebidos:', {
+    open,
+    loadingStage,
+    error,
+    profileData,
+    serviceId,
+    checkoutSlug
+  });
+
   const messages = {
     searching: 'Estamos buscando o seu perfil...',
     checking: 'Estamos verificando se perfil é público...',
@@ -37,10 +58,22 @@ export function LoadingProfileModal({
     error: error || 'Ocorreu um erro ao buscar o perfil'
   };
 
-  const [canRetry, setCanRetry] = useState(false);
-
   const handleContinue = () => {
+    console.log('Tentando continuar com dados:', {
+      profileData,
+      serviceId,
+      checkoutSlug,
+      isPrivate: profileData?.is_private
+    });
+
     if (profileData && serviceId && checkoutSlug) {
+      // Verificar se o perfil é privado
+      if (profileData.is_private === true) {
+        toast.error('Seu perfil precisa ser público para continuar. Por favor, altere as configurações do Instagram.');
+        onOpenChange(true); // Garantir que o modal permaneça aberto
+        return;
+      }
+
       // Salvar dados no localStorage
       localStorage.setItem('checkoutProfileData', JSON.stringify({
         profileData,
@@ -49,6 +82,13 @@ export function LoadingProfileModal({
       }));
       
       router.push(`/checkout/instagram/${checkoutSlug}/step2`);
+    } else {
+      console.error('Dados insuficientes para continuar', {
+        profileData,
+        serviceId,
+        checkoutSlug
+      });
+      toast.error('Erro ao processar dados do perfil. Tente novamente.');
     }
   };
 
@@ -58,11 +98,80 @@ export function LoadingProfileModal({
         <DialogTitle className="sr-only">Status do Perfil</DialogTitle>
         
         <div className="flex flex-col items-center justify-center p-6 space-y-6">
+          {console.log('Modal Rendering Details:', {
+            open,
+            loadingStage,
+            profileData,
+            isPrivate: profileData?.is_private,
+            error
+          })}
+
           {loadingStage !== 'error' && loadingStage !== 'done' && (
             <Loader2 className="h-8 w-8 animate-spin text-pink-600" />
           )}
           
-          {loadingStage === 'done' && profileData && (
+          {profileData?.is_private === true && (
+            <div className="flex flex-col items-center space-y-4 text-center">
+              {console.log('Renderizando modal de perfil privado', { 
+                loadingStage, 
+                isPrivate: profileData?.is_private,
+                profileData 
+              })}
+              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-gray-200">
+                <img 
+                  src={getProxiedImageUrl(profileData.profile_pic_url)}
+                  alt={profileData.username}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              
+              <div className="text-center text-gray-900 space-y-2">
+                <h3 className="text-lg font-semibold">{profileData.username}</h3>
+                <div className="flex items-center justify-center text-yellow-600 gap-2">
+                  <Lock className="w-4 h-4" />
+                  <span className="text-sm">Perfil Privado</span>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800 w-full">
+                <p className="font-bold mb-2">Atenção: Perfil Privado Detectado</p>
+                <p className="mb-3">Seu perfil do Instagram precisa estar público para continuar com a compra de curtidas. Siga os passos abaixo:</p>
+                <ol className="list-decimal list-inside space-y-2 mb-3">
+                  <li>Abra o aplicativo do Instagram</li>
+                  <li>Vá para seu perfil</li>
+                  <li>Toque em "Configurações"</li>
+                  <li>Selecione "Privacidade"</li>
+                  <li>Desative a opção "Conta Privada"</li>
+                </ol>
+                <p className="text-xs text-gray-600">Após alterar, pode levar alguns minutos para o Instagram atualizar suas configurações.</p>
+              </div>
+
+              {!canRetry ? (
+                <div className="w-full bg-blue-50 border border-blue-200 rounded-lg p-4 text-center text-blue-800">
+                  <p className="text-sm mb-2">Você poderá tentar novamente em:</p>
+                  <div className="text-lg font-bold">
+                    <CountdownTimer 
+                      key={timerKey} 
+                      initialSeconds={60} 
+                      onComplete={() => setCanRetry(true)} 
+                    />
+                  </div>
+                </div>
+              ) : (
+                <Button 
+                  onClick={() => {
+                    onOpenChange(false);
+                    setCanRetry(false);
+                  }}
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
+                >
+                  Tentar Novamente
+                </Button>
+              )}
+            </div>
+          )}
+
+          {(loadingStage === 'done' && profileData && !profileData.is_private) && (
             <div className="flex flex-col items-center space-y-4 w-full">
               <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-gray-200">
                 <img 
@@ -101,53 +210,7 @@ export function LoadingProfileModal({
             </div>
           )}
 
-          {loadingStage === 'error' && profileData?.is_private && (
-            <div className="flex flex-col items-center space-y-4 text-center">
-              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-gray-200">
-                <img 
-                  src={getProxiedImageUrl(profileData.profile_pic_url)}
-                  alt={profileData.username}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              
-              <div className="text-center text-gray-900 space-y-2">
-                <h3 className="text-lg font-semibold">{profileData.username}</h3>
-                <div className="flex items-center justify-center text-yellow-600 gap-2">
-                  <Lock className="w-4 h-4" />
-                  <span className="text-sm">Perfil Privado</span>
-                </div>
-              </div>
-
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
-                <p>Seu perfil está configurado como privado. Para continuar:</p>
-                <ol className="mt-2 list-decimal list-inside space-y-1">
-                  <li>Acesse seu perfil no Instagram</li>
-                  <li>Vá em Configurações {'>'} Privacidade</li>
-                  <li>Desative a opção "Conta Privada"</li>
-                </ol>
-                <p className="mt-2 text-xs">Após mudar a privacidade do perfil, pode levar alguns minutos para o Instagram atualizar as informações.</p>
-              </div>
-
-              {!canRetry ? (
-                <div className="text-sm text-gray-600">
-                  Você poderá tentar novamente em <CountdownTimer initialSeconds={300} onComplete={() => setCanRetry(true)} />
-                </div>
-              ) : (
-                <Button 
-                  onClick={() => {
-                    onOpenChange(false);
-                    setCanRetry(false);
-                  }}
-                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
-                >
-                  Tentar Novamente
-                </Button>
-              )}
-            </div>
-          )}
-
-          {loadingStage === 'error' && !profileData?.is_private && (
+          {(loadingStage === 'error' && profileData?.is_private !== true) && (
             <div className="text-center text-red-500">
               <p>{messages[loadingStage]}</p>
             </div>
