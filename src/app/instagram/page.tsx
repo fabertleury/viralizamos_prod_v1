@@ -96,22 +96,8 @@ export default function InstagramPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Buscar categorias relacionadas ao Instagram
-        const { data: instagramCategory, error: categoryError } = await supabase
-          .from('categories')
-          .select('id')
-          .eq('name', 'Instagram')
-          .single();
-
-        if (categoryError) {
-          console.error('Erro ao buscar categoria Instagram:', categoryError);
-          throw categoryError;
-        }
-
-        console.log('Categoria Instagram encontrada:', instagramCategory);
-
-        // Buscar subcategorias relacionadas à categoria Instagram
-        const { data: subcategoriesData, error: subcategoriesError } = await supabase
+        // Buscar todas as subcategorias ativas
+        const { data: allSubcategories, error } = await supabase
           .from('subcategories')
           .select(`
             id, 
@@ -122,36 +108,38 @@ export default function InstagramPage() {
             category_id,
             services(count)
           `)
-          .eq('category_id', instagramCategory.id)
           .eq('active', true)
           .order('order_position', { ascending: true });
-
-        console.log('Dados brutos das subcategorias:', subcategoriesData);
-        console.log('Erro nas subcategorias:', subcategoriesError);
-
-        if (subcategoriesError) throw subcategoriesError;
-
-        // Se não encontrar nada, busca todas as subcategorias ativas
-        if (!subcategoriesData || subcategoriesData.length === 0) {
-          const { data: allSubcategories, error } = await supabase
-            .from('subcategories')
-            .select(`
-              id, 
-              name, 
-              description, 
-              slug, 
-              icon, 
-              category_id,
-              services(count)
-            `)
-            .eq('active', true)
-            .order('order_position', { ascending: true });
-          
-          if (error) throw error;
-          setSubcategories(allSubcategories || []);
-        } else {
-          setSubcategories(subcategoriesData);
+        
+        if (error) {
+          console.error('Erro ao buscar subcategorias:', error);
+          throw error;
         }
+
+        console.log('Todas as subcategorias:', allSubcategories);
+        
+        // Filtrar subcategorias relacionadas ao Instagram
+        const instagramSubcategories = allSubcategories.filter(sub => {
+          const name = sub.name.toLowerCase();
+          return (
+            name.includes('curtida') || 
+            name.includes('seguidor') || 
+            name.includes('visualizacao') || 
+            name.includes('visualização') || 
+            name.includes('comentario') || 
+            name.includes('comentário') || 
+            name.includes('instagram')
+          );
+        });
+
+        console.log('Subcategorias de Instagram filtradas:', instagramSubcategories);
+        
+        // Se não encontrar nada, usa todas as subcategorias ativas
+        setSubcategories(
+          instagramSubcategories.length > 0 
+            ? instagramSubcategories 
+            : allSubcategories
+        );
       } catch (error) {
         console.error('Erro ao carregar subcategorias:', error);
       } finally {
