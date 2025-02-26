@@ -39,21 +39,116 @@ export async function GET(request: NextRequest) {
     try {
       const supabase = createClient();
 
-      // Buscar transação pelo payment_external_reference
-      const { data: transaction, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .filter('payment_external_reference', 'eq', externalReference)
-        .single();
+      // Log inicial com todos os parâmetros
+      console.log('Buscando transação com referências:', { 
+        externalReference 
+      });
 
-      if (error) {
-        console.error('Error fetching transaction:', error);
-        await sendEvent('error');
-        return false;
+      // Estratégias de busca múltiplas
+      const searchStrategies = [
+        async () => {
+          console.log('Estratégia 1: Busca por payment_external_reference');
+          const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('payment_external_reference', externalReference)
+            .limit(2);
+          
+          console.log('Resultado Estratégia 1:', { 
+            dataCount: data?.length, 
+            data,
+            error 
+          });
+
+          return { data, error };
+        },
+        
+        async () => {
+          console.log('Estratégia 2: Busca por payment_id');
+          const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('payment_id', externalReference)
+            .limit(2);
+          
+          console.log('Resultado Estratégia 2:', { 
+            dataCount: data?.length, 
+            data,
+            error 
+          });
+
+          return { data, error };
+        },
+        
+        async () => {
+          console.log('Estratégia 3: Busca por id');
+          const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('id', externalReference)
+            .limit(2);
+          
+          console.log('Resultado Estratégia 3:', { 
+            dataCount: data?.length, 
+            data,
+            error 
+          });
+
+          return { data, error };
+        },
+
+        async () => {
+          console.log('Estratégia 4: Busca flexível no metadata');
+          const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .containedBy('metadata', {
+              payment: {
+                id: externalReference
+              }
+            })
+            .limit(2);
+          
+          console.log('Resultado Estratégia 4:', { 
+            dataCount: data?.length, 
+            data,
+            error 
+          });
+
+          return { data, error };
+        }
+      ];
+
+      let transaction = null;
+      let error = null;
+
+      // Tentar estratégias de busca
+      for (const strategy of searchStrategies) {
+        const result = await strategy();
+        
+        if (result.data && result.data.length === 1) {
+          transaction = result.data[0];
+          break;
+        } else if (result.data && result.data.length > 1) {
+          console.warn('Múltiplas transações encontradas:', result.data);
+          // Escolher a transação mais recente
+          transaction = result.data.sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )[0];
+          break;
+        }
+        
+        error = result.error;
       }
 
+      console.log('Resultado final da busca:', { 
+        transaction, 
+        error 
+      });
+
+      // Se nenhuma estratégia funcionar
       if (!transaction) {
-        console.error('Transaction not found');
+        console.error('Transação não encontrada:', error);
         await sendEvent('not_found');
         return false;
       }
