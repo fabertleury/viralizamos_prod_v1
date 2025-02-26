@@ -42,6 +42,8 @@ export async function fetchInstagramProfile(username: string): Promise<ProfileRe
     if (response.data.status === 'done' && response.data.response.body.data) {
       const userData = response.data.response.body.data.user;
 
+      console.log('[INSTAGRAM PROFILE] Valor de is_private:', userData.is_private);
+
       return {
         profileData: {
           username: userData.username,

@@ -40,7 +40,13 @@ interface Post {
 export default function Step2Page() {
   const router = useRouter();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
-  const [formData, setFormData] = useState<any>(null);
+  const [formData, setFormData] = useState({
+    userId: '',
+    name: '',
+    email: '',
+    whatsapp: '',
+    phone: ''
+  });
   const [service, setService] = useState<Service | null>(null);
   const [selectedPosts, setSelectedPosts] = useState<Post[]>([]);
   const [instagramPosts, setInstagramPosts] = useState<Post[]>([]);
@@ -101,6 +107,12 @@ export default function Step2Page() {
     try {
       console.log('Buscando serviço com external_id:', externalId);
 
+      // Configurar headers de autenticação
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session 
+        ? { Authorization: `Bearer ${session.access_token}` } 
+        : {};
+
       // Tentar várias formas de buscar o serviço
       const searchMethods = [
         () => supabase
@@ -143,7 +155,6 @@ export default function Step2Page() {
         }
       }
 
-      // Se nenhuma busca funcionar
       console.error('Não foi possível encontrar o serviço');
       toast.error('Serviço não encontrado');
       return null;
@@ -182,7 +193,14 @@ export default function Step2Page() {
 
         if (profileData) {
           setProfileData(profileData);
-          setFormData(parsedCheckoutData);
+          // Atualizar formData com dados do perfil, se disponíveis
+          setFormData({
+            userId: parsedCheckoutData.userId || '',
+            name: parsedCheckoutData.name || '',
+            email: parsedCheckoutData.email || '',
+            whatsapp: parsedCheckoutData.whatsapp || '',
+            phone: parsedCheckoutData.phone || ''
+          });
         }
 
         if (externalId && profileData?.username) {
@@ -192,36 +210,18 @@ export default function Step2Page() {
           Promise.all([
             fetchService(externalId),
             fetchInstagramPosts(profileData.username)
-          ]).then(([service, posts]) => {
-            if (posts && posts.length > 0) {
-              console.log('Posts formatados:', posts);
-              setInstagramPosts(posts);
-            } else {
-              console.warn('Nenhum post encontrado');
-              toast.warning('Não foram encontrados posts para este usuário');
+          ]).then(([serviceData, postsData]) => {
+            if (serviceData) {
+              setService(serviceData);
             }
-          }).catch(error => {
-            console.error('Erro ao buscar serviço ou posts:', error);
-            toast.error('Erro ao carregar dados');
-            router.push('/');
+            if (postsData) {
+              setInstagramPosts(postsData);
+            }
           });
-        } else {
-          console.warn('Não foi possível buscar posts: faltam dados', {
-            externalId,
-            username: profileData?.username
-          });
-          toast.error('Dados do perfil incompletos');
-          router.push('/');
         }
-      } else {
-        console.warn('Nenhum dado de checkout encontrado');
-        toast.error('Dados do perfil não encontrados');
-        router.push('/');
       }
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-      toast.error('Erro ao carregar dados do perfil');
-      router.push('/');
+      console.error('Erro ao processar dados de checkout:', error);
     }
   }, []);
 
@@ -470,6 +470,7 @@ export default function Step2Page() {
         <PaymentPixModal
           isOpen={!!paymentData}
           onClose={handleClosePaymentModal}
+          qrCode={paymentData.qrCodeText}
           qrCodeText={paymentData.qrCodeText}
           paymentId={paymentData.paymentId}
         />

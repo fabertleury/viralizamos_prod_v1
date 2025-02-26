@@ -23,7 +23,10 @@ const nextConfig = {
       'scontent-atl3-2.cdninstagram.com',
       'scontent-atl3-1.cdninstagram.com',
       'scontent-atl3-3.cdninstagram.com',
-      'scontent-waw2-1.cdninstagram.com'
+      'scontent-waw2-1.cdninstagram.com',
+      'api.qrserver.com',
+      'localhost',
+      'ijpwrspomqdnxavpjbzh.supabase.co'
     ],
     remotePatterns: [
       {
@@ -37,6 +40,10 @@ const nextConfig = {
         hostname: '**fbcdn.net',
         port: '',
         pathname: '**'
+      },
+      {
+        protocol: 'https',
+        hostname: 'api.qrserver.com',
       }
     ]
   },

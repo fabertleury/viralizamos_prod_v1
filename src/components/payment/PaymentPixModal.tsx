@@ -1,7 +1,7 @@
 'use client';
 
 import { Dialog, Transition } from '@headlessui/react';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, useCallback } from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -10,55 +10,129 @@ import { useRouter } from 'next/navigation';
 interface PaymentPixModalProps {
   isOpen: boolean;
   onClose: () => void;
-  qrCode: string;
+  qrCode?: string;
   qrCodeText: string;
   paymentId: string;
+  qrCodeBase64?: string;
 }
 
-export function PaymentPixModal({ isOpen, onClose, qrCode, qrCodeText, paymentId }: PaymentPixModalProps) {
+export function PaymentPixModal({ 
+  isOpen, 
+  onClose, 
+  qrCode, 
+  qrCodeText, 
+  paymentId, 
+  qrCodeBase64: initialQrCodeBase64 
+}: PaymentPixModalProps) {
   const [paymentStatus, setPaymentStatus] = useState<string>('pending');
+  const [qrCodeBase64, setQrCodeBase64] = useState(initialQrCodeBase64);
   const router = useRouter();
+
+  useEffect(() => {
+    console.log('Initial props:', { 
+      qrCode, 
+      qrCodeText, 
+      paymentId, 
+      initialQrCodeBase64 
+    });
+  }, [qrCode, qrCodeText, paymentId, initialQrCodeBase64]);
+
+  // Função para garantir que o QR Code seja renderizável
+  const getQRCodeSrc = useCallback(() => {
+    console.log('Detalhes do QR Code (getQRCodeSrc):', { 
+      qrCodeBase64, 
+      length: qrCodeBase64?.length, 
+      qrCode,
+      initialQrCodeBase64
+    });
+
+    // Priorizar qrCodeBase64 recebido do backend
+    if (qrCodeBase64) {
+      console.log('QR Code base64:', qrCodeBase64);
+      console.log('QR Code length:', qrCodeBase64.length);
+      
+      // Remover prefixo de dados se existir
+      const base64 = qrCodeBase64.replace(/^data:image\/png;base64,/, '');
+      return `data:image/png;base64,${base64}`;
+    }
+
+    // Fallback para gerar QR Code via URL externa
+    if (qrCodeText) {
+      console.log('Gerando QR Code via URL:', 
+        `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeText)}`
+      );
+      
+      return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeText)}`;
+    }
+
+    // Se nenhuma fonte de QR Code estiver disponível
+    return undefined;
+  }, [qrCodeBase64, qrCodeText, initialQrCodeBase64]);
+
+  useEffect(() => {
+    console.log('Initial qrCode:', qrCode);
+    console.log('Initial qrCodeBase64:', qrCodeBase64);
+  }, [qrCode, qrCodeBase64]);
 
   useEffect(() => {
     if (!isOpen || !paymentId) return;
 
+    let interval: NodeJS.Timeout;
+
     const checkPaymentStatus = async () => {
       try {
+        console.log('Iniciando verificação de status de pagamento', { 
+          paymentId, 
+          isOpen,
+          fullUrl: `/api/payment/check-status`,
+          paymentIdType: typeof paymentId,
+          paymentIdLength: paymentId?.length
+        });
+
+        // Log de configuração de headers
+        const headers = {
+          'Content-Type': 'application/json',
+        };
+        console.log('Headers da requisição:', headers);
+
         const response = await fetch('/api/payment/check-status', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
           body: JSON.stringify({ payment_id: paymentId }),
         });
 
+        console.log('Resposta da verificação de status:', {
+          status: response.status,
+          ok: response.ok,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+
         if (!response.ok) {
-          throw new Error('Erro ao verificar status do pagamento');
+          const errorText = await response.text();
+          console.error('Erro detalhado na resposta:', {
+            status: response.status,
+            errorText,
+            contentType: response.headers.get('content-type')
+          });
+          
+          // Tentar parsear o erro como JSON se possível
+          try {
+            const errorJson = JSON.parse(errorText);
+            console.error('Erro em formato JSON:', errorJson);
+          } catch (parseError) {
+            console.error('Erro ao parsear JSON:', parseError);
+          }
+
+          throw new Error(`Erro ao verificar status do pagamento: ${errorText}`);
         }
 
         const data = await response.json();
-        console.log('Payment status check:', data);
-        
-        if (data.status === 'approved') {
-          setPaymentStatus('approved');
-          toast.success('Pagamento aprovado! Redirecionando...');
-          
-          // Limpar o intervalo antes de redirecionar
-          clearInterval(interval);
-          
-          // Esperar 2 segundos antes de redirecionar
-          setTimeout(() => {
-            onClose();
-            router.push(`/acompanhar-pedido?transaction_id=${data.transaction_id}`);
-          }, 2000);
-        } else if (['rejected', 'cancelled'].includes(data.status)) {
-          setPaymentStatus('failed');
-          toast.error('Pagamento não aprovado. Por favor, tente novamente.');
-          clearInterval(interval);
-        }
+        console.log('Dados completos do status de pagamento:', data);
+
+        return data;
       } catch (error) {
-        console.error('Error checking payment status:', error);
-        toast.error('Erro ao verificar status do pagamento');
+        console.error('Erro completo na verificação de status:', error);
+        throw error;
       }
     };
 
@@ -66,11 +140,85 @@ export function PaymentPixModal({ isOpen, onClose, qrCode, qrCodeText, paymentId
     checkPaymentStatus();
 
     // Verificar a cada 5 segundos
-    const interval = setInterval(checkPaymentStatus, 5000);
+    interval = setInterval(checkPaymentStatus, 5000);
 
     // Limpar o intervalo quando o componente for desmontado
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [isOpen, paymentId, onClose, router]);
+
+  useEffect(() => {
+    if (!paymentId) return;
+
+    let eventSource: EventSource | null = null;
+
+    const startPaymentStatusStream = () => {
+      // Usar external_reference como parâmetro
+      const streamUrl = `/api/payment/status-stream?external_reference=${paymentId}`;
+      
+      console.log('Iniciando stream de status de pagamento:', streamUrl);
+
+      eventSource = new EventSource(streamUrl);
+
+      eventSource.addEventListener('statusPayment', (event) => {
+        const status = event.data;
+        
+        console.log('Status de pagamento recebido:', status);
+
+        if (status === 'true') {
+          // Pagamento aprovado
+          setPaymentStatus('approved');
+          toast.success('Pagamento aprovado! Redirecionando...');
+          
+          // Fechar o modal e redirecionar
+          setTimeout(() => {
+            onClose();
+            router.push(`/acompanhar-pedido?transaction_id=${paymentId}`);
+          }, 2000);
+
+          // Fechar event source
+          if (eventSource) {
+            eventSource.close();
+          }
+        } else if (status === 'false') {
+          // Pagamento ainda não aprovado, continuar monitorando
+          console.log('Pagamento ainda não aprovado');
+        } else if (status === 'error' || status === 'not_found') {
+          // Erro na verificação
+          toast.error('Erro ao verificar status do pagamento');
+          
+          if (eventSource) {
+            eventSource.close();
+          }
+        }
+      });
+
+      eventSource.onerror = (error) => {
+        console.error('Erro no stream de status:', error);
+        toast.error('Erro na conexão de status de pagamento');
+        
+        if (eventSource) {
+          eventSource.close();
+        }
+      };
+    };
+
+    startPaymentStatusStream();
+
+    // Limpar event source ao desmontar
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, [paymentId, onClose, router]);
+
+  // Log para verificar o QR Code
+  useEffect(() => {
+    console.log('QR Code base64:', qrCodeBase64);
+    console.log('QR Code length:', qrCodeBase64?.length);
+  }, [qrCodeBase64]);
 
   const copyQRCode = async () => {
     try {
@@ -128,26 +276,58 @@ export function PaymentPixModal({ isOpen, onClose, qrCode, qrCodeText, paymentId
                       <p className="text-sm text-gray-500">Por favor, tente novamente ou escolha outra forma de pagamento</p>
                     </div>
                   ) : (
-                    <>
-                      <div className="bg-gray-100 p-4 rounded-lg">
-                        <Image
-                          src={`data:image/png;base64,${qrCode}`}
-                          alt="QR Code PIX"
-                          width={200}
-                          height={200}
-                          className="mx-auto"
-                        />
+                    <div className="w-full space-y-4">
+                      <div className="text-center mb-4">
+                        <h4 className="text-lg font-semibold text-gray-800 mb-2">
+                          Realize o pagamento através do QR code abaixo:
+                        </h4>
+                        <p className="text-sm text-gray-600">
+                          Após o pagamento aguarde, o processamento é automático
+                        </p>
                       </div>
-                      <Button
-                        onClick={copyQRCode}
-                        className="w-full bg-[#FF19D3] hover:bg-[#FF00CE] text-white"
-                      >
-                        Copiar Código PIX
-                      </Button>
-                      <p className="text-sm text-gray-500 text-center">
-                        Após o pagamento, aguarde alguns instantes para a confirmação automática
-                      </p>
-                    </>
+
+                      <div className="bg-gray-100 p-4 rounded-lg">
+                        {getQRCodeSrc() ? (
+                          <Image
+                            src={getQRCodeSrc()!}
+                            alt="QR Code PIX"
+                            width={200}
+                            height={200}
+                            className="mx-auto"
+                            onError={(e) => {
+                              console.error('Erro ao carregar imagem:', e);
+                              toast.error('Erro ao carregar QR Code');
+                            }}
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center space-y-2">
+                            <p className="text-yellow-600 font-medium">QR Code não disponível</p>
+                            <p className="text-sm text-gray-500 text-center">
+                              Por favor, copie o código PIX abaixo para realizar o pagamento
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-center mt-4">
+                        <h4 className="text-lg font-semibold text-gray-800 mb-2">
+                          Ou
+                        </h4>
+                        <p className="text-sm text-gray-600 mb-2">
+                          Copie o Código Pix abaixo e insira na opção Pix Copia e Cola no aplicativo do seu banco para realizar o pagamento do pix:
+                        </p>
+                      </div>
+
+                      <div className="mt-2 w-full">
+                        <Button 
+                          onClick={copyQRCode} 
+                          variant="outline" 
+                          className="w-full"
+                        >
+                          Copiar Código PIX
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </Dialog.Panel>

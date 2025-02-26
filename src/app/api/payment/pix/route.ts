@@ -27,8 +27,23 @@ export async function POST(request: Request) {
       }
     });
 
+    // Log detalhado da resposta do Mercado Pago
+    console.log('Resposta completa do Mercado Pago:', JSON.stringify(result, null, 2));
+    console.log('Dados da transação:', JSON.stringify(result.body.point_of_interaction?.transaction_data, null, 2));
+
     if (!result.body.point_of_interaction?.transaction_data?.qr_code) {
       throw new Error('Erro ao gerar QR Code do PIX');
+    }
+
+    // Tentar gerar QR Code base64 manualmente se não estiver presente
+    let qrCodeBase64 = result.body.point_of_interaction.transaction_data.qr_code_base64;
+    if (!qrCodeBase64) {
+      try {
+        const QRCode = require('qrcode');
+        qrCodeBase64 = await QRCode.toDataURL(result.body.point_of_interaction.transaction_data.qr_code);
+      } catch (qrError) {
+        console.error('Erro ao gerar QR Code base64:', qrError);
+      }
     }
 
     const supabase = createClient();
@@ -50,7 +65,7 @@ export async function POST(request: Request) {
         target_full_name: profile.full_name || 'N/A',
         target_profile_link: profile.link || `https://instagram.com/${profile.username}`,
         payment_qr_code: result.body.point_of_interaction.transaction_data.qr_code,
-        payment_qr_code_base64: result.body.point_of_interaction.transaction_data.qr_code_base64,
+        payment_qr_code_base64: qrCodeBase64,
         payment_external_reference: result.body.id.toString(),
         metadata: {
           service: {
@@ -78,7 +93,7 @@ export async function POST(request: Request) {
           payment: {
             id: result.body.id,
             qr_code: result.body.point_of_interaction.transaction_data.qr_code,
-            qr_code_base64: result.body.point_of_interaction.transaction_data.qr_code_base64
+            qr_code_base64: qrCodeBase64
           }
         }
       })
@@ -90,11 +105,11 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      id: result.body.id,
+      id: transaction.id,
       qr_code: result.body.point_of_interaction.transaction_data.qr_code,
-      qr_code_base64: result.body.point_of_interaction.transaction_data.qr_code_base64,
-      transaction_id: transaction.id
-    });
+      qr_code_base64: transaction.payment_qr_code_base64,
+      status: 'pending'
+    }, { status: 200 });
   } catch (error) {
     console.error('Error creating payment:', error);
     return NextResponse.json(

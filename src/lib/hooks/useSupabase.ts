@@ -9,16 +9,29 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Supabase URL ou Anon Key não definidos');
 }
 
-const supabaseInstance = createClient(supabaseUrl, supabaseAnonKey);
+// Criar singleton do cliente Supabase
+let supabaseInstance: SupabaseClient | null = null;
+
+function createSupabaseClient() {
+  if (!supabaseInstance) {
+    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
+      // Configurações adicionais de segurança
+      auth: {
+        persistSession: true
+      }
+    });
+  }
+  return supabaseInstance;
+}
 
 export function useSupabase() {
   const [client] = useState(() => {
-    return supabaseInstance;
+    return createSupabaseClient();
   });
 
   useEffect(() => {
     return () => {
-      // Cleanup if needed
+      // Cleanup se necessário
     };
   }, []);
 
@@ -39,5 +52,12 @@ export function useSupabase() {
     return data;
   };
 
-  return { client, fetchServiceData };
+  return { 
+    client, 
+    supabase: client,  
+    fetchServiceData 
+  };
 }
+
+// Exportar também o cliente singleton para uso direto
+export const supabase = createSupabaseClient();
