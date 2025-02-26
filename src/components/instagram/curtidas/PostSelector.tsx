@@ -66,14 +66,26 @@ export function PostSelector({ username, onSelectPosts, maxPosts, service }: Pos
           const postsData = await response.json();
           
           // Processar posts
-          const posts = postsData.posts || [];
-          const reels = postsData.reels || [];
-          
-          // Combinar posts e reels, priorizando posts
-          const combinedContent = [...posts, ...reels];
-          
-          if (combinedContent.length > 0) {
-            setPosts(combinedContent);
+          const posts = postsData || [];
+
+          if (posts.length > 0) {
+            setPosts(posts.map(post => ({
+              id: post.id || post.code,
+              code: post.code || post.id,
+              image_versions: {
+                items: [{
+                  url: post.image_versions?.items?.[0]?.url || 'https://via.placeholder.com/150'
+                }]
+              },
+              like_count: post.like_count || 0,
+              comment_count: post.comment_count || 0,
+              caption: { 
+                text: typeof post.caption === 'object' 
+                  ? post.caption.text 
+                  : (post.caption || '') 
+              },
+              link: `https://www.instagram.com/p/${post.code || post.id}/`
+            })));
           } else {
             console.error('Nenhum post retornado da API:', postsData);
             toast.warning('Nenhum post encontrado para este perfil.');
@@ -163,6 +175,8 @@ export function PostSelector({ username, onSelectPosts, maxPosts, service }: Pos
         {Array.isArray(posts) && posts.length > 0 ? (
           posts.map((post) => {
             const isSelected = selectedPosts.some(p => p.id === post.id);
+            const imageUrl = post.image_versions?.items?.[0]?.url || 'https://via.placeholder.com/150';
+            
             return (
               <div
                 key={post.id}
@@ -173,7 +187,7 @@ export function PostSelector({ username, onSelectPosts, maxPosts, service }: Pos
               >
                 <div className="relative w-full h-48">
                   <img
-                    src={getProxiedImageUrl(post.image_versions.items[0].url)}
+                    src={getProxiedImageUrl(imageUrl)}
                     alt={post.caption?.text || 'Post do Instagram'}
                     className="w-full h-full object-cover"
                   />

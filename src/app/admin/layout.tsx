@@ -36,6 +36,7 @@ import Image from 'next/image';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Toaster, toast } from 'sonner';
 import { classNames } from '../lib/helpers';
+import { Header } from '@/components/layout/header';
 
 const navigation = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: ChartBarIcon },
@@ -94,13 +95,35 @@ function useAdminAuth() {
           return;
         }
 
+        if (!session.user) {
+          toast.error('Erro ao carregar usuário');
+          router.push('/login');
+          setIsLoading(false);
+          return;
+        }
+
         const { data: profileData, error } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', session.user.id)
           .single();
 
-        if (error || !profileData || profileData.role !== 'admin') {
+        if (error) {
+          console.error('Erro ao carregar perfil:', error);
+          toast.error('Erro ao carregar perfil');
+          router.push('/login');
+          setIsLoading(false);
+          return;
+        }
+
+        if (!profileData) {
+          toast.error('Perfil não encontrado');
+          router.push('/login');
+          setIsLoading(false);
+          return;
+        }
+
+        if (profileData.role !== 'admin') {
           toast.error('Você não tem permissão para acessar esta área');
           router.push('/login');
           setIsAdmin(false);
@@ -109,6 +132,7 @@ function useAdminAuth() {
         }
       } catch (error) {
         console.error('Erro ao verificar permissão de admin:', error);
+        toast.error('Erro ao verificar permissão de admin');
         router.push('/login');
       } finally {
         setIsLoading(false);
@@ -285,34 +309,7 @@ export default function AdminLayout({
       </div>
 
       <div className="flex flex-1 flex-col lg:pl-72">
-        <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8 w-full">
-          <button
-            type="button"
-            className="-m-2.5 p-2.5 text-gray-700 lg:hidden"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <span className="sr-only">Open sidebar</span>
-            <Bars3Icon className="h-6 w-6" aria-hidden="true" />
-          </button>
-
-          {/* Separator */}
-          <div className="h-6 w-px bg-gray-200 lg:hidden" aria-hidden="true" />
-
-          <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
-            <div className="flex flex-1"></div>
-            <div className="flex items-center gap-x-4 lg:gap-x-6">
-              <button
-                type="button"
-                className="-m-2.5 p-2.5 text-gray-400 hover:text-gray-500"
-                onClick={handleLogout}
-              >
-                <span className="sr-only">Logout</span>
-                <ArrowRightOnRectangleIcon className="h-6 w-6" aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        </div>
-
+        <Header />
         <main className="flex-1 py-10">
           <div className="px-4 sm:px-6 lg:px-8">
             <Toaster richColors position="top-right" />

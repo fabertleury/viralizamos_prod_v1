@@ -198,6 +198,18 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
         }
         toast.success('Serviço atualizado com sucesso!');
       } else {
+        // Verificar se o serviço já existe antes de inserir
+        const { data: existingService } = await supabase
+          .from('services')
+          .select('*')
+          .eq('external_id', data.external_id)
+          .single();
+
+        if (existingService) {
+          toast.error('Serviço já existe!');
+          return;
+        }
+
         const { error } = await supabase
           .from('services')
           .insert([data]);

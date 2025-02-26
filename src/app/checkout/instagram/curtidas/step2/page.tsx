@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSupabase } from '@/lib/hooks/useSupabase';
+import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { PostSelector } from '@/components/instagram/curtidas/PostSelector';
 import { Header } from '../../components/Header';
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { getProxiedImageUrl } from '../../utils/proxy-image';
 import { PaymentPixModal } from '@/components/payment/PaymentPixModal';
+import axios from 'axios';
 
 interface ProfileData {
   username: string;
@@ -39,73 +40,190 @@ interface Post {
 export default function Step2Page() {
   const router = useRouter();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const [formData, setFormData] = useState<any>(null);
   const [service, setService] = useState<Service | null>(null);
   const [selectedPosts, setSelectedPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: '',
-    name: '',
-    whatsapp: ''
-  });
+  const [instagramPosts, setInstagramPosts] = useState<Post[]>([]);
   const [paymentData, setPaymentData] = useState<{
-    qrCode: string;
     qrCodeText: string;
     paymentId: string;
   } | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const supabase = useSupabase();
+  const supabase = createClient();
+
+  const fetchInstagramPosts = async (username: string) => {
+    try {
+      const options = {
+        method: 'GET',
+        url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/posts',
+        params: { username_or_id_or_url: username },
+        headers: {
+          'x-rapidapi-key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY,
+          'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
+        }
+      };
+      const response = await axios.request(options);
+      console.log('Resposta da API:', response.data);
+
+      // Verificar se a resposta tem a estrutura esperada
+      const posts = response.data.data?.items || response.data.items || [];
+      console.log('Posts encontrados:', posts);
+
+      // Mapear os posts para o formato esperado
+      const formattedPosts: Post[] = posts.map((post: any) => {
+        // Para posts de carrossel, usar a primeira imagem
+        const imageUrl = 
+          post.carousel_media?.[0]?.image_versions?.items?.[0]?.url || 
+          post.image_versions?.items?.[0]?.url || 
+          post.display_url;
+
+        return {
+          id: post.code || post.id || post.shortcode,
+          shortcode: post.code || post.id || post.shortcode,
+          image_url: imageUrl,
+          caption: 
+            typeof post.caption === 'object' 
+              ? post.caption.text 
+              : (post.caption || post.text || '')
+        };
+      }).filter(post => post.image_url); // Remover posts sem imagem
+
+      console.log('Posts formatados:', formattedPosts);
+      return formattedPosts;
+    } catch (error) {
+      console.error('Erro ao buscar posts do Instagram:', error);
+      return [];
+    }
+  };
+
+  const fetchService = async (externalId: string) => {
+    try {
+      console.log('Buscando serviço com external_id:', externalId);
+
+      // Tentar várias formas de buscar o serviço
+      const searchMethods = [
+        () => supabase
+          .from('services')
+          .select('*')
+          .eq('external_id', externalId)
+          .single(),
+        
+        () => supabase
+          .from('services')
+          .select('*')
+          .eq('external_id', externalId.replace(/"/g, ''))
+          .single(),
+        
+        () => supabase
+          .from('services')
+          .select('*')
+          .eq('id', externalId)
+          .single(),
+        
+        () => supabase
+          .from('services')
+          .select('*')
+          .eq('id', externalId.replace(/"/g, ''))
+          .single()
+      ];
+
+      for (const searchMethod of searchMethods) {
+        const { data, error } = await searchMethod();
+
+        if (data) {
+          console.log('Serviço encontrado:', data);
+          data.fama_id = '1';
+          setService(data);
+          return data;
+        }
+
+        if (error) {
+          console.warn('Erro na busca:', error);
+        }
+      }
+
+      // Se nenhuma busca funcionar
+      console.error('Não foi possível encontrar o serviço');
+      toast.error('Serviço não encontrado');
+      return null;
+    } catch (error) {
+      console.error('Erro inesperado ao buscar serviço:', error);
+      toast.error('Erro ao carregar o serviço');
+      return null;
+    }
+  };
 
   useEffect(() => {
-    // Carregar dados do localStorage
     const checkoutData = localStorage.getItem('checkoutProfileData');
-    
-    if (!checkoutData) {
-      toast.error('Dados do perfil não encontrados');
-      router.push('/');
-      return;
-    }
+    console.log('Dados de checkout brutos:', checkoutData);
 
     try {
-      const { profileData: savedProfile, serviceId, formData: savedFormData, timestamp } = JSON.parse(checkoutData);
-      
-      // Verificar se os dados não são muito antigos (30 minutos)
-      const thirtyMinutes = 30 * 60 * 1000;
-      if (new Date().getTime() - timestamp > thirtyMinutes) {
-        toast.error('Sessão expirada. Por favor, comece novamente.');
-        localStorage.removeItem('checkoutProfileData');
-        router.push('/');
-        return;
-      }
+      if (checkoutData) {
+        const parsedCheckoutData = JSON.parse(checkoutData);
+        console.log('Dados de checkout parseados:', parsedCheckoutData);
 
-      setProfileData(savedProfile);
-      setFormData(savedFormData || formData);
-      
-      if (serviceId) {
-        fetchService(serviceId);
+        // Recuperar o external_id com mais flexibilidade
+        const externalId = 
+          parsedCheckoutData.serviceId || 
+          parsedCheckoutData.external_id || 
+          localStorage.getItem('serviceId') || 
+          localStorage.getItem('external_id');
+
+        console.log('External ID recuperado:', externalId);
+
+        // Recuperar o perfil do usuário
+        const profileData = 
+          parsedCheckoutData.profileData || 
+          parsedCheckoutData.profile || 
+          parsedCheckoutData.user;
+
+        console.log('Perfil recuperado:', profileData);
+
+        if (profileData) {
+          setProfileData(profileData);
+          setFormData(parsedCheckoutData);
+        }
+
+        if (externalId && profileData?.username) {
+          console.log('Iniciando busca de serviço e posts para o usuário:', profileData.username);
+          
+          // Buscar serviço e posts em paralelo
+          Promise.all([
+            fetchService(externalId),
+            fetchInstagramPosts(profileData.username)
+          ]).then(([service, posts]) => {
+            if (posts && posts.length > 0) {
+              console.log('Posts formatados:', posts);
+              setInstagramPosts(posts);
+            } else {
+              console.warn('Nenhum post encontrado');
+              toast.warning('Não foram encontrados posts para este usuário');
+            }
+          }).catch(error => {
+            console.error('Erro ao buscar serviço ou posts:', error);
+            toast.error('Erro ao carregar dados');
+            router.push('/');
+          });
+        } else {
+          console.warn('Não foi possível buscar posts: faltam dados', {
+            externalId,
+            username: profileData?.username
+          });
+          toast.error('Dados do perfil incompletos');
+          router.push('/');
+        }
+      } else {
+        console.warn('Nenhum dado de checkout encontrado');
+        toast.error('Dados do perfil não encontrados');
+        router.push('/');
       }
     } catch (error) {
-      console.error('Error loading profile data:', error);
+      console.error('Erro ao carregar dados:', error);
       toast.error('Erro ao carregar dados do perfil');
       router.push('/');
     }
   }, []);
-
-  const fetchService = async (serviceId: string) => {
-    const { data: serviceData, error } = await supabase
-      .from('services')
-      .select('*')
-      .eq('id', serviceId)
-      .single();
-
-    if (error) {
-      toast.error('Erro ao carregar serviço');
-      return;
-    }
-
-    // Adicionar o ID da FAMA para curtidas
-    serviceData.fama_id = '1';
-    setService(serviceData);
-  };
 
   const handleSubmit = async () => {
     if (!profileData || !service || selectedPosts.length === 0) {
@@ -160,7 +278,6 @@ export default function Step2Page() {
       const paymentData = await response.json();
       
       setPaymentData({
-        qrCode: paymentData.qr_code_base64,
         qrCodeText: paymentData.qr_code,
         paymentId: paymentData.id
       });
@@ -206,6 +323,7 @@ export default function Step2Page() {
                 onSelectPosts={setSelectedPosts}
                 maxPosts={5}
                 service={service}
+                posts={instagramPosts}
               />
             </Card>
 
@@ -281,7 +399,6 @@ export default function Step2Page() {
         <PaymentPixModal
           isOpen={!!paymentData}
           onClose={handleClosePaymentModal}
-          qrCode={paymentData.qrCode}
           qrCodeText={paymentData.qrCodeText}
           paymentId={paymentData.paymentId}
         />
