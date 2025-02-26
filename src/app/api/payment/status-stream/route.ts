@@ -27,7 +27,11 @@ export async function GET(request: NextRequest) {
 
   // Função para enviar evento de status
   const sendEvent = async (data: string) => {
-    await writer.write(encoder.encode(`event: statusPayment\ndata: ${data}\n\n`));
+    try {
+      await writer.write(encoder.encode(`event: statusPayment\ndata: ${data}\n\n`));
+    } catch (error) {
+      console.error('Erro ao enviar evento:', error);
+    }
   };
 
   // Iniciar verificação de status
@@ -35,11 +39,11 @@ export async function GET(request: NextRequest) {
     try {
       const supabase = createClient();
 
-      // Buscar transação pelo external_reference
+      // Buscar transação pelo payment_external_reference
       const { data: transaction, error } = await supabase
         .from('transactions')
         .select('*')
-        .filter('external_reference', 'eq', externalReference)
+        .filter('payment_external_reference', 'eq', externalReference)
         .single();
 
       if (error) {
@@ -75,10 +79,11 @@ export async function GET(request: NextRequest) {
 
   // Iniciar stream e verificação periódica
   const startStream = async () => {
+    let isStreamClosed = false;
     try {
       let isApproved = false;
       
-      while (!isApproved) {
+      while (!isApproved && !isStreamClosed) {
         isApproved = await checkPaymentStatus();
         
         if (!isApproved) {
@@ -87,11 +92,21 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Fechar o stream quando o pagamento for aprovado
-      await writer.close();
+      // Fechar o stream quando o pagamento for aprovado ou houver erro
+      if (!isStreamClosed) {
+        await writer.close();
+        isStreamClosed = true;
+      }
     } catch (error) {
       console.error('Stream error:', error);
-      await writer.close();
+      if (!isStreamClosed) {
+        try {
+          await writer.close();
+          isStreamClosed = true;
+        } catch (closeError) {
+          console.error('Erro ao fechar stream:', closeError);
+        }
+      }
     }
   };
 

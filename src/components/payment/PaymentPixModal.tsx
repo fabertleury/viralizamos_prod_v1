@@ -287,6 +287,14 @@ export function PaymentPixModal({
     }
   };
 
+  useEffect(() => {
+    if (paymentStatus === 'success') {
+      setTimeout(() => {
+        router.push('/acompanhar-pedido');
+      }, 2000);
+    }
+  }, [paymentStatus, router]);
+
   return (
     <Transition appear show={isOpen} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
