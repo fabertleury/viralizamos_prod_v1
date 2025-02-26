@@ -86,16 +86,25 @@ export function PaymentPixModal({
           isOpen,
           fullUrl: `/api/payment/check-status`,
           paymentIdType: typeof paymentId,
-          paymentIdLength: paymentId?.length
+          paymentIdLength: paymentId?.length,
+          paymentIdSource: paymentId ? 'transaction.payment_external_reference' : 'undefined',
+          nodeEnv: process.env.NODE_ENV,
+          nextPublicVercel: process.env.NEXT_PUBLIC_VERCEL_ENV
         });
 
-        // Log de configuração de headers
+        if (!paymentId) {
+          console.error('Payment ID is undefined or null');
+          return null;
+        }
+
         const headers = {
           'Content-Type': 'application/json',
         };
-        console.log('Headers da requisição:', headers);
 
-        const response = await fetch('/api/payment/check-status', {
+        const fullUrl = new URL('/api/payment/check-status', window.location.origin).toString();
+        console.log('URL completa da requisição:', fullUrl);
+
+        const response = await fetch(fullUrl, {
           method: 'POST',
           headers,
           body: JSON.stringify({ payment_id: paymentId }),
@@ -115,23 +124,71 @@ export function PaymentPixModal({
             contentType: response.headers.get('content-type')
           });
           
-          // Tentar parsear o erro como JSON se possível
           try {
             const errorJson = JSON.parse(errorText);
             console.error('Erro em formato JSON:', errorJson);
+            
+            // Verificação adicional com Supabase
+            if (errorJson.details && errorJson.details.includes('No payment found')) {
+              console.warn('Possível problema: Pagamento não encontrado. Verificando detalhes...');
+              
+              const supabaseResponse = await fetch('/api/supabase/find-transaction', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                  payment_external_reference: paymentId 
+                })
+              });
+
+              const supabaseData = await supabaseResponse.json();
+              console.log('Resultado da busca no Supabase:', supabaseData);
+            }
           } catch (parseError) {
             console.error('Erro ao parsear JSON:', parseError);
           }
 
-          throw new Error(`Erro ao verificar status do pagamento: ${errorText}`);
+          // Tratamento de erro mais detalhado
+          const errorDetails = JSON.parse(errorText);
+          throw new Error(errorDetails.details || 'Erro ao verificar status do pagamento');
         }
 
         const data = await response.json();
         console.log('Dados completos do status de pagamento:', data);
 
+        // Processamento dos diferentes status
+        const paymentStatus = data.status || 'unknown';
+        const supabaseTransaction = data.supabaseTransaction;
+
+        // Log detalhado do status
+        console.log('Status do pagamento processado:', {
+          status: paymentStatus,
+          supabaseTransaction
+        });
+
+        // Atualização do estado baseado no status
+        switch(paymentStatus) {
+          case 'approved':
+            setPaymentStatus('success');
+            break;
+          case 'pending':
+            setPaymentStatus('pending');
+            break;
+          case 'in_process':
+            setPaymentStatus('processing');
+            break;
+          case 'rejected':
+            setPaymentStatus('error');
+            break;
+          default:
+            setPaymentStatus('unknown');
+        }
+
         return data;
       } catch (error) {
         console.error('Erro completo na verificação de status:', error);
+        setPaymentStatus('error');
         throw error;
       }
     };

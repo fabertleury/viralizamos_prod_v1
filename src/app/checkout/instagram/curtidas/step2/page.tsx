@@ -347,6 +347,13 @@ export default function Step2Page() {
 
       const paymentData = await response.json();
       
+      console.log('Dados completos do pagamento:', {
+        paymentId: paymentData.id,
+        paymentIdType: typeof paymentData.id,
+        paymentIdLength: paymentData.id?.length,
+        paymentData: JSON.stringify(paymentData, null, 2)
+      });
+
       setPaymentData({
         qrCodeText: paymentData.qr_code,
         paymentId: paymentData.id

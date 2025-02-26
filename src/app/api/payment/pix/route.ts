@@ -7,13 +7,16 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { amount, description, customer, service, user_id, profile, posts } = body;
 
+    console.log('Criando pagamento PIX:', { amount, description, customer });
+
     if (!process.env.MERCADO_PAGO_ACCESS_TOKEN) {
       throw new Error('Token do Mercado Pago não configurado');
     }
 
     // Configurar Mercado Pago
     mercadopago.configure({
-      access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN
+      access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN,
+      sandbox: process.env.MERCADOPAGO_SANDBOX === 'true'
     });
 
     // Criar pagamento no Mercado Pago
@@ -24,7 +27,8 @@ export async function POST(request: Request) {
       payer: {
         email: customer.email,
         first_name: customer.name
-      }
+      },
+      external_reference: crypto.randomUUID()
     });
 
     // Log detalhado da resposta do Mercado Pago
