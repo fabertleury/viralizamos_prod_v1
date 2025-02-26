@@ -225,6 +225,76 @@ export default function Step2Page() {
     }
   }, []);
 
+  const prepareTransactionData = () => {
+    if (!service || !profileData || !formData || selectedPosts.length === 0 || !paymentData) {
+      toast.error('Dados incompletos para processamento da transação');
+      return null;
+    }
+
+    // Calcular quantidade de likes por post
+    const totalPosts = selectedPosts.length;
+    const totalLikes = service.quantidade;
+    const likesPerPost = Math.floor(totalLikes / totalPosts);
+    const remainingLikes = totalLikes % totalPosts;
+
+    // Preparar metadados dos posts
+    const postsMetadata = selectedPosts.map((post, index) => ({
+      postId: post.id,
+      postCode: post.shortcode,
+      postLink: `https://www.instagram.com/p/${post.shortcode}/`,
+      likes: index === 0 ? likesPerPost + remainingLikes : likesPerPost
+    }));
+
+    return {
+      user_id: formData.userId || null,
+      order_id: paymentData.paymentId,
+      type: 'curtidas',
+      amount: service.preco,
+      status: 'pending',
+      payment_method: 'pix',
+      payment_id: paymentData.paymentId,
+      metadata: {
+        posts: postsMetadata,
+        serviceDetails: service
+      },
+      customer_name: formData.name || null,
+      customer_email: formData.email || null,
+      customer_phone: formData.phone || null,
+      target_username: profileData.username,
+      target_full_name: profileData.full_name,
+      payment_qr_code: paymentData.qrCodeText || null,
+      payment_external_reference: paymentData.paymentId,
+      service_id: service.id,
+      target_profile_link: `https://www.instagram.com/${profileData.username}/`
+    };
+  };
+
+  const sendTransactionToAdmin = async () => {
+    try {
+      setLoading(true);
+      const transactionData = prepareTransactionData();
+
+      if (!transactionData) {
+        toast.error('Não foi possível preparar os dados da transação');
+        return;
+      }
+
+      const response = await axios.post('/admin/transacoes', transactionData);
+      
+      if (response.status === 200 || response.status === 201) {
+        toast.success('Transação registrada com sucesso');
+        router.push('/pedidos');
+      } else {
+        toast.error('Erro ao registrar transação');
+      }
+    } catch (error) {
+      console.error('Erro ao enviar transação:', error);
+      toast.error('Falha ao processar transação');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!profileData || !service || selectedPosts.length === 0) {
       toast.error('Selecione pelo menos um post');
@@ -282,6 +352,7 @@ export default function Step2Page() {
         paymentId: paymentData.id
       });
 
+      await sendTransactionToAdmin();
     } catch (error) {
       console.error('Error creating payment:', error);
       toast.error('Erro ao criar pagamento. Por favor, tente novamente.');
