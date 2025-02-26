@@ -17,21 +17,19 @@ export async function POST(request: NextRequest) {
       () => supabase
         .from('transactions')
         .select('*')
-        .or(
-          `payment_external_reference.eq.${payment_id},` +
-          `external_reference.eq.${payment_id},` +
-          `metadata->payment->id.eq.${payment_id}`
-        )
+        .eq('payment_external_reference', payment_id)
         .single(),
       
-      // Fallback para busca mais flexível
       () => supabase
         .from('transactions')
         .select('*')
-        .or(
-          `payment_external_reference.ilike.%${payment_id}%,` +
-          `external_reference.ilike.%${payment_id}%`
-        )
+        .eq('payment_id', payment_id)
+        .single(),
+      
+      () => supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', payment_id)
         .single()
     ];
 
@@ -40,14 +38,14 @@ export async function POST(request: NextRequest) {
 
     // Tentar estratégias de busca
     for (const strategy of searchStrategies) {
-      const result = await strategy();
+      const { data, error } = await strategy();
       
-      if (result.data) {
-        supabaseTransaction = result.data;
+      if (data) {
+        supabaseTransaction = data;
         break;
       }
       
-      supabaseError = result.error;
+      supabaseError = error;
     }
 
     console.log('Resultado da busca no Supabase:', { 
@@ -55,30 +53,54 @@ export async function POST(request: NextRequest) {
       error: supabaseError 
     });
 
+    // Usar payment_external_reference se disponível
+    const searchReference = supabaseTransaction?.payment_external_reference || payment_id;
+
     // Estratégias de busca no Mercado Pago
-    let paymentResponse;
+    let paymentResponse = null;
     const searchMethods = [
-      () => mercadopago.payment.findById(payment_id),
-      () => mercadopago.payment.search({ qs: { external_reference: payment_id } }),
-      () => mercadopago.payment.get(payment_id)
+      async () => {
+        try {
+          const searchResponse = await mercadopago.payment.search({
+            qs: { external_reference: searchReference }
+          });
+          return searchResponse.body.results?.[0] || null;
+        } catch (error) {
+          console.warn('Erro na busca por external reference:', error);
+          return null;
+        }
+      },
+      async () => {
+        try {
+          return await mercadopago.payment.findById(searchReference);
+        } catch (error) {
+          console.warn('Erro no findById:', error);
+          return null;
+        }
+      },
+      async () => {
+        try {
+          return await mercadopago.payment.get(searchReference);
+        } catch (error) {
+          console.warn('Erro no get:', error);
+          return null;
+        }
+      }
     ];
 
+    // Tentar métodos de busca do Mercado Pago
     for (const method of searchMethods) {
-      try {
-        paymentResponse = await method();
-        
-        if (paymentResponse) {
-          console.log('Método de busca bem-sucedido:', method.name);
-          break;
-        }
-      } catch (error) {
-        console.warn(`Erro no método ${method.name}:`, error);
+      paymentResponse = await method();
+      
+      if (paymentResponse) {
+        console.log('Método de busca bem-sucedido');
+        break;
       }
     }
 
     // Se nenhuma estratégia funcionar
     if (!paymentResponse) {
-      console.error('Nenhum pagamento encontrado por nenhuma estratégia');
+      console.error('Nenhum pagamento encontrado');
       return NextResponse.json({
         error: 'Payment not found',
         details: 'Could not locate payment through any search method',
@@ -103,7 +125,13 @@ export async function POST(request: NextRequest) {
       try {
         const { error: updateError } = await supabase
           .from('transactions')
-          .update({ status: paymentStatus })
+          .update({ 
+            status: paymentStatus,
+            metadata: {
+              ...supabaseTransaction.metadata,
+              payment_details: paymentData
+            }
+          })
           .eq('id', supabaseTransaction.id);
 
         if (updateError) {
