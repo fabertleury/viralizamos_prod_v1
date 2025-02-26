@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { PaymentSuccessModal } from './PaymentSuccessModal';
 
 interface PaymentPixModalProps {
   isOpen: boolean;
@@ -14,6 +15,9 @@ interface PaymentPixModalProps {
   qrCodeText: string;
   paymentId: string;
   qrCodeBase64?: string;
+  serviceId: string;
+  targetProfileLink: string;
+  serviceName?: string;
 }
 
 export function PaymentPixModal({ 
@@ -22,11 +26,17 @@ export function PaymentPixModal({
   qrCode, 
   qrCodeText, 
   paymentId, 
-  qrCodeBase64: initialQrCodeBase64 
+  qrCodeBase64: initialQrCodeBase64,
+  serviceId,
+  targetProfileLink,
+  serviceName
 }: PaymentPixModalProps) {
   const [paymentStatus, setPaymentStatus] = useState<string>('pending');
   const [qrCodeBase64, setQrCodeBase64] = useState(initialQrCodeBase64);
   const router = useRouter();
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [statusCheckAttempts, setStatusCheckAttempts] = useState(0);
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
 
   useEffect(() => {
     console.log('Initial props:', { 
@@ -171,6 +181,8 @@ export function PaymentPixModal({
         switch(paymentStatus) {
           case 'approved':
             setPaymentStatus('success');
+            setIsSuccessModalOpen(true);
+            onClose(); // Fechar o modal de QR Code
             break;
           case 'pending':
             setPaymentStatus('pending');
@@ -400,6 +412,15 @@ export function PaymentPixModal({
           </div>
         </div>
       </Dialog>
+
+      <PaymentSuccessModal 
+        isOpen={isSuccessModalOpen}
+        onClose={() => setIsSuccessModalOpen(false)}
+        serviceDetails={{
+          targetProfileLink,
+          serviceName
+        }}
+      />
     </Transition>
   );
 }
