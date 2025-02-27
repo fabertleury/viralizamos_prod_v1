@@ -21,7 +21,9 @@ interface PostSelectorProps {
 export function PostSelector({ username, onSelectPosts, maxPosts, service }: PostSelectorProps) {
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<InstagramPost[]>([]);
+  const [reels, setReels] = useState<InstagramPost[]>([]);
   const [selectedPosts, setSelectedPosts] = useState<InstagramPost[]>([]);
+  const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('posts');
 
   const getProxiedImageUrl = (originalUrl: string) => {
     return `/api/proxy/image?url=${encodeURIComponent(originalUrl)}`;
@@ -66,26 +68,48 @@ export function PostSelector({ username, onSelectPosts, maxPosts, service }: Pos
           const postsData = await response.json();
           
           // Processar posts
-          const posts = postsData || [];
+          const allPosts = postsData || [];
 
-          if (posts.length > 0) {
-            setPosts(posts.map(post => ({
-              id: post.id || post.code,
-              code: post.code || post.id,
+          if (allPosts.length > 0) {
+            const processedPosts = allPosts.map(post => ({
+              ...post,
+              media_type: post.media_type || 1,
+              is_video: post.is_video || false,
               image_versions: {
                 items: [{
-                  url: post.image_versions?.items?.[0]?.url || 'https://via.placeholder.com/150'
+                  url: post.image_versions?.items?.[0]?.url || 
+                       post.display_url || 
+                       'https://via.placeholder.com/150'
                 }]
               },
-              like_count: post.like_count || 0,
-              comment_count: post.comment_count || 0,
               caption: { 
-                text: typeof post.caption === 'object' 
-                  ? post.caption.text 
-                  : (post.caption || '') 
-              },
-              link: `https://www.instagram.com/p/${post.code || post.id}/`
+                text: post.caption 
+                  ? (typeof post.caption === 'object' 
+                    ? post.caption.text || 'Sem legenda'
+                    : String(post.caption)) 
+                  : 'Sem legenda'
+              }
+            }));
+
+            console.log('Posts processados:', processedPosts.map(p => ({
+              id: p.id,
+              mediaType: p.media_type,
+              isVideo: p.is_video,
+              imageUrl: p.image_versions.items[0].url
             })));
+
+            // Separar posts e reels
+            const postsOnly = processedPosts.filter(post => !post.is_video);
+            const reelsOnly = processedPosts.filter(post => post.is_video);
+
+            console.log('Resultado da separação:', {
+              totalPosts: processedPosts.length,
+              postsOnly: postsOnly.length,
+              reelsOnly: reelsOnly.length
+            });
+
+            setPosts(postsOnly);
+            setReels(reelsOnly);
           } else {
             console.error('Nenhum post retornado da API:', postsData);
             toast.warning('Nenhum post encontrado para este perfil.');
@@ -103,117 +127,102 @@ export function PostSelector({ username, onSelectPosts, maxPosts, service }: Pos
             return fetchWithRetry();
           }
           
-          toast.error('Erro ao carregar os posts. Por favor, tente novamente mais tarde.');
+          toast.error('Erro ao carregar posts. Tente novamente.');
         } finally {
           setLoading(false);
         }
       };
 
-      await fetchWithRetry();
+      fetchWithRetry();
     }
 
     loadPosts();
   }, [username]);
 
-  useEffect(() => {
-    const selectedPostsData = selectedPosts.map(post => ({
-      id: post.id,
-      shortcode: post.code, 
-      link: post.link, 
-      caption: post.caption?.text || '',
-      image_url: post.image_versions?.items?.[0]?.url || null
-    }));
-
-    if (selectedPostsData.length > 0) {
-      onSelectPosts(selectedPostsData);
-    }
-  }, [selectedPosts, onSelectPosts]);
-
-  const handlePostSelect = (post: InstagramPost) => {
-    setSelectedPosts(prevSelected => {
-      const isSelected = prevSelected.some(p => p.id === post.id);
-      let newSelected;
-      
-      if (isSelected) {
-        newSelected = prevSelected.filter(p => p.id !== post.id);
+  const togglePostSelection = (post: InstagramPost) => {
+    const isSelected = selectedPosts.some(p => p.id === post.id);
+    
+    if (isSelected) {
+      // Remover post se já estiver selecionado
+      const updatedPosts = selectedPosts.filter(p => p.id !== post.id);
+      setSelectedPosts(updatedPosts);
+      onSelectPosts(updatedPosts);
+    } else {
+      // Adicionar post se não estiver no limite máximo
+      if (selectedPosts.length < maxPosts) {
+        const updatedPosts = [...selectedPosts, post];
+        setSelectedPosts(updatedPosts);
+        onSelectPosts(updatedPosts);
       } else {
-        if (prevSelected.length >= maxPosts) {
-          toast.error(`Você pode selecionar no máximo ${maxPosts} posts`);
-          return prevSelected;
-        }
-        newSelected = [...prevSelected, post];
+        toast.warning(`Você pode selecionar no máximo ${maxPosts} posts`);
       }
-
-      return newSelected;
-    });
+    }
   };
 
-  const likesPerPost = service?.quantidade 
-    ? Math.floor(service.quantidade / (selectedPosts.length || 1))
-    : 0;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-pink-500" />
-      </div>
-    );
-  }
+  const currentPosts = activeTab === 'posts' ? posts : reels;
 
   return (
     <div>
-      <p className="text-gray-600 mb-2">
-        Você pode selecionar até {maxPosts} posts para distribuir {service.quantidade} curtidas
-      </p>
-      {selectedPosts.length > 0 && (
-        <p className="text-sm text-gray-500 mb-4">
-          Cada post selecionado receberá aproximadamente {likesPerPost} curtidas
-        </p>
-      )}
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        {Array.isArray(posts) && posts.length > 0 ? (
-          posts.map((post) => {
-            const isSelected = selectedPosts.some(p => p.id === post.id);
-            const imageUrl = post.image_versions?.items?.[0]?.url || 'https://via.placeholder.com/150';
-            
-            return (
-              <div
-                key={post.id}
-                className={`relative cursor-pointer rounded-lg overflow-hidden transition-all duration-200 ${
-                  isSelected ? 'ring-4 ring-pink-500' : ''
-                }`}
-                onClick={() => handlePostSelect(post)}
-              >
-                <div className="relative w-full h-48">
-                  <img
-                    src={getProxiedImageUrl(imageUrl)}
-                    alt={post.caption?.text || 'Post do Instagram'}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-2 flex justify-between">
-                    <span className="flex items-center gap-1">
-                      ❤️ {post.like_count || 0}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      💬 {post.comment_count || 0}
-                    </span>
-                  </div>
-                </div>
-                {isSelected && (
-                  <div className="absolute inset-0 bg-pink-500 bg-opacity-30 flex items-center justify-center">
-                    ❤️
-                  </div>
-                )}
-              </div>
-            );
-          })
-        ) : (
-          <div className="col-span-3 text-center py-8">
-            <p className="text-gray-500">Nenhum post encontrado</p>
-          </div>
-        )}
+      <div className="flex mb-4">
+        <button 
+          onClick={() => setActiveTab('posts')}
+          className={`px-4 py-2 mr-2 rounded-lg font-bold transition-colors ${
+            activeTab === 'posts' 
+              ? 'bg-pink-500 text-white' 
+              : 'bg-pink-100 text-pink-500 hover:bg-pink-200'
+          }`}
+        >
+          Posts ({posts.length})
+        </button>
+        <button 
+          onClick={() => setActiveTab('reels')}
+          className={`px-4 py-2 rounded-lg font-bold transition-colors ${
+            activeTab === 'reels' 
+              ? 'bg-pink-500 text-white' 
+              : 'bg-pink-100 text-pink-500 hover:bg-pink-200'
+          }`}
+        >
+          Reels ({reels.length})
+        </button>
       </div>
+
+      {loading ? (
+        <div>Carregando...</div>
+      ) : currentPosts.length === 0 ? (
+        <div>Nenhum {activeTab === 'posts' ? 'post' : 'reel'} encontrado</div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2">
+          {currentPosts.map(post => (
+            <div 
+              key={post.id} 
+              onClick={() => togglePostSelection(post)}
+              className={`relative cursor-pointer overflow-hidden rounded-lg shadow-md transition-all duration-300 
+                ${
+                  selectedPosts.some(p => p.id === post.id) 
+                    ? 'border-4 border-pink-500 scale-105' 
+                    : 'border border-gray-300 hover:scale-105'
+                }`}
+            >
+              <img 
+                src={getProxiedImageUrl(post.image_versions.items[0].url)} 
+                alt={`Post ${post.id}`} 
+                className="w-full h-48 object-cover"
+              />
+              {selectedPosts.some(p => p.id === post.id) && (
+                <div className="absolute top-2 right-2 text-2xl">❤️</div>
+              )}
+              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-2 flex justify-between">
+                <span className="flex items-center">
+                  ❤️ {post.like_count || 0}
+                </span>
+                <span className="flex items-center">
+                  💬 {post.comment_count || 0}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
