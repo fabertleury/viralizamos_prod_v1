@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { TransactionDetailsModal } from "@/components/admin/TransactionDetailsModal";
-import { Eye, RefreshCw, Send } from "lucide-react";
+import { Eye, Send, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 function formatCurrency(value: number) {
@@ -46,26 +46,31 @@ export default function TransacoesPage() {
   const [processingOrder, setProcessingOrder] = useState<string | null>(null);
   const supabase = createClient();
 
+  const fetchTransactions = useCallback(async () => {
+    const { data: transactions, error } = await supabase
+      .from('transactions')
+      .select(`
+        *,
+        services:service_id (*)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching transactions:', error);
+      return;
+    }
+
+    setTransactions(transactions);
+  }, [supabase]);
+
   useEffect(() => {
-    const fetchTransactions = async () => {
-      const { data: transactions, error } = await supabase
-        .from('transactions')
-        .select(`
-          *,
-          services:service_id (*)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching transactions:', error);
-        return;
-      }
-
-      setTransactions(transactions);
-    };
-
     fetchTransactions();
-  }, []);
+    
+    // Atualizar a cada 30 segundos
+    const intervalId = setInterval(fetchTransactions, 30000);
+    
+    return () => clearInterval(intervalId);
+  }, [fetchTransactions]);
 
   const handleCheckPayment = useCallback(async (transaction: any) => {
     if (loadingPayment) return;
@@ -90,23 +95,6 @@ export default function TransacoesPage() {
       const data = await response.json();
 
       // Primeiro atualizar os dados
-      const fetchTransactions = async () => {
-        const { data: transactions, error } = await supabase
-          .from('transactions')
-          .select(`
-            *,
-            services:service_id (*)
-          `)
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          console.error('Error fetching transactions:', error);
-          return;
-        }
-
-        setTransactions(transactions);
-      };
-
       await fetchTransactions();
 
       // Depois mostrar o toast
@@ -122,7 +110,7 @@ export default function TransacoesPage() {
     } finally {
       setLoadingPayment(null);
     }
-  }, [loadingPayment]);
+  }, [loadingPayment, fetchTransactions]);
 
   const handleProcessOrder = useCallback(async (transaction: any) => {
     if (processingOrder) return;
@@ -157,23 +145,6 @@ export default function TransacoesPage() {
       }
 
       // Atualizar os dados
-      const fetchTransactions = async () => {
-        const { data: transactions, error } = await supabase
-          .from('transactions')
-          .select(`
-            *,
-            services:service_id (*)
-          `)
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          console.error('Error fetching transactions:', error);
-          return;
-        }
-
-        setTransactions(transactions);
-      };
-
       await fetchTransactions();
       
       toast.success('Pedido processado com sucesso!');
@@ -183,23 +154,44 @@ export default function TransacoesPage() {
     } finally {
       setProcessingOrder(null);
     }
-  }, [processingOrder]);
+  }, [processingOrder, fetchTransactions]);
 
-  const handleCheckAdmin = useCallback(async () => {
+  const handleManualOrderProcessing = useCallback(async (transaction: any) => {
+    if (processingOrder) return;
+    
     try {
-      const response = await fetch('/api/admin/check');
+      setProcessingOrder(transaction.id);
+
+      const response = await fetch('/api/payment/check-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          payment_id: transaction.payment_id || transaction.metadata?.payment?.id
+        }),
+      });
+
       const data = await response.json();
-      
-      if (response.ok) {
-        toast.success(`Status: ${data.isAdmin ? 'Admin' : 'Não Admin'}\nEmail: ${data.email}\nRole: ${data.role}`);
-      } else {
-        toast.error(`Erro: ${data.error}`);
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao processar ordem manualmente');
       }
-    } catch (error) {
-      console.error('Error checking admin status:', error);
-      toast.error('Erro ao verificar status de admin');
+
+      await fetchTransactions();
+      
+      toast.success('Ordem processada manualmente com sucesso!', {
+        description: `ID da transação: ${transaction.id}`
+      });
+    } catch (error: any) {
+      console.error('Error processing order manually:', error);
+      toast.error('Erro ao processar ordem manualmente', {
+        description: error.message
+      });
+    } finally {
+      setProcessingOrder(null);
     }
-  }, []);
+  }, [processingOrder, fetchTransactions]);
 
   return (
     <div className="p-6">
@@ -210,12 +202,6 @@ export default function TransacoesPage() {
             Gerencie todas as transações do sistema
           </p>
         </div>
-        <button
-          onClick={handleCheckAdmin}
-          className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-        >
-          Verificar Status Admin
-        </button>
       </div>
       <Card>
         <CardHeader>
@@ -283,16 +269,18 @@ export default function TransacoesPage() {
                           </Button>
                         )}
 
-                        {transaction.status === 'approved' && !transaction.processed && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleProcessOrder(transaction)}
-                            disabled={processingOrder === transaction.id}
-                            className="text-green-500 hover:text-green-700"
-                          >
-                            <Send className={`w-4 h-4 ${processingOrder === transaction.id ? 'animate-pulse' : ''}`} />
-                          </Button>
+                        {transaction.status === 'approved' && (
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleManualOrderProcessing(transaction)}
+                              disabled={processingOrder === transaction.id}
+                              className="text-blue-500 hover:text-blue-700"
+                            >
+                              <Send className={`w-4 h-4 ${processingOrder === transaction.id ? 'animate-pulse' : ''}`} />
+                            </Button>
+                          </div>
                         )}
                       </div>
                     </td>

@@ -101,8 +101,37 @@ export async function POST(request: Request) {
           }
         }
       })
-      .select()
-      .single();
+      .select();
+
+    // Log detalhado dos dados salvos
+    console.log('Dados da transação salvos:', JSON.stringify({
+      columnData: {
+        user_id,
+        type: 'payment',
+        amount: Number(amount),
+        status: 'pending',
+        payment_method: 'pix',
+        service_id: service.id,
+        customer_name: customer.name || 'N/A',
+        customer_email: customer.email || 'N/A',
+        customer_phone: customer.phone || 'N/A',
+        target_username: profile.username || 'N/A',
+        target_full_name: profile.full_name || 'N/A',
+        target_profile_link: profile.link || `https://instagram.com/${profile.username}`,
+      },
+      metadataData: {
+        service: {
+          id: service.id,
+          fama_id: service.fama_id,
+          name: service.name,
+          quantity: service.quantity
+        },
+        posts: posts.map((post: any) => ({
+          id: post.id,
+          link: post.link || `https://instagram.com/p/${post.shortcode}`
+        }))
+      }
+    }, null, 2));
 
     if (transactionError) {
       throw transactionError;

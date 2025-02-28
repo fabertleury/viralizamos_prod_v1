@@ -301,9 +301,8 @@ export function PaymentPixModal({
 
   useEffect(() => {
     if (paymentStatus === 'success') {
-      setTimeout(() => {
-        router.push('/acompanhar-pedido');
-      }, 2000);
+      // Removido redirecionamento redundante
+      // Mantido o redirecionamento com transaction_id no outro bloco de código
     }
   }, [paymentStatus, router]);
 

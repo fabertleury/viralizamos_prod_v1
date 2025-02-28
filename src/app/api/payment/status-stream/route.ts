@@ -190,8 +190,12 @@ export async function GET(request: NextRequest) {
 
       // Fechar o stream quando o pagamento for aprovado ou houver erro
       if (!isStreamClosed) {
-        await writer.close();
-        isStreamClosed = true;
+        try {
+          await writer.close();
+          isStreamClosed = true;
+        } catch (closeError) {
+          console.error('❌ Erro ao fechar stream:', closeError);
+        }
       }
     } catch (error) {
       console.error('🔥 Stream error:', error);
@@ -199,8 +203,8 @@ export async function GET(request: NextRequest) {
         try {
           await writer.close();
           isStreamClosed = true;
-        } catch (closeError) {
-          console.error('❌ Erro ao fechar stream:', closeError);
+        } catch (finalCloseError) {
+          console.error('❌ Erro final ao fechar stream:', finalCloseError);
         }
       }
     }

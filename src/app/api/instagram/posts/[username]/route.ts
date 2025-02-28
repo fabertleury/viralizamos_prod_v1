@@ -65,46 +65,128 @@ export async function GET(
     
     console.log('Dados dos posts recebidos:', JSON.stringify(postsData, null, 2));
 
-    // Processar posts com tratamento de erro mais robusto
-    const posts = postsData.data.items?.map((post: any) => {
-      if (!post) return null;
-
-      // Lidar com posts em carrossel
-      const imageUrl = post.carousel_media 
-        ? post.carousel_media[0].image_versions.items[0].url 
-        : (post.image_versions?.items?.[0]?.url || post.display_url);
-
-      return {
-        id: post.code || post.id || post.pk,
-        code: post.code || post.id || post.pk,
-        image_versions: {
-          items: [{ 
-            url: imageUrl || 'https://via.placeholder.com/150'
-          }]
-        },
+    // Processar posts considerando posts com múltiplas imagens
+    const processedPosts = postsData.data.items.flatMap(post => {
+      // Se for um post com múltiplas imagens (carousel)
+      if (post.media_type === 8 && post.carousel_media) {
+        return post.carousel_media.map(carouselItem => ({
+          id: carouselItem.id,
+          code: carouselItem.id,
+          image_versions: carouselItem.image_versions,
+          like_count: post.like_count || 0,
+          comment_count: post.comment_count || 0,
+          views_count: post.view_count || 
+                      post.views_count || 
+                      post.view_count_formatted || 
+                      post.video_view_count || 
+                      (post.video_versions && post.video_versions.view_count) || 
+                      0,
+          caption: { 
+            text: (() => {
+              if (!post.caption) return 'Sem legenda';
+              
+              if (typeof post.caption === 'string') {
+                return post.caption;
+              }
+              
+              if (typeof post.caption === 'object') {
+                if ('text' in post.caption) {
+                  return (post.caption as { text: string }).text;
+                }
+                
+                // Se for um objeto sem 'text', tenta converter para string
+                return JSON.stringify(post.caption);
+              }
+              
+              return 'Legenda inválida';
+            })()
+          },
+          link: `https://www.instagram.com/p/${post.code}/`,
+          media_type: carouselItem.media_type,
+          is_video: carouselItem.is_video
+        }));
+      }
+      
+      // Posts normais
+      return [{
+        id: post.id,
+        code: post.code,
+        image_versions: post.image_versions,
         like_count: post.like_count || 0,
         comment_count: post.comment_count || 0,
+        views_count: post.view_count || 
+                    post.views_count || 
+                    post.view_count_formatted || 
+                    post.video_view_count || 
+                    (post.video_versions && post.video_versions.view_count) || 
+                    0,
         caption: { 
-          text: typeof post.caption === 'object' 
-            ? post.caption.text 
-            : (post.caption || '') 
+          text: (() => {
+            if (!post.caption) return 'Sem legenda';
+            
+            if (typeof post.caption === 'string') {
+              return post.caption;
+            }
+            
+            if (typeof post.caption === 'object') {
+              if ('text' in post.caption) {
+                return (post.caption as { text: string }).text;
+              }
+              
+              // Se for um objeto sem 'text', tenta converter para string
+              return JSON.stringify(post.caption);
+            }
+            
+            return 'Legenda inválida';
+          })()
         },
-        link: `https://www.instagram.com/p/${post.code || post.id}/`
-      };
-    }).filter(Boolean); // Remover entradas nulas
+        link: `https://www.instagram.com/p/${post.code}/`,
+        media_type: post.media_type,
+        is_video: post.is_video
+      }];
+    });
 
-    if (!posts || posts.length === 0) {
+    console.log('Posts processados:', processedPosts.map(post => ({
+      id: post.id,
+      is_video: post.is_video,
+      views_count: post.views_count,
+      like_count: post.like_count,
+      comment_count: post.comment_count
+    })));
+
+    // Adicionar log para caption
+    processedPosts.forEach(post => {
+      console.log('Post original completo:', JSON.stringify(post, null, 2));
+      console.log('Estrutura da caption:', {
+        caption: post.caption,
+        type: typeof post.caption,
+        keys: post.caption ? Object.keys(post.caption) : 'N/A'
+      });
+    });
+
+    if (!processedPosts || processedPosts.length === 0) {
       console.warn('Nenhum post encontrado para o usuário');
       return NextResponse.json([], { status: 204 }); // No Content
     }
 
-    return NextResponse.json(posts);
+    return NextResponse.json(processedPosts);
   } catch (error) {
     console.error('Erro completo ao buscar posts:', error);
+    
+    // Log detalhado de erros para diagnóstico
+    if (axios.isAxiosError(error)) {
+      console.error('Detalhes do erro Axios:', {
+        response: error.response?.data,
+        status: error.response?.status,
+        headers: error.response?.headers
+      });
+    }
+
     return NextResponse.json(
       { 
         message: 'Erro ao buscar posts', 
-        error: error instanceof Error ? error.message : String(error) 
+        error: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? error.stack : null
       },
       { status: 500 }
     );

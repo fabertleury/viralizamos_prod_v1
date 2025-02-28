@@ -1,19 +1,20 @@
 export interface InstagramPost {
   id: string;
   code: string;
-  image_versions: {
-    items: Array<{
-      url: string;
-      width: number;
-      height: number;
-    }>;
-  };
+  image_versions?: {
+    url: string;
+    width: number;
+    height: number;
+  }[];
   like_count: number;
   comment_count: number;
+  views_count?: number;
+  is_video?: boolean;
   caption?: {
     text: string;
   };
-  taken_at: number;
   link: string;
-  display_url?: string;
+  media_type?: number;
+  video_url?: string;
+  video_duration?: number;
 }

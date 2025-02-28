@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mercadopago from 'mercadopago';
 import { createClient } from '@/lib/supabase/server';
+import { SocialMediaService } from '@/lib/services/socialMediaService';
 
 // Configuração do Mercado Pago
 mercadopago.configurations.setAccessToken(process.env.MERCADO_PAGO_ACCESS_TOKEN || '');
@@ -11,6 +12,7 @@ export async function POST(request: NextRequest) {
     console.log('Iniciando verificação de status de pagamento:', { payment_id });
 
     const supabase = createClient();
+    const socialMediaService = new SocialMediaService();
 
     // Estratégias de busca no Supabase
     const searchStrategies = [
@@ -139,6 +141,161 @@ export async function POST(request: NextRequest) {
         }
       } catch (updateError) {
         console.error('Erro ao tentar atualizar transação:', updateError);
+      }
+    }
+
+    // Se o pagamento for aprovado, criar ordem
+    if (paymentStatus === 'approved') {
+      try {
+        console.log('🔍 Processando transação aprovada:', {
+          transactionId: supabaseTransaction.id,
+          serviceId: supabaseTransaction.service_id,
+          orderCreated: supabaseTransaction.order_created
+        });
+
+        console.log('📦 Conteúdo completo da transação:', supabaseTransaction);
+
+        // Buscar detalhes do serviço
+        const { data: serviceData, error: serviceError } = await supabase
+          .from('services')
+          .select('*')
+          .eq('id', supabaseTransaction.service_id)
+          .single();
+
+        if (serviceError || !serviceData) {
+          console.error('❌ Serviço não encontrado:', {
+            serviceId: supabaseTransaction.service_id,
+            error: serviceError
+          });
+          throw new Error('Serviço não encontrado');
+        }
+
+        // Parse dos metadados do serviço
+        const serviceMetadata = JSON.parse(serviceData.metadata || '{}');
+        const services = serviceMetadata.services || [];
+
+        // Extrair links de posts do metadata da transação
+        const transactionMetadata = JSON.parse(supabaseTransaction.metadata || '{}');
+        const postLinks = transactionMetadata.post_links || [];
+
+        // Criar ordem mestra no Supabase
+        const { data: masterOrderData, error: masterOrderError } = await supabase
+          .from('orders')
+          .insert({
+            user_id: supabaseTransaction.user_id,
+            service_id: supabaseTransaction.service_id,
+            status: 'pending',
+            quantity: services.reduce((total, service) => total + service.quantity, 0),
+            amount: supabaseTransaction.amount,
+            target_username: supabaseTransaction.target_username,
+            payment_status: paymentStatus,
+            payment_method: 'pix',
+            payment_id: payment_id,
+            transaction_id: supabaseTransaction.id,
+            metadata: {
+              service_details: serviceData,
+              transaction_details: supabaseTransaction,
+              services: services,
+              post_links: postLinks
+            }
+          })
+          .select()
+          .single();
+
+        if (masterOrderError) {
+          console.error('❌ Erro ao criar ordem mestra:', masterOrderError);
+          throw new Error('Erro ao criar ordem mestra');
+        }
+
+        // Criar sub-ordens para cada serviço e post
+        const subOrders = [];
+        for (const service of services) {
+          // Calcular quantidade por post (distribuição uniforme)
+          const postsCount = Math.min(postLinks.length, 5);
+          const quantityPerPost = Math.floor(service.quantity / postsCount);
+          const remainderQuantity = service.quantity % postsCount;
+
+          for (let i = 0; i < postsCount; i++) {
+            try {
+              const postQuantity = quantityPerPost + (i < remainderQuantity ? 1 : 0);
+              
+              const orderResponse = await socialMediaService.createOrder({
+                service: service.id,
+                link: postLinks[i],
+                quantity: postQuantity,
+                username: supabaseTransaction.target_username
+              });
+
+              const { data: subOrderData, error: subOrderError } = await supabase
+                .from('orders')
+                .insert({
+                  user_id: supabaseTransaction.user_id,
+                  service_id: service.id,
+                  status: 'processing',
+                  quantity: postQuantity,
+                  amount: (service.amount || 0) * (postQuantity / service.quantity),
+                  target_username: supabaseTransaction.target_username,
+                  payment_status: paymentStatus,
+                  payment_method: 'pix',
+                  payment_id: payment_id,
+                  transaction_id: supabaseTransaction.id,
+                  external_order_id: orderResponse.order,
+                  parent_order_id: masterOrderData.id,
+                  metadata: {
+                    service_details: service,
+                    post_link: postLinks[i],
+                    external_order_response: orderResponse
+                  }
+                })
+                .select()
+                .single();
+
+              if (subOrderError) {
+                console.error('❌ Erro ao criar sub-ordem:', subOrderError);
+                throw new Error('Erro ao criar sub-ordem');
+              }
+
+              subOrders.push(subOrderData);
+            } catch (apiError) {
+              console.error('❌ Erro na API de Serviços:', apiError);
+              throw apiError;
+            }
+          }
+        }
+
+        // Atualizar ordem mestra com status final
+        const { error: updateMasterOrderError } = await supabase
+          .from('orders')
+          .update({ 
+            status: 'processing',
+            external_order_id: subOrders.map(order => order.external_order_id).join(','),
+            metadata: {
+              ...masterOrderData.metadata,
+              sub_orders: subOrders
+            }
+          })
+          .eq('id', masterOrderData.id);
+
+        if (updateMasterOrderError) {
+          console.error('❌ Erro ao atualizar ordem mestra:', updateMasterOrderError);
+        }
+
+        // Marcar transação como processada
+        const { error: transactionUpdateError } = await supabase
+          .from('transactions')
+          .update({ order_created: true })
+          .eq('id', supabaseTransaction.id);
+
+        if (transactionUpdateError) {
+          console.error('❌ Erro ao atualizar transação:', transactionUpdateError);
+        }
+
+        console.log('🎉 Processamento concluído com sucesso', {
+          masterOrderId: masterOrderData.id,
+          subOrders: subOrders.map(order => order.id)
+        });
+      } catch (error) {
+        console.error('🚨 Erro no processamento da ordem:', error);
       }
     }
 

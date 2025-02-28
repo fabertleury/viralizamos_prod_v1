@@ -88,10 +88,11 @@ export default function Step2Page() {
           id: post.code || post.id || post.shortcode,
           shortcode: post.code || post.id || post.shortcode,
           image_url: imageUrl,
-          caption: 
-            typeof post.caption === 'object' 
-              ? post.caption.text 
-              : (post.caption || post.text || '')
+          caption: post.caption 
+              ? (typeof post.caption === 'object' 
+                ? post.caption.text || 'Sem legenda'
+                : String(post.caption)) 
+              : 'Sem legenda',
         };
       }).filter(post => post.image_url); // Remover posts sem imagem
 
@@ -334,7 +335,11 @@ export default function Step2Page() {
             id: post.id,
             shortcode: post.shortcode,
             image_url: post.image_url,
-            caption: post.caption || 'Sem legenda',
+            caption: post.caption 
+              ? (typeof post.caption === 'object' 
+                ? post.caption.text || 'Sem legenda'
+                : String(post.caption)) 
+              : (post.text || 'Sem legenda'),
             link: `https://instagram.com/p/${post.shortcode}`
           }))
         }),
