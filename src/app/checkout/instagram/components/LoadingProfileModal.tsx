@@ -74,10 +74,15 @@ export function LoadingProfileModal({
         return;
       }
 
+      // Obter a quantidade da URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const quantity = urlParams.get('quantity');
+
       // Salvar dados no localStorage
       localStorage.setItem('checkoutProfileData', JSON.stringify({
         profileData,
         serviceId,
+        quantity: quantity || undefined,
         timestamp: new Date().getTime()
       }));
       

@@ -241,13 +241,17 @@ export default function Step2Page() {
 
   const fetchService = async (externalId: string) => {
     try {
-      console.log('Buscando serviço com external_id:', externalId);
-
-      // Configurar headers de autenticação
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = session 
-        ? { Authorization: `Bearer ${session.access_token}` } 
-        : {};
+      console.log('Buscando serviço com ID:', externalId);
+      
+      // Verificar se temos uma quantidade específica no localStorage
+      const checkoutData = localStorage.getItem('checkoutProfileData');
+      let quantity = null;
+      
+      if (checkoutData) {
+        const parsedData = JSON.parse(checkoutData);
+        quantity = parsedData.quantity;
+        console.log('Quantidade encontrada no localStorage:', quantity);
+      }
 
       // Tentar várias formas de buscar o serviço
       const searchMethods = [
@@ -281,6 +285,22 @@ export default function Step2Page() {
 
         if (data) {
           console.log('Serviço encontrado:', data);
+          
+          // Se temos uma quantidade específica, atualizar o serviço
+          if (quantity) {
+            console.log('Atualizando quantidade do serviço para:', quantity);
+            data.quantidade = parseInt(quantity);
+            
+            // Atualizar o preço se houver variações de preço
+            if (data.service_variations && data.service_variations.length > 0) {
+              const variation = data.service_variations.find((v: any) => v.quantidade === parseInt(quantity));
+              if (variation) {
+                console.log('Encontrada variação de preço:', variation);
+                data.preco = variation.preco;
+              }
+            }
+          }
+          
           data.fama_id = '1';
           setService(data);
           return data;
@@ -317,7 +337,11 @@ export default function Step2Page() {
           localStorage.getItem('serviceId') || 
           localStorage.getItem('external_id');
 
+        // Recuperar a quantidade, se disponível
+        const quantity = parsedCheckoutData.quantity;
+        
         console.log('External ID recuperado:', externalId);
+        console.log('Quantidade recuperada:', quantity);
 
         // Recuperar o perfil do usuário
         const profileData = 
