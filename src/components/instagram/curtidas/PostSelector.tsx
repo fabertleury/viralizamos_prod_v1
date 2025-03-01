@@ -334,7 +334,7 @@ export function PostSelector({
               <>
                 {/* Contador no canto superior direito */}
                 <div className="absolute top-2 right-2 bg-pink-500 text-white rounded-full px-2 py-1 text-xs">
-                  {selectedPosts.findIndex(p => p.id === post.id) + 1}/{selectedPosts.length}
+                  {selectedPosts.findIndex(p => p.id === post.id) + 1}/{selectedPosts.length + selectedReels.length}
                 </div>
                 
                 {/* Emoji de coração centralizado */}

@@ -396,7 +396,7 @@ function ReelSelector({
                 <>
                   {/* Contador no canto superior direito */}
                   <div className="absolute top-2 right-2 bg-pink-500 text-white rounded-full px-2 py-1 text-xs">
-                    {selectedReels.findIndex(r => r.id === reel.id) + 1}/{selectedReels.length}
+                    {selectedReels.findIndex(r => r.id === reel.id) + 1}/{selectedReels.length + selectedPosts.length}
                   </div>
                   
                   {/* Emoji de visualização centralizado */}

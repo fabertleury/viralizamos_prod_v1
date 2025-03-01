@@ -676,6 +676,54 @@ export default function Step2Page() {
                       <span>Itens selecionados:</span>
                       <span>{selectedItemsCount} / 5</span>
                     </div>
+
+                    {/* Miniaturas dos itens selecionados */}
+                    {selectedItemsCount > 0 && (
+                      <div className="mt-3 pt-3 border-t">
+                        <p className="text-sm font-medium mb-2">Itens selecionados:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedPosts.map((post) => (
+                            <div key={`post-${post.id}`} className="relative w-12 h-12 rounded overflow-hidden border border-pink-300">
+                              <img 
+                                src={getProxiedImageUrl(post.image_url)} 
+                                alt="Post selecionado" 
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  if (!target.src.includes('placeholder-post.svg')) {
+                                    target.src = '/images/placeholder-post.svg';
+                                  }
+                                }}
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+                              <div className="absolute bottom-0 left-0 right-0 text-white text-[8px] bg-pink-500 text-center">
+                                Post
+                              </div>
+                            </div>
+                          ))}
+                          {selectedReels.map((reel) => (
+                            <div key={`reel-${reel.id}`} className="relative w-12 h-12 rounded overflow-hidden border border-pink-300">
+                              <img 
+                                src={getProxiedImageUrl(reel.image_url)} 
+                                alt="Reel selecionado" 
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  if (!target.src.includes('placeholder-reel.svg')) {
+                                    target.src = '/images/placeholder-reel.svg';
+                                  }
+                                }}
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+                              <div className="absolute bottom-0 left-0 right-0 text-white text-[8px] bg-purple-500 text-center">
+                                Reel
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex justify-between text-lg font-semibold mt-2 pt-2 border-t">
                       <span>Valor total:</span>
                       <span>R$ {service.preco.toFixed(2)}</span>
