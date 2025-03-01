@@ -8,6 +8,7 @@ export async function POST(request: Request) {
     const { amount, description, customer, service, user_id, profile, posts } = body;
 
     console.log('Criando pagamento PIX:', { amount, description, customer });
+    console.log('Posts recebidos:', JSON.stringify(posts, null, 2));
 
     if (!process.env.MERCADO_PAGO_ACCESS_TOKEN) {
       throw new Error('Token do Mercado Pago não configurado');
@@ -50,6 +51,31 @@ export async function POST(request: Request) {
       }
     }
 
+    // Verificar e processar os posts para garantir que todos os links de imagens estejam definidos
+    const processedPosts = posts.map((post: any) => {
+      // Garantir que image_url esteja definido
+      const imageUrl = post.image_url || post.display_url || post.thumbnail_url || '';
+      
+      // Garantir que temos um código válido para o link
+      const postCode = post.shortcode || post.code || post.id;
+      
+      console.log(`Processando post ${post.id}:`, {
+        original_image_url: post.image_url,
+        processed_image_url: imageUrl,
+        shortcode: post.shortcode,
+        code: post.code,
+        postCode: postCode
+      });
+      
+      return {
+        id: post.id,
+        shortcode: postCode,
+        link: post.link || `https://instagram.com/p/${postCode}`,
+        caption: post.caption || 'Sem legenda',
+        image_url: imageUrl
+      };
+    });
+
     const supabase = createClient();
 
     // Criar transação no banco
@@ -88,12 +114,7 @@ export async function POST(request: Request) {
             email: customer.email,
             phone: customer.phone
           },
-          posts: posts.map((post: any) => ({
-            id: post.id,
-            link: post.link || `https://instagram.com/p/${post.shortcode}`,
-            caption: post.caption || 'Sem legenda',
-            image_url: post.image_url || post.display_url
-          })),
+          posts: processedPosts,
           payment: {
             id: result.body.id,
             qr_code: result.body.point_of_interaction.transaction_data.qr_code,
@@ -126,10 +147,7 @@ export async function POST(request: Request) {
           name: service.name,
           quantity: service.quantity
         },
-        posts: posts.map((post: any) => ({
-          id: post.id,
-          link: post.link || `https://instagram.com/p/${post.shortcode}`
-        }))
+        posts: processedPosts
       }
     }, null, 2));
 
@@ -138,9 +156,9 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      id: transaction.id,
+      id: result.body.id,
       qr_code: result.body.point_of_interaction.transaction_data.qr_code,
-      qr_code_base64: transaction.payment_qr_code_base64,
+      qr_code_base64: qrCodeBase64,
       status: 'pending'
     }, { status: 200 });
   } catch (error) {

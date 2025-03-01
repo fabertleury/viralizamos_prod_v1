@@ -427,15 +427,15 @@ export default function Step2Page() {
     // Preparar metadados dos posts
     const postsMetadata = selectedPosts.map((post, index) => ({
       postId: post.id,
-      postCode: post.shortcode,
-      postLink: `https://www.instagram.com/p/${post.shortcode}/`,
+      postCode: post.code || post.shortcode || post.id,
+      postLink: `https://www.instagram.com/p/${post.code || post.shortcode || post.id}/`,
       likes: index === 0 ? likesPerItem + remainingLikes : likesPerItem
     }));
 
     const reelsMetadata = selectedReels.map((reel, index) => ({
       postId: reel.id,
-      postCode: reel.shortcode,
-      postLink: `https://www.instagram.com/p/${reel.shortcode}/`,
+      postCode: reel.code || reel.shortcode || reel.id,
+      postLink: `https://www.instagram.com/p/${reel.code || reel.shortcode || reel.id}/`,
       likes: likesPerItem
     }));
 
@@ -524,17 +524,29 @@ export default function Step2Page() {
             email: formData.email,
             phone: formData.phone
           },
-          posts: [...selectedPosts, ...selectedReels].map(post => ({
-            id: post.id,
-            shortcode: post.shortcode,
-            image_url: post.image_url,
-            caption: post.caption 
-              ? (typeof post.caption === 'object' 
-                ? post.caption.text || 'Sem legenda'
-                : String(post.caption)) 
-              : (post.text || 'Sem legenda'),
-            link: `https://instagram.com/p/${post.shortcode}`
-          }))
+          posts: [...selectedPosts, ...selectedReels].map(post => {
+            // Garantir que temos um código válido para o link
+            const postCode = post.code || post.shortcode || post.id;
+            
+            console.log('Processando post para pagamento:', {
+              id: post.id,
+              code: post.code,
+              shortcode: post.shortcode,
+              postCode: postCode
+            });
+            
+            return {
+              id: post.id,
+              shortcode: postCode,
+              image_url: post.image_url,
+              caption: post.caption 
+                ? (typeof post.caption === 'object' 
+                  ? post.caption.text || 'Sem legenda'
+                  : String(post.caption)) 
+                : (post.text || 'Sem legenda'),
+              link: `https://instagram.com/p/${postCode}`
+            };
+          })
         }),
       });
 
