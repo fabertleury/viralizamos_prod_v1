@@ -289,9 +289,10 @@ function ReelSelector({
   };
 
   // Função para calcular curtidas por item
-  const calculateLikesPerItem = (selectedItems: InstagramPost[]) => {
-    if (!selectedItems || selectedItems.length === 0) return 0;
-    return Math.floor(totalLikes / selectedItems.length);
+  const calculateLikesPerItem = () => {
+    const totalSelectedItems = selectedReels.length + (selectedPosts?.length || 0);
+    if (!totalSelectedItems) return 0;
+    return Math.floor(totalLikes / totalSelectedItems);
   };
 
   const handleSelectReel = (reel: InstagramPost) => {
@@ -299,35 +300,38 @@ function ReelSelector({
     const isAlreadySelected = selectedReels.some(r => r.id === reel.id);
     
     if (isAlreadySelected) {
-      // Se já estiver selecionado, remover
-      const updatedReels = selectedReels.filter(r => r.id !== reel.id);
-      setSelectedReels(updatedReels);
-      if (onSelectReels) onSelectReels(updatedReels);
+      // Se já selecionado, remover
+      const updatedSelectedReels = selectedReels.filter(r => r.id !== reel.id);
+      setSelectedReels(updatedSelectedReels);
+      
+      // Atualizar callbacks
+      if (onSelectReels) onSelectReels(updatedSelectedReels);
       return;
     }
-    
+
     if (totalSelectedItems >= maxReels) {
       toast.warning(`Você pode selecionar no máximo ${maxReels} itens entre posts e reels`);
       return;
     }
-    
+
     // Adicionar reel com emoji de coração
     const selectedReel = {
       ...reel,
       selected: true,
-      displayName: `❤️ ${reel.caption?.text || 'Reel sem legenda'}`,
-      likesDistribution: calculateLikesPerItem([...selectedReels, reel])
+      displayName: `❤️ ${reel.caption || 'Reel sem legenda'}`
     };
+
+    const updatedSelectedReels = [...selectedReels, selectedReel];
+    setSelectedReels(updatedSelectedReels);
     
-    const updatedReels = [...selectedReels, selectedReel];
-    setSelectedReels(updatedReels);
-    if (onSelectReels) onSelectReels(updatedReels);
+    // Atualizar callbacks
+    if (onSelectReels) onSelectReels(updatedSelectedReels);
   };
 
   // Recalcular distribuição de curtidas quando a seleção mudar
   useEffect(() => {
     if (selectedReels.length > 0) {
-      const likesPerItem = calculateLikesPerItem(selectedReels);
+      const likesPerItem = calculateLikesPerItem();
       const updatedReels = selectedReels.map(reel => ({
         ...reel,
         likesDistribution: likesPerItem
@@ -413,7 +417,7 @@ function ReelSelector({
                   
                   {/* Contador de curtidas distribuídas */}
                   <div className="absolute bottom-8 left-0 right-0 text-center text-white font-bold bg-pink-500 bg-opacity-70 py-1">
-                    {formatNumber(calculateLikesPerItem(selectedReels))} curtidas
+                    {formatNumber(calculateLikesPerItem())} curtidas
                   </div>
                 </>
               )}

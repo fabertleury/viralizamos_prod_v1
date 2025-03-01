@@ -86,6 +86,12 @@ export default function Step2Page() {
 
   // Calcular o número total de itens selecionados
   const selectedItemsCount = selectedPosts.length + selectedReels.length;
+  const maxTotalItems = 5; // Máximo de 5 itens no total entre posts e reels
+  
+  // Calcular curtidas por item
+  const likesPerItem = service?.quantidade && selectedItemsCount > 0 
+    ? Math.floor(service.quantidade / selectedItemsCount) 
+    : 0;
 
   const fetchInstagramPosts = async (username: string) => {
     try {
@@ -644,7 +650,7 @@ export default function Step2Page() {
                   onPostSelect={handlePostSelect}
                   selectedPosts={selectedPosts}
                   selectedReels={selectedReels}
-                  maxPosts={5}
+                  maxPosts={maxTotalItems}
                   service={service}
                   posts={instagramPosts}
                   totalLikes={service?.quantidade || 100}
@@ -656,7 +662,7 @@ export default function Step2Page() {
                   onSelectReels={handleReelSelect}
                   selectedReels={selectedReels}
                   selectedPosts={selectedPosts}
-                  maxReels={5}
+                  maxReels={maxTotalItems}
                   totalLikes={service?.quantidade || 100}
                   loading={loadingReels}
                 />
@@ -693,12 +699,12 @@ export default function Step2Page() {
                     {(selectedPosts.length + selectedReels.length) > 0 && (
                       <div className="flex justify-between text-sm">
                         <span>Curtidas por item:</span>
-                        <span>{Math.floor(service.quantidade / (selectedPosts.length + selectedReels.length)).toLocaleString()}</span>
+                        <span>{likesPerItem.toLocaleString()}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm">
                       <span>Itens selecionados:</span>
-                      <span>{selectedItemsCount} / 5</span>
+                      <span>{selectedItemsCount} / {maxTotalItems}</span>
                     </div>
 
                     {/* Miniaturas dos itens selecionados */}

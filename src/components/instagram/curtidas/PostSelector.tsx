@@ -112,9 +112,10 @@ export function PostSelector({
   };
 
   // Função para calcular curtidas por item
-  const calculateLikesPerItem = (selectedItems: InstagramPost[]) => {
-    if (!selectedItems || selectedItems.length === 0) return 0;
-    return Math.floor(totalLikes / selectedItems.length);
+  const calculateLikesPerItem = () => {
+    const totalSelectedItems = selectedPosts.length + selectedReels.length;
+    if (!totalSelectedItems) return 0;
+    return Math.floor(totalLikes / totalSelectedItems);
   };
 
   const handleSelectPost = (post: InstagramPost) => {
@@ -131,8 +132,8 @@ export function PostSelector({
       return;
     }
 
-    if (totalSelectedItems >= 5) {
-      toast.warning('Você pode selecionar no máximo 5 itens entre posts e reels');
+    if (totalSelectedItems >= maxPosts) {
+      toast.warning(`Você pode selecionar no máximo ${maxPosts} itens entre posts e reels`);
       return;
     }
 
@@ -140,8 +141,7 @@ export function PostSelector({
     const selectedPost = {
       ...post,
       selected: true,
-      displayName: `❤️ ${post.caption?.text || 'Post sem legenda'}`,
-      likesDistribution: calculateLikesPerItem([...selectedPosts, post])
+      displayName: `❤️ ${post.caption || 'Post sem legenda'}`
     };
 
     const updatedSelectedPosts = [...selectedPosts, selectedPost];
@@ -270,7 +270,7 @@ export function PostSelector({
   // Recalcular distribuição de curtidas quando a seleção mudar
   useEffect(() => {
     if (selectedPosts.length > 0) {
-      const likesPerItem = calculateLikesPerItem(selectedPosts);
+      const likesPerItem = calculateLikesPerItem();
       const updatedPosts = selectedPosts.map(post => ({
         ...post,
         likesDistribution: likesPerItem
@@ -351,7 +351,7 @@ export function PostSelector({
                 
                 {/* Contador de curtidas distribuídas */}
                 <div className="absolute bottom-8 left-0 right-0 text-center text-white font-bold bg-pink-500 bg-opacity-70 py-1">
-                  {formatNumber(calculateLikesPerItem(selectedPosts))} curtidas
+                  {formatNumber(calculateLikesPerItem())} curtidas
                 </div>
               </>
             )}
