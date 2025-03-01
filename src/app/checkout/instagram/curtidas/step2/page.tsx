@@ -681,9 +681,9 @@ export default function Step2Page() {
                     {selectedItemsCount > 0 && (
                       <div className="mt-3 pt-3 border-t">
                         <p className="text-sm font-medium mb-2">Itens selecionados:</p>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2">
                           {selectedPosts.map((post) => (
-                            <div key={`post-${post.id}`} className="relative w-12 h-12 rounded overflow-hidden border border-pink-300">
+                            <div key={`post-${post.id}`} className="relative w-12 h-12 rounded overflow-hidden border border-pink-300 group">
                               <img 
                                 src={getProxiedImageUrl(post.image_url)} 
                                 alt="Post selecionado" 
@@ -699,10 +699,22 @@ export default function Step2Page() {
                               <div className="absolute bottom-0 left-0 right-0 text-white text-[8px] bg-pink-500 text-center">
                                 Post
                               </div>
+                              {/* Botão X para remover */}
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedPosts(selectedPosts.filter(p => p.id !== post.id));
+                                }}
+                                className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] 
+                                  shadow-md"
+                                aria-label="Remover post"
+                              >
+                                ×
+                              </button>
                             </div>
                           ))}
                           {selectedReels.map((reel) => (
-                            <div key={`reel-${reel.id}`} className="relative w-12 h-12 rounded overflow-hidden border border-pink-300">
+                            <div key={`reel-${reel.id}`} className="relative w-12 h-12 rounded overflow-hidden border border-pink-300 group">
                               <img 
                                 src={getProxiedImageUrl(reel.image_url)} 
                                 alt="Reel selecionado" 
@@ -718,6 +730,18 @@ export default function Step2Page() {
                               <div className="absolute bottom-0 left-0 right-0 text-white text-[8px] bg-purple-500 text-center">
                                 Reel
                               </div>
+                              {/* Botão X para remover */}
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedReels(selectedReels.filter(r => r.id !== reel.id));
+                                }}
+                                className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] 
+                                  shadow-md"
+                                aria-label="Remover reel"
+                              >
+                                ×
+                              </button>
                             </div>
                           ))}
                         </div>
