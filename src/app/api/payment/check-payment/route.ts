@@ -164,8 +164,22 @@ export async function POST(request: Request) {
           const orderResults = [];
           for (const post of posts) {
             try {
+              // Verificar se o post tem um link válido
+              if (!post.link) {
+                // Construir o link do post a partir do código
+                const postCode = post.code || post.shortcode || post.id;
+                if (postCode) {
+                  post.link = `https://instagram.com/p/${postCode}`;
+                  console.log(' Link do post construído:', post.link);
+                } else {
+                  console.error(' Post sem código para construir link:', post);
+                  orderResults.push({ success: false, error: 'Post sem código para construir link', post });
+                  continue; // Pular este post
+                }
+              }
+              
               // Enviar pedido para o provedor
-              const orderResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/v1/providers/fama-redes/add-order`, {
+              const orderResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/providers/fama-redes/add-order`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',

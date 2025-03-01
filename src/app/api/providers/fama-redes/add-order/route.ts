@@ -4,6 +4,7 @@ import axios from 'axios';
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('=== ENDPOINT ADD-ORDER CHAMADO ===');
     const { service, link, quantity, transaction_id, target_username } = await request.json();
     
     console.log('Enviando pedido para o provedor Fama nas Redes:', {
