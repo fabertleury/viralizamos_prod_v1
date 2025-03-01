@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { FaCopy } from 'react-icons/fa';
 import { formatCurrency } from '@/lib/utils';
@@ -22,51 +22,68 @@ export function PixPayment({
   const [copied, setCopied] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [paymentApproved, setPaymentApproved] = useState(false);
+  const [isManualCheckInProgress, setIsManualCheckInProgress] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        setIsLoading(true);
-        const response = await fetch(`/api/payment/verify-status`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ payment_id: orderId })
-        });
-        const data = await response.json();
-        setIsLoading(false);
+  // Função para verificar o status do pagamento
+  const checkPaymentStatus = useCallback(async () => {
+    if (isLoading || paymentApproved) return;
+    
+    try {
+      setIsLoading(true);
+      const response = await fetch(`/api/payment/verify-status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ payment_id: orderId })
+      });
+      const data = await response.json();
+      setIsLoading(false);
 
-        console.log('Status do pagamento:', data);
+      console.log('Status do pagamento:', data);
 
-        if (data.status === 'approved') {
-          clearInterval(interval);
-          setPaymentApproved(true);
-          onPaymentSuccess();
-          
-          // Mostrar mensagem de sucesso
-          toast.success('Pagamento aprovado! Redirecionando...');
-          
-          // Obter email dos metadados da transação
-          const email = data.transaction?.metadata?.email || 
-                       data.transaction?.metadata?.contact?.email || 
-                       data.transaction?.metadata?.profile?.email || '';
-          
-          // Redirecionar para a página de agradecimento após 2 segundos
-          setTimeout(() => {
-            router.push(`/agradecimento?id=${orderId}&email=${encodeURIComponent(email)}`);
-          }, 2000);
-        }
-      } catch (error) {
-        setIsLoading(false);
-        console.error('Erro ao verificar status do pagamento:', error);
+      if (data.status === 'approved') {
+        setPaymentApproved(true);
+        onPaymentSuccess();
+        
+        // Mostrar mensagem de sucesso
+        toast.success('Pagamento aprovado! Redirecionando...');
+        
+        // Obter email dos metadados da transação
+        const email = data.transaction?.metadata?.email || 
+                     data.transaction?.metadata?.contact?.email || 
+                     data.transaction?.metadata?.profile?.email || '';
+        
+        // Redirecionar para a página de agradecimento após 2 segundos
+        setTimeout(() => {
+          router.push(`/agradecimento?id=${orderId}&email=${encodeURIComponent(email)}`);
+        }, 2000);
+      } else if (isManualCheckInProgress) {
+        setIsManualCheckInProgress(false);
+        toast.info('Pagamento ainda não confirmado. Aguarde ou tente novamente em alguns instantes.');
       }
-    }, 5000);
+    } catch (error) {
+      setIsLoading(false);
+      setIsManualCheckInProgress(false);
+      console.error('Erro ao verificar status do pagamento:', error);
+    }
+  }, [orderId, onPaymentSuccess, router, isLoading, paymentApproved, isManualCheckInProgress]);
+
+  // Verificação automática a cada 5 segundos
+  useEffect(() => {
+    const interval = setInterval(checkPaymentStatus, 5000);
 
     // Limpa o intervalo quando o componente é desmontado
     return () => clearInterval(interval);
-  }, [orderId, onPaymentSuccess, router]);
+  }, [checkPaymentStatus]);
+
+  // Função para verificação manual do pagamento
+  const handleManualCheck = () => {
+    setIsManualCheckInProgress(true);
+    toast.info('Verificando seu pagamento...');
+    checkPaymentStatus();
+  };
 
   const handleCopyPix = async () => {
     try {
@@ -146,17 +163,27 @@ export function PixPayment({
               <p>• Confirme o pagamento</p>
             </div>
             
-            <div className="mt-6 flex items-center justify-center">
-              {isLoading ? (
-                <div className="flex items-center">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500 mr-2"></div>
-                  <span>Verificando pagamento...</span>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-600">
-                  Verificando pagamento a cada 5 segundos...
-                </p>
-              )}
+            <div className="mt-6">
+              <button 
+                onClick={handleManualCheck}
+                disabled={isLoading || paymentApproved}
+                className="w-full bg-green-600 text-white font-medium py-3 px-4 rounded-md hover:bg-green-700 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
+              >
+                {isLoading ? (
+                  <span className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    Verificando pagamento...
+                  </span>
+                ) : (
+                  "Já efetuei o pagamento"
+                )}
+              </button>
+              
+              <p className="text-sm text-gray-600 text-center">
+                {isLoading ? 
+                  "Verificando status do pagamento..." : 
+                  "O sistema verifica automaticamente a cada 5 segundos"}
+              </p>
             </div>
           </>
         )}

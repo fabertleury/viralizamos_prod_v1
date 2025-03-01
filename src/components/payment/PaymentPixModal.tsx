@@ -146,7 +146,7 @@ export function PaymentPixModal({
             
             // Redirecionar para a página de agradecimento
             if (data.transaction_id) {
-              router.push(`/obrigado?transaction_id=${data.transaction_id}`);
+              router.push(`/agradecimento?id=${data.transaction_id}`);
               onClose();
             }
             break;
