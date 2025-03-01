@@ -159,7 +159,8 @@ export async function POST(request: Request) {
       id: result.body.id,
       qr_code: result.body.point_of_interaction.transaction_data.qr_code,
       qr_code_base64: qrCodeBase64,
-      status: 'pending'
+      status: 'pending',
+      amount: Number(amount)
     }, { status: 200 });
   } catch (error) {
     console.error('Error creating payment:', error);

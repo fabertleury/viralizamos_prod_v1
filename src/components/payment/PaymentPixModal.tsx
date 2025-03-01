@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { PaymentSuccessModal } from './PaymentSuccessModal';
+import { PixPayment } from './PixPayment';
 
 interface PaymentPixModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ interface PaymentPixModalProps {
   serviceId?: string;
   targetProfileLink?: string;
   serviceName?: string;
+  amount?: number;
 }
 
 export function PaymentPixModal({ 
@@ -29,7 +31,8 @@ export function PaymentPixModal({
   qrCodeBase64: initialQrCodeBase64,
   serviceId,
   targetProfileLink,
-  serviceName
+  serviceName,
+  amount
 }: PaymentPixModalProps) {
   const [paymentStatus, setPaymentStatus] = useState<string>('pending');
   const [qrCodeBase64, setQrCodeBase64] = useState(initialQrCodeBase64);
@@ -265,55 +268,19 @@ export function PaymentPixModal({
                     </div>
                   ) : (
                     <div className="w-full space-y-4">
-                      <div className="text-center mb-4">
-                        <h4 className="text-lg font-semibold text-gray-800 mb-2">
-                          Realize o pagamento através do QR code abaixo:
-                        </h4>
-                        <p className="text-sm text-gray-600">
-                          Após o pagamento aguarde, o processamento é automático
-                        </p>
-                      </div>
-
-                      <div className="bg-gray-100 p-4 rounded-lg">
-                        {getQRCodeSrc() ? (
-                          <Image
-                            src={getQRCodeSrc()!}
-                            alt="QR Code PIX"
-                            width={200}
-                            height={200}
-                            className="mx-auto"
-                            onError={(e) => {
-                              console.error('Erro ao carregar imagem:', e);
-                            }}
-                          />
-                        ) : (
-                          <div className="flex flex-col items-center justify-center space-y-2">
-                            <p className="text-yellow-600 font-medium">QR Code não disponível</p>
-                            <p className="text-sm text-gray-500 text-center">
-                              Por favor, copie o código PIX abaixo para realizar o pagamento
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="text-center mt-4">
-                        <h4 className="text-lg font-semibold text-gray-800 mb-2">
-                          Ou
-                        </h4>
-                        <p className="text-sm text-gray-600 mb-2">
-                          Copie o Código Pix abaixo e insira na opção Pix Copia e Cola no aplicativo do seu banco para realizar o pagamento do pix:
-                        </p>
-                      </div>
-
-                      <div className="mt-2 w-full">
-                        <Button 
-                          onClick={copyQRCode} 
-                          variant="outline" 
-                          className="w-full"
-                        >
-                          Copiar Código PIX
-                        </Button>
-                      </div>
+                      <PixPayment
+                        qrCodeBase64={qrCodeBase64 || ''}
+                        copyPasteCode={qrCodeText}
+                        orderId={paymentId}
+                        amount={amount || 0} // Você pode adicionar o valor aqui se disponível
+                        onPaymentSuccess={() => {
+                          setPaymentStatus('success');
+                          // Aguardar um pouco antes de fechar o modal
+                          setTimeout(() => {
+                            onClose();
+                          }, 2000);
+                        }}
+                      />
                     </div>
                   )}
                 </div>

@@ -66,6 +66,8 @@ export default function Step2Page() {
   const [paymentData, setPaymentData] = useState<{
     qrCodeText: string;
     paymentId: string;
+    amount: number;
+    qrCodeBase64?: string;
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('posts');
@@ -566,7 +568,9 @@ export default function Step2Page() {
 
       setPaymentData({
         qrCodeText: paymentData.qr_code,
-        paymentId: paymentData.id
+        paymentId: paymentData.id,
+        amount: service.preco,
+        qrCodeBase64: paymentData.qr_code_base64
       });
 
       await sendTransactionToAdmin();
@@ -832,6 +836,8 @@ export default function Step2Page() {
           qrCode={paymentData.qrCodeText}
           qrCodeText={paymentData.qrCodeText}
           paymentId={paymentData.paymentId}
+          amount={paymentData.amount}
+          qrCodeBase64={paymentData.qrCodeBase64}
         />
       )}
     </div>

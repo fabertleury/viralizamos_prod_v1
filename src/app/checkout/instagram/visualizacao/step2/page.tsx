@@ -50,6 +50,8 @@ export default function Step2Page() {
   const [paymentData, setPaymentData] = useState<{
     qrCode: string;
     qrCodeText: string;
+    amount?: number;
+    qrCodeBase64?: string;
   } | null>(null);
 
   const supabase = useSupabase();
@@ -202,7 +204,9 @@ export default function Step2Page() {
       // Mostrar modal de pagamento
       setPaymentData({
         qrCode: paymentData.qr_code_base64,
-        qrCodeText: paymentData.qr_code
+        qrCodeText: paymentData.qr_code,
+        amount: paymentData.amount,
+        qrCodeBase64: paymentData.qr_code_base64
       });
 
       // Limpar dados do checkout após sucesso
@@ -295,6 +299,8 @@ export default function Step2Page() {
           }}
           qrCode={paymentData.qrCode}
           qrCodeText={paymentData.qrCodeText}
+          amount={paymentData.amount}
+          qrCodeBase64={paymentData.qrCodeBase64}
           onSuccess={() => {
             router.push('/checkout/instagram/visualizacao/success');
           }}
