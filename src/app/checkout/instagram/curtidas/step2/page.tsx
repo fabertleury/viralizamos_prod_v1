@@ -642,7 +642,7 @@ export default function Step2Page() {
             {/* Informações do Pedido */}
             <div className="space-y-6 order-2 md:order-none">
               <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4">Informações do Pedido</h3>
+                <h3 className="text-lg font-semibold mb-1">Informações do Pedido</h3>
                 <div className="space-y-4">
                   <Input
                     placeholder="Nome completo"
@@ -680,10 +680,10 @@ export default function Step2Page() {
                     {/* Miniaturas dos itens selecionados */}
                     {selectedItemsCount > 0 && (
                       <div className="mt-3 pt-3 border-t">
-                        <p className="text-sm font-medium mb-2">Itens selecionados:</p>
-                        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                        <p className="text-sm font-medium mb-1">Itens selecionados:</p>
+                        <div className="flex flex-wrap gap-0">
                           {selectedPosts.map((post) => (
-                            <div key={`post-${post.id}`} className="relative w-12 h-12 rounded overflow-hidden border border-pink-300 group">
+                            <div key={`post-${post.id}`} className="relative w-12 h-12 rounded-sm overflow-hidden border border-pink-300 group m-0.5">
                               <img 
                                 src={getProxiedImageUrl(post.image_url)} 
                                 alt="Post selecionado" 
@@ -703,10 +703,12 @@ export default function Step2Page() {
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelectedPosts(selectedPosts.filter(p => p.id !== post.id));
+                                  const updatedPosts = selectedPosts.filter(p => p.id !== post.id);
+                                  setSelectedPosts(updatedPosts);
+                                  handlePostSelect(updatedPosts);
                                 }}
                                 className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] 
-                                  shadow-md"
+                                  shadow-md hover:bg-red-600"
                                 aria-label="Remover post"
                               >
                                 ×
@@ -714,7 +716,7 @@ export default function Step2Page() {
                             </div>
                           ))}
                           {selectedReels.map((reel) => (
-                            <div key={`reel-${reel.id}`} className="relative w-12 h-12 rounded overflow-hidden border border-pink-300 group">
+                            <div key={`reel-${reel.id}`} className="relative w-12 h-12 rounded-sm overflow-hidden border border-pink-300 group m-0.5">
                               <img 
                                 src={getProxiedImageUrl(reel.image_url)} 
                                 alt="Reel selecionado" 
@@ -734,10 +736,12 @@ export default function Step2Page() {
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelectedReels(selectedReels.filter(r => r.id !== reel.id));
+                                  const updatedReels = selectedReels.filter(r => r.id !== reel.id);
+                                  setSelectedReels(updatedReels);
+                                  handleReelSelect(updatedReels);
                                 }}
                                 className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] 
-                                  shadow-md"
+                                  shadow-md hover:bg-red-600"
                                 aria-label="Remover reel"
                               >
                                 ×

@@ -232,6 +232,13 @@ function ReelSelector({
     }
   }, [reels, initialSelectedReels, selectedReels.length]);
 
+  // Atualizar selectedReels quando as props mudarem
+  useEffect(() => {
+    if (initialSelectedReels) {
+      setSelectedReels(initialSelectedReels);
+    }
+  }, [initialSelectedReels]);
+
   // Função para obter URL da imagem através do proxy
   const getProxiedImageUrl = (url: string): string => {
     if (!url) return '/images/placeholder-reel.svg';

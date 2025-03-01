@@ -58,6 +58,13 @@ export function PostSelector({
     }
   }, [posts, initialSelectedPosts, selectedPosts.length]);
 
+  // Atualizar selectedPosts quando as props mudarem
+  useEffect(() => {
+    if (initialSelectedPosts) {
+      setSelectedPosts(initialSelectedPosts);
+    }
+  }, [initialSelectedPosts]);
+
   const getProxiedImageUrl = (originalUrl: string) => {
     if (!originalUrl) return '/images/placeholder-post.svg';
     
