@@ -60,7 +60,7 @@ export function PostSelector({
 
   // Atualizar selectedPosts quando as props mudarem
   useEffect(() => {
-    if (initialSelectedPosts) {
+    if (initialSelectedPosts && JSON.stringify(initialSelectedPosts) !== JSON.stringify(selectedPosts)) {
       setSelectedPosts(initialSelectedPosts);
     }
   }, [initialSelectedPosts]);

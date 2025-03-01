@@ -234,7 +234,7 @@ function ReelSelector({
 
   // Atualizar selectedReels quando as props mudarem
   useEffect(() => {
-    if (initialSelectedReels) {
+    if (initialSelectedReels && JSON.stringify(initialSelectedReels) !== JSON.stringify(selectedReels)) {
       setSelectedReels(initialSelectedReels);
     }
   }, [initialSelectedReels]);
