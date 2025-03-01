@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { PostSelector } from '@/components/instagram/curtidas/PostSelector';
+import PostSelector from '@/components/instagram/curtidas/PostSelector';
+import ReelSelector from '@/components/instagram/curtidas/ReelSelector';
 import { Header } from '../../components/Header';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -35,31 +36,67 @@ interface Post {
   shortcode: string;
   image_url: string;
   caption?: string;
+  like_count?: number;
+  comment_count?: number;
+  thumbnail_url?: string;
+  display_url?: string;
+  image_versions?: any;
+}
+
+interface InstagramPost {
+  id: string;
+  shortcode: string;
+  image_url: string;
+  caption?: string;
 }
 
 export default function Step2Page() {
   const router = useRouter();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [formData, setFormData] = useState({
-    userId: '',
     name: '',
     email: '',
-    whatsapp: '',
     phone: ''
   });
   const [service, setService] = useState<Service | null>(null);
-  const [selectedPosts, setSelectedPosts] = useState<Post[]>([]);
+  const [selectedPosts, setSelectedPosts] = useState<InstagramPost[]>([]);
+  const [selectedReels, setSelectedReels] = useState<InstagramPost[]>([]);
   const [instagramPosts, setInstagramPosts] = useState<Post[]>([]);
+  const [instagramReels, setInstagramReels] = useState<Post[]>([]);
   const [paymentData, setPaymentData] = useState<{
     qrCodeText: string;
     paymentId: string;
   } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('posts');
+  const [postsLoaded, setPostsLoaded] = useState(false);
+  const [reelsLoaded, setReelsLoaded] = useState(false);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [loadingReels, setLoadingReels] = useState(false);
 
   const supabase = createClient();
 
+  const handlePostSelect = useCallback((posts: InstagramPost[]) => {
+    setSelectedPosts(posts);
+  }, []);
+
+  const handleReelSelect = useCallback((reels: InstagramPost[]) => {
+    setSelectedReels(reels);
+  }, []);
+
+  // Calcular o número total de itens selecionados
+  const selectedItemsCount = selectedPosts.length + selectedReels.length;
+
   const fetchInstagramPosts = async (username: string) => {
     try {
+      // Se já carregou os posts, não precisa buscar novamente
+      if (postsLoaded && instagramPosts.length > 0) {
+        console.log('Usando posts em cache:', instagramPosts.length);
+        return instagramPosts;
+      }
+
+      setLoadingPosts(true);
+      
       const options = {
         method: 'GET',
         url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/posts',
@@ -70,14 +107,41 @@ export default function Step2Page() {
         }
       };
       const response = await axios.request(options);
-      console.log('Resposta da API:', response.data);
+      console.log('Resposta da API de posts:', response.data);
 
       // Verificar se a resposta tem a estrutura esperada
       const posts = response.data.data?.items || response.data.items || [];
-      console.log('Posts encontrados:', posts);
+      console.log('Posts encontrados:', posts.length);
+
+      // Filtrar para remover reels e vídeos
+      const filteredPosts = posts.filter((post: any) => {
+        // Log para depuração
+        console.log('Analisando post:', {
+          id: post.id,
+          media_type: post.media_type,
+          is_video: post.is_video,
+          product_type: post.product_type,
+          is_reel: post.product_type === 'clips' || post.product_type === 'reels'
+        });
+        
+        // Filtrar apenas posts de imagem (não reels, não vídeos)
+        const isNotReel = post.product_type !== 'clips' && post.product_type !== 'reels';
+        const isImageOrCarousel = (post.media_type === 1 || post.media_type === 8);
+        const isNotVideo = !post.is_video;
+        
+        const shouldInclude = isNotReel && isImageOrCarousel && isNotVideo;
+        
+        if (!shouldInclude) {
+          console.log(`Excluindo post ${post.id}: ${!isNotReel ? 'É um reel' : !isImageOrCarousel ? 'Não é imagem/carrossel' : 'É um vídeo'}`);
+        }
+        
+        return shouldInclude;
+      });
+      
+      console.log('Posts filtrados (sem reels):', filteredPosts.length);
 
       // Mapear os posts para o formato esperado
-      const formattedPosts: Post[] = posts.map((post: any) => {
+      const formattedPosts: Post[] = filteredPosts.map((post: any) => {
         // Para posts de carrossel, usar a primeira imagem
         const imageUrl = 
           post.carousel_media?.[0]?.image_versions?.items?.[0]?.url || 
@@ -93,13 +157,84 @@ export default function Step2Page() {
                 ? post.caption.text || 'Sem legenda'
                 : String(post.caption)) 
               : 'Sem legenda',
+          like_count: post.like_count || post.likes_count || 0,
+          comment_count: post.comment_count || post.comments_count || 0
         };
       }).filter(post => post.image_url); // Remover posts sem imagem
 
-      console.log('Posts formatados:', formattedPosts);
+      console.log('Posts formatados:', formattedPosts.length);
+      setInstagramPosts(formattedPosts);
+      setPostsLoaded(true);
+      setLoadingPosts(false);
       return formattedPosts;
     } catch (error) {
       console.error('Erro ao buscar posts do Instagram:', error);
+      setLoadingPosts(false);
+      return [];
+    }
+  };
+
+  const fetchInstagramReels = async (username: string) => {
+    try {
+      // Se já carregou os reels, não precisa buscar novamente
+      if (reelsLoaded && instagramReels.length > 0) {
+        console.log('Usando reels em cache:', instagramReels.length);
+        return instagramReels;
+      }
+
+      setLoadingReels(true);
+      
+      const options = {
+        method: 'GET',
+        url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/reels',
+        params: { username_or_id_or_url: username },
+        headers: {
+          'x-rapidapi-key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY,
+          'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
+        }
+      };
+      const response = await axios.request(options);
+      console.log('Resposta da API de reels:', response.data);
+
+      // Verificar se a resposta tem a estrutura esperada
+      const reels = response.data.data?.items || response.data.items || [];
+      console.log('Reels encontrados:', reels.length);
+
+      // Mapear os reels para o formato esperado
+      const formattedReels: Post[] = reels.map((reel: any) => {
+        // Tentar diferentes caminhos para a imagem do reel
+        const imageUrl = 
+          reel.image_versions?.items?.[0]?.url || 
+          reel.thumbnail_url || 
+          reel.cover_frame_url || 
+          reel.display_url;
+
+        return {
+          id: reel.code || reel.id || reel.shortcode,
+          shortcode: reel.code || reel.id || reel.shortcode,
+          image_url: imageUrl,
+          caption: reel.caption 
+              ? (typeof reel.caption === 'object' 
+                ? reel.caption.text || 'Sem legenda'
+                : String(reel.caption)) 
+              : 'Sem legenda',
+          like_count: reel.like_count || reel.likes_count || 0,
+          comment_count: reel.comment_count || reel.comments_count || 0,
+          // Campos específicos para reels
+          thumbnail_url: reel.thumbnail_url || '',
+          display_url: reel.display_url || '',
+          image_versions: reel.image_versions || null
+        };
+      }).filter(reel => reel.image_url || reel.thumbnail_url || reel.display_url); // Remover reels sem imagem
+
+      console.log('Reels formatados:', formattedReels.length);
+      setInstagramReels(formattedReels);
+      setReelsLoaded(true);
+      setLoadingReels(false);
+      return formattedReels;
+    } catch (error) {
+      console.error('Erro ao buscar reels do Instagram:', error);
+      setLoadingReels(false);
       return [];
     }
   };
@@ -196,10 +331,8 @@ export default function Step2Page() {
           setProfileData(profileData);
           // Atualizar formData com dados do perfil, se disponíveis
           setFormData({
-            userId: parsedCheckoutData.userId || '',
             name: parsedCheckoutData.name || '',
             email: parsedCheckoutData.email || '',
-            whatsapp: parsedCheckoutData.whatsapp || '',
             phone: parsedCheckoutData.phone || ''
           });
         }
@@ -217,6 +350,7 @@ export default function Step2Page() {
             }
             if (postsData) {
               setInstagramPosts(postsData);
+              setPostsLoaded(true);
             }
           });
         }
@@ -226,28 +360,57 @@ export default function Step2Page() {
     }
   }, []);
 
+  useEffect(() => {
+    const fetchReels = async () => {
+      try {
+        if (profileData?.username && !reelsLoaded) {
+          setLoadingReels(true);
+          await fetchInstagramReels(profileData.username);
+          setLoadingReels(false);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar reels:', error);
+      }
+    };
+
+    fetchReels();
+  }, [profileData, reelsLoaded]);
+
+  useEffect(() => {
+    if (activeTab === 'reels' && !reelsLoaded && profileData?.username) {
+      fetchInstagramReels(profileData.username);
+    }
+  }, [activeTab, reelsLoaded, profileData]);
+
   const prepareTransactionData = () => {
-    if (!service || !profileData || !formData || selectedPosts.length === 0 || !paymentData) {
+    if (!service || !profileData || !formData || (selectedPosts.length + selectedReels.length) === 0 || !paymentData) {
       toast.error('Dados incompletos para processamento da transação');
       return null;
     }
 
     // Calcular quantidade de likes por post
-    const totalPosts = selectedPosts.length;
+    const totalItems = selectedPosts.length + selectedReels.length;
     const totalLikes = service.quantidade;
-    const likesPerPost = Math.floor(totalLikes / totalPosts);
-    const remainingLikes = totalLikes % totalPosts;
+    const likesPerItem = Math.floor(totalLikes / totalItems);
+    const remainingLikes = totalLikes % totalItems;
 
     // Preparar metadados dos posts
     const postsMetadata = selectedPosts.map((post, index) => ({
       postId: post.id,
       postCode: post.shortcode,
       postLink: `https://www.instagram.com/p/${post.shortcode}/`,
-      likes: index === 0 ? likesPerPost + remainingLikes : likesPerPost
+      likes: index === 0 ? likesPerItem + remainingLikes : likesPerItem
+    }));
+
+    const reelsMetadata = selectedReels.map((reel, index) => ({
+      postId: reel.id,
+      postCode: reel.shortcode,
+      postLink: `https://www.instagram.com/p/${reel.shortcode}/`,
+      likes: likesPerItem
     }));
 
     return {
-      user_id: formData.userId || null,
+      user_id: formData.name || null,
       order_id: paymentData.paymentId,
       type: 'curtidas',
       amount: service.preco,
@@ -255,7 +418,7 @@ export default function Step2Page() {
       payment_method: 'pix',
       payment_id: paymentData.paymentId,
       metadata: {
-        posts: postsMetadata,
+        posts: [...postsMetadata, ...reelsMetadata],
         serviceDetails: service
       },
       customer_name: formData.name || null,
@@ -297,8 +460,8 @@ export default function Step2Page() {
   };
 
   const handleSubmit = async () => {
-    if (!profileData || !service || selectedPosts.length === 0) {
-      toast.error('Selecione pelo menos um post');
+    if (!profileData || !service || (selectedPosts.length + selectedReels.length) === 0) {
+      toast.error('Selecione pelo menos um post ou reel');
       return;
     }
 
@@ -313,7 +476,7 @@ export default function Step2Page() {
         },
         body: JSON.stringify({
           amount: service.preco,
-          description: `${service.quantidade} curtidas para ${selectedPosts.length} posts`,
+          description: `${service.quantidade} curtidas para ${selectedPosts.length + selectedReels.length} itens`,
           service: {
             id: service.id,
             name: service.name,
@@ -329,9 +492,9 @@ export default function Step2Page() {
           customer: {
             name: formData.name,
             email: formData.email,
-            phone: formData.whatsapp
+            phone: formData.phone
           },
-          posts: selectedPosts.map(post => ({
+          posts: [...selectedPosts, ...selectedReels].map(post => ({
             id: post.id,
             shortcode: post.shortcode,
             image_url: post.image_url,
@@ -385,7 +548,7 @@ export default function Step2Page() {
       <main className="container mx-auto px-4 py-8">
         {profileData && service && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Seleção de Posts */}
+            {/* Seleção de Posts e Reels */}
             <Card className="p-6 order-1 md:order-none">
               <div className="flex items-center space-x-4 mb-6">
                 <div className="w-12 h-12 rounded-full overflow-hidden">
@@ -401,13 +564,79 @@ export default function Step2Page() {
                 </div>
               </div>
               
-              <PostSelector 
-                username={profileData.username}
-                onSelectPosts={setSelectedPosts}
-                maxPosts={5}
-                service={service}
-                posts={instagramPosts}
-              />
+              {/* Tabs de navegação */}
+              <div className="flex items-center justify-center space-x-4 mb-6">
+                <button 
+                  onClick={() => {
+                    setActiveTab('posts');
+                    // Garantir que os posts estejam carregados
+                    if (!postsLoaded && profileData?.username) {
+                      fetchInstagramPosts(profileData.username);
+                    }
+                  }}
+                  className={`
+                    px-6 py-3 rounded-full font-bold text-sm uppercase tracking-wider 
+                    transition-all duration-300 ease-in-out transform 
+                    ${activeTab === 'posts' 
+                      ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-105 shadow-lg' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800'}
+                  `}
+                >
+                  <span className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                    </svg>
+                    Posts ({instagramPosts?.length || 0})
+                  </span>
+                </button>
+                <button 
+                  onClick={() => {
+                    setActiveTab('reels');
+                    // Carregar reels se ainda não foram carregados
+                    if (!reelsLoaded && profileData?.username) {
+                      fetchInstagramReels(profileData.username);
+                    }
+                  }}
+                  className={`
+                    px-6 py-3 rounded-full font-bold text-sm uppercase tracking-wider 
+                    transition-all duration-300 ease-in-out transform 
+                    ${activeTab === 'reels' 
+                      ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-105 shadow-lg' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800'}
+                  `}
+                >
+                  <span className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Reels ({instagramReels?.length || 0})
+                  </span>
+                </button>
+              </div>
+
+              {activeTab === 'posts' ? (
+                <PostSelector 
+                  username={profileData.username}
+                  onPostSelect={handlePostSelect}
+                  selectedPosts={selectedPosts}
+                  selectedReels={selectedReels}
+                  maxPosts={5}
+                  service={service}
+                  posts={instagramPosts}
+                  totalLikes={service?.quantidade || 100}
+                  loading={loadingPosts}
+                />
+              ) : (
+                <ReelSelector 
+                  username={profileData.username}
+                  onSelectReels={handleReelSelect}
+                  selectedReels={selectedReels}
+                  selectedPosts={selectedPosts}
+                  maxReels={5}
+                  totalLikes={service?.quantidade || 100}
+                  loading={loadingReels}
+                />
+              )}
             </Card>
 
             {/* Informações do Pedido */}
@@ -427,9 +656,9 @@ export default function Step2Page() {
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   />
                   <Input
-                    placeholder="WhatsApp"
-                    value={formData.whatsapp}
-                    onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
+                    placeholder="Telefone"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   />
                   
                   <div className="pt-4 border-t space-y-2">
@@ -437,15 +666,15 @@ export default function Step2Page() {
                       <span>Quantidade de curtidas:</span>
                       <span>{service.quantidade.toLocaleString()}</span>
                     </div>
-                    {selectedPosts.length > 0 && (
+                    {(selectedPosts.length + selectedReels.length) > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span>Curtidas por post:</span>
-                        <span>{Math.floor(service.quantidade / selectedPosts.length).toLocaleString()}</span>
+                        <span>Curtidas por item:</span>
+                        <span>{Math.floor(service.quantidade / (selectedPosts.length + selectedReels.length)).toLocaleString()}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm">
-                      <span>Posts selecionados:</span>
-                      <span>{selectedPosts.length}/5</span>
+                      <span>Itens selecionados:</span>
+                      <span>{selectedItemsCount} / 5</span>
                     </div>
                     <div className="flex justify-between text-lg font-semibold mt-2 pt-2 border-t">
                       <span>Valor total:</span>
@@ -455,7 +684,7 @@ export default function Step2Page() {
 
                   <Button
                     onClick={handleSubmit}
-                    disabled={loading || !service || selectedPosts.length === 0}
+                    disabled={loading || !service || (selectedPosts.length + selectedReels.length) === 0}
                     className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
                   >
                     {loading ? (

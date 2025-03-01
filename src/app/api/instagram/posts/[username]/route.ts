@@ -67,6 +67,14 @@ export async function GET(
 
     // Processar posts considerando posts com múltiplas imagens
     const processedPosts = postsData.data.items.flatMap(post => {
+      // Log para depuração do tipo de post
+      console.log('Processando post:', {
+        id: post.id,
+        media_type: post.media_type,
+        is_video: post.is_video,
+        product_type: post.product_type || 'unknown'
+      });
+      
       // Se for um post com múltiplas imagens (carousel)
       if (post.media_type === 8 && post.carousel_media) {
         return post.carousel_media.map(carouselItem => ({
@@ -103,7 +111,8 @@ export async function GET(
           },
           link: `https://www.instagram.com/p/${post.code}/`,
           media_type: carouselItem.media_type,
-          is_video: carouselItem.is_video
+          is_video: carouselItem.is_video,
+          is_reel: post.product_type === 'clips' || post.product_type === 'reels'
         }));
       }
       
@@ -142,7 +151,8 @@ export async function GET(
         },
         link: `https://www.instagram.com/p/${post.code}/`,
         media_type: post.media_type,
-        is_video: post.is_video
+        is_video: post.is_video,
+        is_reel: post.product_type === 'clips' || post.product_type === 'reels'
       }];
     });
 
