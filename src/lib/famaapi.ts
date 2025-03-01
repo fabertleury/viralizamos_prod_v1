@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/server';
 
 const BASE_URL = 'https://famanasredes.com.br/api/v2';
 
@@ -199,6 +199,48 @@ export async function processTransaction(transactionId: string) {
 
     console.log('[ProcessTransaction] Dados da transação:', JSON.stringify(transaction, null, 2));
 
+    // Salvar ou atualizar o perfil do usuário
+    const email = transaction.metadata?.email || 
+                 transaction.metadata?.contact?.email || 
+                 transaction.metadata?.profile?.email || 
+                 transaction.user?.email;
+    
+    if (email) {
+      // Verificar se o usuário já existe
+      const { data: existingUser, error: userError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .single();
+      
+      if (userError) {
+        // Extrair nome do usuário
+        const userName = transaction.metadata?.profile?.full_name || 
+                        transaction.metadata?.profile?.username || 
+                        transaction.metadata?.target_username;
+        
+        console.log('[ProcessTransaction] Criando perfil para usuário:', email);
+        
+        // Usuário não existe, criar novo
+        const { error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            email: email,
+            name: userName || email.split('@')[0],
+            role: 'user',
+            active: true
+          });
+        
+        if (createError) {
+          console.error('[ProcessTransaction] Erro ao criar perfil do usuário:', createError);
+        } else {
+          console.log('[ProcessTransaction] Perfil do usuário criado com sucesso');
+        }
+      } else {
+        console.log('[ProcessTransaction] Usuário já existe no sistema:', existingUser);
+      }
+    }
+
     console.log('[ProcessTransaction] Verificando pedidos existentes...');
     const { data: existingOrders } = await supabase
       .from('orders')
@@ -225,7 +267,8 @@ export async function processTransaction(transactionId: string) {
 
       for (const post of posts) {
         console.log('[ProcessTransaction] Processando post:', post);
-        const postLink = `https://instagram.com/p/${post.shortcode}`;
+        const postCode = post.code || post.shortcode || post.id;
+        const postLink = `https://instagram.com/p/${postCode}`;
         
         try {
           console.log('[ProcessTransaction] Criando pedido na API Fama:', {

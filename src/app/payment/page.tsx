@@ -167,7 +167,9 @@ export default function PaymentPage() {
           contact: {
             email: formData.email,
             whatsapp: formData.whatsapp
-          }
+          },
+          email: formData.email, // Adicionando email diretamente nos metadados para facilitar acesso
+          target_username: formData.instagram_username // Adicionar username para facilitar acesso
         }
       };
 

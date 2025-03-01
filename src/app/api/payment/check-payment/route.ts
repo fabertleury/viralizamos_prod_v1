@@ -49,109 +49,171 @@ export async function POST(request: Request) {
     // O status vem dentro do response
     const paymentStatus = paymentData.response?.status || paymentData.status;
     if (!paymentStatus) {
-      throw new Error('Status do pagamento não encontrado');
+      return NextResponse.json(
+        { message: 'Status do pagamento não encontrado' },
+        { status: 400 }
+      );
     }
 
-    // Buscar transação pelo payment_id
-    const { data: transactions, error: searchError } = await supabase
+    // Buscar transação no Supabase
+    const { data: transaction, error } = await supabase
       .from('transactions')
       .select('*')
-      .eq('metadata->payment->id', payment_id);
+      .eq('payment_id', payment_id)
+      .single();
 
-    if (searchError) {
-      console.error('Error searching transaction:', searchError);
-      throw searchError;
-    }
-
-    if (!transactions || transactions.length === 0) {
+    if (error) {
+      console.error('Erro ao buscar transação:', error);
       return NextResponse.json(
-        { message: 'Transação não encontrada' },
+        { message: 'Transação não encontrada', error: error.message },
         { status: 404 }
       );
     }
 
-    const transaction = transactions[0];
-    console.log('Transaction found:', transaction);
-
-    // Atualizar a transação no banco
-    const { error: updateError } = await supabase
-      .from('transactions')
-      .update({
-        status: paymentStatus,
-        metadata: {
-          ...transaction.metadata,
-          payment: {
-            ...transaction.metadata?.payment,
-            id: payment_id,
-            status: paymentStatus,
-            updated_at: new Date().toISOString()
-          }
-        },
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', transaction.id)
-      .select();
-
-    if (updateError) {
-      console.error('Error updating transaction:', updateError);
-      throw updateError;
-    }
-
-    // Se o pagamento foi aprovado e ainda não tem pedido, criar o pedido
-    if (paymentStatus === 'approved' && !transaction.order_id) {
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          status: 'pending',
-          amount: transaction.amount,
-          payment_method: transaction.payment_method,
-          quantity: transaction.metadata?.service?.quantidade || 1,
-          metadata: {
-            customer: transaction.metadata.customer,
-            service: transaction.metadata.service,
-            profile: transaction.metadata.profile,
-            posts: transaction.metadata.posts,
-            payment: {
-              id: paymentData.response?.id || paymentData.id,
-              status: paymentStatus,
-              created_at: new Date().toISOString()
-            }
-          },
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (orderError) {
-        console.error('Error creating order:', orderError);
-        throw orderError;
-      }
-
-      // Atualizar a transação com o ID do pedido
-      const { error: updateOrderError } = await supabase
+    // Verificar se o status mudou
+    if (transaction.status !== paymentStatus) {
+      console.log(`Status mudou de ${transaction.status} para ${paymentStatus}`);
+      
+      // Atualizar status no Supabase
+      const { error: updateError } = await supabase
         .from('transactions')
-        .update({
-          order_id: order.id,
+        .update({ 
+          status: paymentStatus,
           metadata: {
             ...transaction.metadata,
-            order: {
-              id: order.id,
-              created_at: new Date().toISOString()
-            }
+            payment_details: paymentData.response
           }
         })
         .eq('id', transaction.id);
-
-      if (updateOrderError) {
-        console.error('Error updating transaction with order:', updateOrderError);
-        throw updateOrderError;
+      
+      if (updateError) {
+        console.error('Erro ao atualizar status:', updateError);
+      }
+      
+      // Se o pagamento foi aprovado, processar o pedido
+      if (paymentStatus === 'approved' && transaction.status !== 'approved') {
+        console.log('Pagamento aprovado! Processando pedido...');
+        
+        // Extrair email dos metadados da transação
+        const email = transaction.metadata?.email || 
+                     transaction.metadata?.contact?.email || 
+                     transaction.metadata?.profile?.email;
+        
+        // Extrair nome do usuário
+        const userName = transaction.metadata?.profile?.full_name || 
+                        transaction.metadata?.profile?.username || 
+                        transaction.metadata?.target_username;
+        
+        // Salvar ou atualizar o perfil do usuário se tiver email
+        if (email) {
+          // Verificar se o usuário já existe
+          const { data: existingUser, error: userError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('email', email)
+            .single();
+          
+          if (userError) {
+            // Usuário não existe, criar novo
+            const { error: createError } = await supabase
+              .from('profiles')
+              .insert({
+                email: email,
+                name: userName || email.split('@')[0],
+                role: 'user',
+                active: true
+              });
+            
+            if (createError) {
+              console.error('Erro ao criar perfil do usuário:', createError);
+            } else {
+              console.log('Perfil do usuário criado com sucesso');
+            }
+          } else {
+            console.log('Usuário já existe no sistema:', existingUser);
+          }
+        }
+        
+        // Extrair dados do serviço da transação
+        const service = transaction.metadata?.service;
+        const posts = transaction.metadata?.posts;
+        const profile = transaction.metadata?.profile;
+        
+        // Atualizar a transação com o email para rastreabilidade
+        if (email && (!transaction.metadata?.email)) {
+          await supabase
+            .from('transactions')
+            .update({
+              metadata: {
+                ...transaction.metadata,
+                email
+              }
+            })
+            .eq('id', transaction.id);
+        }
+        
+        if (service && posts && posts.length > 0 && profile) {
+          console.log('Dados para criação de pedidos:', {
+            service,
+            posts: posts.length,
+            profile,
+            email
+          });
+          
+          // Para cada post, criar um pedido separado
+          const orderResults = [];
+          for (const post of posts) {
+            try {
+              // Enviar pedido para o provedor
+              const orderResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/v1/providers/fama-redes/add-order`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  service: service.fama_id,
+                  link: post.link,
+                  quantity: service.quantity,
+                  transaction_id: transaction.id,
+                  target_username: profile.username
+                }),
+              });
+              
+              if (!orderResponse.ok) {
+                const errorData = await orderResponse.json();
+                console.error('Erro ao enviar pedido para o provedor:', errorData);
+                orderResults.push({ success: false, error: errorData, post });
+              } else {
+                const orderData = await orderResponse.json();
+                console.log('Pedido enviado com sucesso para o provedor:', orderData);
+                orderResults.push({ success: true, data: orderData, post });
+              }
+            } catch (orderError) {
+              console.error('Erro ao processar pedido para o post:', post.link, orderError);
+              orderResults.push({ success: false, error: String(orderError), post });
+            }
+          }
+          
+          // Atualizar a transação com os resultados dos pedidos
+          await supabase
+            .from('transactions')
+            .update({
+              metadata: {
+                ...transaction.metadata,
+                order_results: orderResults
+              }
+            })
+            .eq('id', transaction.id);
+        }
       }
     }
 
-    return NextResponse.json({ 
+    // Retornar status atual e detalhes do pagamento
+    return NextResponse.json({
       status: paymentStatus,
-      message: 'Status do pagamento atualizado com sucesso'
+      transaction_id: transaction.id,
+      payer_email: paymentData.response?.payer?.email || transaction.metadata?.email || transaction.metadata?.profile?.email,
+      details: paymentData.response
     });
   } catch (error) {
     console.error('Error checking payment:', error);

@@ -4,8 +4,6 @@ import { NextResponse } from 'next/server';
 import { processTransaction } from '@/lib/famaapi';
 
 export async function POST(request: Request) {
-  const cookieStore = cookies();
-
   try {
     const { transactionId } = await request.json();
     
@@ -16,9 +14,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: async () => cookieStore });
 
-    // Verificar se o usuário está autenticado e é admin
+    // Verificar se o usuário está autenticado
     const {
       data: { session },
       error: sessionError
@@ -39,23 +38,24 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: userData, error: userError } = await supabase
-      .from('users')
+    // Verificar se o usuário é um administrador
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
       .select('role')
       .eq('id', session.user.id)
       .single();
 
-    if (userError) {
-      console.error('User data error:', userError);
+    if (profileError) {
+      console.error('Profile data error:', profileError);
       return NextResponse.json(
-        { error: 'Error getting user data' },
+        { error: 'Error getting profile data' },
         { status: 500 }
       );
     }
 
-    if (!userData || userData.role !== 'admin') {
+    if (!profileData || (profileData.role !== 'admin' && profileData.role !== 'support')) {
       return NextResponse.json(
-        { error: 'Forbidden - User is not admin' },
+        { error: 'Forbidden - User is not admin or support' },
         { status: 403 }
       );
     }
@@ -78,9 +78,33 @@ export async function POST(request: Request) {
     // Processar a transação
     const result = await processTransaction(transactionId);
 
+    // Atualizar status da transação
+    const { error: updateError } = await supabase
+      .from('transactions')
+      .update({
+        status: 'processing',
+        metadata: {
+          ...transaction.metadata,
+          processed_at: new Date().toISOString(),
+          processed_by: session.user.id
+        }
+      })
+      .eq('id', transactionId);
+
+    if (updateError) {
+      console.error('Erro ao atualizar status da transação:', updateError);
+      return NextResponse.json({
+        error: 'Erro ao atualizar status da transação',
+        details: updateError.message
+      }, { status: 500 });
+    }
+
+    // Redirecionar para a página de pedidos
     return NextResponse.json({
-      status: 'success',
-      data: result
+      success: true,
+      message: 'Pedidos processados com sucesso',
+      orders: result,
+      redirect: '/admin/pedidos'
     });
   } catch (error: any) {
     console.error('Process order error:', error);

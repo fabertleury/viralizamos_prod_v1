@@ -171,11 +171,31 @@ export async function POST(request: NextRequest) {
         }
 
         // Parse dos metadados do serviço
-        const serviceMetadata = JSON.parse(serviceData.metadata || '{}');
+        let serviceMetadata = {};
+        try {
+          if (typeof serviceData.metadata === 'string') {
+            serviceMetadata = JSON.parse(serviceData.metadata);
+          } else if (serviceData.metadata && typeof serviceData.metadata === 'object') {
+            serviceMetadata = serviceData.metadata;
+          }
+        } catch (parseError) {
+          console.error('Erro ao fazer parse dos metadados do serviço:', parseError);
+        }
+        
         const services = serviceMetadata.services || [];
 
         // Extrair links de posts do metadata da transação
-        const transactionMetadata = JSON.parse(supabaseTransaction.metadata || '{}');
+        let transactionMetadata = {};
+        try {
+          if (typeof supabaseTransaction.metadata === 'string') {
+            transactionMetadata = JSON.parse(supabaseTransaction.metadata);
+          } else if (supabaseTransaction.metadata && typeof supabaseTransaction.metadata === 'object') {
+            transactionMetadata = supabaseTransaction.metadata;
+          }
+        } catch (parseError) {
+          console.error('Erro ao fazer parse dos metadados da transação:', parseError);
+        }
+        
         const postLinks = transactionMetadata.post_links || [];
 
         // Criar ordem mestra no Supabase

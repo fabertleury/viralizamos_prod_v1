@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { TransactionDetailsModal } from "@/components/admin/TransactionDetailsModal";
-import { Eye, Send, RefreshCw } from "lucide-react";
+import { Eye, Send, RefreshCw, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 
 function formatCurrency(value: number) {
@@ -44,6 +44,7 @@ export default function TransacoesPage() {
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [loadingPayment, setLoadingPayment] = useState<string | null>(null);
   const [processingOrder, setProcessingOrder] = useState<string | null>(null);
+  const [markingDelivered, setMarkingDelivered] = useState<string | null>(null);
   const supabase = createClient();
 
   const fetchTransactions = useCallback(async () => {
@@ -161,8 +162,11 @@ export default function TransacoesPage() {
     
     try {
       setProcessingOrder(transaction.id);
+      console.log('Iniciando processamento manual para transação:', transaction.id);
 
-      const response = await fetch('/api/payment/check-status', {
+      // Primeiro, verificar o status do pagamento
+      console.log('Verificando status do pagamento...');
+      const checkResponse = await fetch('/api/payment/check-status', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -172,26 +176,101 @@ export default function TransacoesPage() {
         }),
       });
 
-      const data = await response.json();
+      const checkData = await checkResponse.json();
+      
+      if (!checkResponse.ok) {
+        console.error('Erro na verificação de status:', checkData);
+        throw new Error(checkData.error || 'Erro ao verificar status do pagamento');
+      }
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao processar ordem manualmente');
+      console.log('Status verificado com sucesso:', checkData);
+
+      // Depois, processar o pedido
+      console.log('Processando pedido...');
+      const processResponse = await fetch('/api/orders/process-manual', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transactionId: transaction.id
+        }),
+      });
+
+      const processData = await processResponse.json();
+      console.log('Resposta do processamento:', processData);
+
+      if (!processResponse.ok) {
+        console.error('Erro no processamento do pedido:', processData);
+        throw new Error(processData.error || 'Erro ao processar pedido');
       }
 
       await fetchTransactions();
       
-      toast.success('Ordem processada manualmente com sucesso!', {
+      toast.success('Pedido processado com sucesso!', {
         description: `ID da transação: ${transaction.id}`
       });
+
+      // Redirecionar para a página de pedidos
+      window.location.href = '/admin/pedidos';
     } catch (error: any) {
       console.error('Error processing order manually:', error);
-      toast.error('Erro ao processar ordem manualmente', {
+      toast.error('Erro ao processar pedido', {
         description: error.message
       });
     } finally {
       setProcessingOrder(null);
     }
   }, [processingOrder, fetchTransactions]);
+
+  const handleMarkDelivered = useCallback(async (transaction: any) => {
+    if (markingDelivered) return;
+    
+    try {
+      setMarkingDelivered(transaction.id);
+      
+      const response = await fetch('/api/transactions/check-delivery-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transactionId: transaction.id
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao verificar status de entrega');
+      }
+      
+      await fetchTransactions();
+      
+      if (data.status === 'success') {
+        toast.success('Serviço marcado como entregue com sucesso!', {
+          description: 'Todos os pedidos foram verificados e estão completos.'
+        });
+      } else if (data.status === 'pending') {
+        toast.warning('Nem todos os pedidos estão completos', {
+          description: 'Verifique o status dos pedidos para mais detalhes.'
+        });
+      } else if (data.status === 'partial_success') {
+        toast.warning('Pedidos verificados, mas houve erro ao marcar transação como entregue', {
+          description: data.error || 'Tente novamente mais tarde.'
+        });
+      } else {
+        toast.info('Status dos pedidos verificado', {
+          description: data.message || 'Verifique a tabela para mais detalhes.'
+        });
+      }
+    } catch (error: any) {
+      console.error('Error checking delivery status:', error);
+      toast.error(error.message || 'Erro ao verificar status de entrega');
+    } finally {
+      setMarkingDelivered(null);
+    }
+  }, [markingDelivered, fetchTransactions]);
 
   return (
     <div className="p-6">
@@ -218,6 +297,7 @@ export default function TransacoesPage() {
                   <th scope="col" className="px-6 py-3">Método</th>
                   <th scope="col" className="px-6 py-3">Valor</th>
                   <th scope="col" className="px-6 py-3">Status</th>
+                  <th scope="col" className="px-6 py-3">Entregue</th>
                   <th scope="col" className="px-6 py-3">Ações</th>
                 </tr>
               </thead>
@@ -245,6 +325,17 @@ export default function TransacoesPage() {
                       <span className={`px-2 py-1 rounded-full text-xs ${getStatusClass(transaction.status)}`}>
                         {getStatusText(transaction.status)}
                       </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {transaction.delivered ? (
+                        <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+                          Entregue {transaction.delivered_at && `em ${format(new Date(transaction.delivered_at), "dd/MM/yyyy", { locale: ptBR })}`}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 rounded-full text-xs bg-yellow-100 text-yellow-800">
+                          Pendente
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -281,6 +372,19 @@ export default function TransacoesPage() {
                               <Send className={`w-4 h-4 ${processingOrder === transaction.id ? 'animate-pulse' : ''}`} />
                             </Button>
                           </div>
+                        )}
+
+                        {transaction.status === 'approved' && !transaction.delivered && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleMarkDelivered(transaction)}
+                            disabled={markingDelivered === transaction.id}
+                            className="text-green-500 hover:text-green-700"
+                            title="Verificar status de entrega"
+                          >
+                            <CheckCircle className={`w-4 h-4 ${markingDelivered === transaction.id ? 'animate-pulse' : ''}`} />
+                          </Button>
                         )}
                       </div>
                     </td>

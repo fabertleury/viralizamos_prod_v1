@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { formatDateToBrasilia } from '@/lib/utils/date';
+import { RefreshCw } from 'lucide-react';
 
 interface Order {
   id: string;
@@ -46,6 +47,7 @@ export default function AcompanharPedidoPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [searched, setSearched] = useState(false);
   const [processingRefill, setProcessingRefill] = useState<string | null>(null);
+  const [checkingStatus, setCheckingStatus] = useState<{ [key: string]: boolean }>({});
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -54,21 +56,63 @@ export default function AcompanharPedidoPage() {
         return 'bg-green-50 text-green-700 ring-green-600/20';
       case 'pending':
       case 'processing':
+      case 'in progress':
         return 'bg-yellow-50 text-yellow-700 ring-yellow-600/20';
       case 'failed':
       case 'rejected':
+      case 'canceled':
         return 'bg-red-50 text-red-700 ring-red-600/20';
+      case 'partial':
+        return 'bg-blue-50 text-blue-700 ring-blue-600/20';
       default:
         return 'bg-gray-50 text-gray-700 ring-gray-600/20';
     }
   };
 
-  const isWithin30Days = (date: string) => {
+  const getDaysRemaining = (date: string) => {
     const orderDate = new Date(date);
     const now = new Date();
-    const diffTime = Math.abs(now.getTime() - orderDate.getTime());
+    const diffTime = Math.abs(orderDate.getTime() - now.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays <= 30;
+    return 30 - diffDays;
+  };
+
+  const isWithin30Days = (date: string) => {
+    return getDaysRemaining(date) > 0;
+  };
+
+  const checkOrderStatus = async (orderId: string) => {
+    if (!orderId || !email) return;
+    
+    try {
+      setCheckingStatus(prev => ({ ...prev, [orderId]: true }));
+      
+      const response = await fetch('/api/orders/check-status-public', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ orderId, email }),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao verificar status do pedido');
+      }
+      
+      toast.success('Status do pedido atualizado com sucesso');
+      
+      // Atualizar o pedido na lista
+      setOrders(orders.map(order => 
+        order.external_order_id === orderId ? result.data : order
+      ));
+    } catch (error) {
+      console.error('Erro ao verificar status do pedido:', error);
+      toast.error('Erro ao verificar status do pedido');
+    } finally {
+      setCheckingStatus(prev => ({ ...prev, [orderId]: false }));
+    }
   };
 
   const handleRefill = async (orderId: string) => {
@@ -119,15 +163,118 @@ export default function AcompanharPedidoPage() {
 
       // Buscar usuário pelo email
       const { data: users, error: userError } = await supabase
-        .from('users')
+        .from('profiles')
         .select('id')
         .eq('email', email)
         .single();
 
       if (userError) {
-        toast.error('Email não encontrado');
-        setOrders([]);
-        return;
+        console.log('Email não encontrado em profiles, buscando em transactions...');
+        
+        // Se não encontrar o usuário, buscar nas transações pelo email nos metadados
+        const { data: transactionsByEmail, error: transactionError } = await supabase
+          .from('transactions')
+          .select('id, user_id')
+          .filter('metadata->email', 'eq', email)
+          .order('created_at', { ascending: false });
+          
+        if (transactionError || !transactionsByEmail || transactionsByEmail.length === 0) {
+          // Buscar em orders pelo email nos metadados
+          const { data: ordersByEmail, error: ordersError } = await supabase
+            .from('orders')
+            .select('id, user_id')
+            .filter('metadata->email', 'eq', email)
+            .order('created_at', { ascending: false });
+            
+          if (ordersError || !ordersByEmail || ordersByEmail.length === 0) {
+            toast.error('Email não encontrado');
+            setOrders([]);
+            return;
+          }
+          
+          // Buscar pedidos pelo email nos metadados
+          const { data: userOrders, error: ordersError2 } = await supabase
+            .from('orders')
+            .select(`
+              *,
+              service:service_id (
+                name,
+                type
+              ),
+              refills (
+                id,
+                status,
+                created_at
+              )
+            `)
+            .filter('metadata->email', 'eq', email)
+            .order('created_at', { ascending: false });
+
+          if (ordersError2) throw ordersError2;
+          setOrders(userOrders || []);
+          
+          if (userOrders?.length === 0) {
+            toast.info('Nenhum pedido encontrado para este email');
+          }
+          
+          return;
+        }
+        
+        // Se encontrou transações, buscar pedidos pelo user_id ou transaction_id
+        const userIds = [...new Set(transactionsByEmail.map(t => t.user_id).filter(Boolean))];
+        const transactionIds = transactionsByEmail.map(t => t.id);
+        
+        if (userIds.length > 0) {
+          // Buscar pedidos pelo user_id
+          const { data: userOrders, error: ordersError } = await supabase
+            .from('orders')
+            .select(`
+              *,
+              service:service_id (
+                name,
+                type
+              ),
+              refills (
+                id,
+                status,
+                created_at
+              )
+            `)
+            .in('user_id', userIds)
+            .order('created_at', { ascending: false });
+
+          if (ordersError) throw ordersError;
+          setOrders(userOrders || []);
+          
+          if (userOrders?.length === 0) {
+            // Buscar pedidos pelo transaction_id
+            const { data: transactionOrders, error: transactionOrdersError } = await supabase
+              .from('orders')
+              .select(`
+                *,
+                service:service_id (
+                  name,
+                  type
+                ),
+                refills (
+                  id,
+                  status,
+                  created_at
+                )
+              `)
+              .in('transaction_id', transactionIds)
+              .order('created_at', { ascending: false });
+              
+            if (transactionOrdersError) throw transactionOrdersError;
+            setOrders(transactionOrders || []);
+            
+            if (transactionOrders?.length === 0) {
+              toast.info('Nenhum pedido encontrado para este email');
+            }
+          }
+          
+          return;
+        }
       }
 
       // Buscar pedidos do usuário com reposições
@@ -250,6 +397,9 @@ export default function AcompanharPedidoPage() {
                               {order.metadata.provider_status && (
                                 <div className="mt-1 text-xs text-gray-500">
                                   Progresso: {order.metadata.provider_status.remains} restantes
+                                  <div className="text-xs text-gray-400">
+                                    Atualizado: {new Date(order.metadata.provider_status.updated_at).toLocaleString('pt-BR')}
+                                  </div>
                                 </div>
                               )}
                               {order.refills && order.refills.length > 0 && (
@@ -270,16 +420,48 @@ export default function AcompanharPedidoPage() {
                             <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                               {formatDateToBrasilia(order.created_at)}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-4 text-sm">
+                            <td className="whitespace-nowrap px-3 py-4 text-sm space-y-2">
+                              <Button
+                                onClick={() => checkOrderStatus(order.external_order_id)}
+                                disabled={checkingStatus[order.external_order_id]}
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                              >
+                                {checkingStatus[order.external_order_id] ? (
+                                  <>
+                                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                    Verificando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <RefreshCw className="h-3 w-3 mr-1" />
+                                    Atualizar Status
+                                  </>
+                                )}
+                              </Button>
+                              
                               {isWithin30Days(order.created_at) && (!order.refills || order.refills.length === 0) && (
-                                <Button
-                                  onClick={() => handleRefill(order.id)}
-                                  disabled={processingRefill === order.id}
-                                  variant="outline"
-                                  size="sm"
-                                >
-                                  {processingRefill === order.id ? 'Processando...' : 'Solicitar Reposição'}
-                                </Button>
+                                <div>
+                                  <div className="text-xs text-gray-500 mb-1">
+                                    Reposição disponível: {getDaysRemaining(order.created_at)} dias restantes
+                                  </div>
+                                  <Button
+                                    onClick={() => handleRefill(order.id)}
+                                    disabled={processingRefill === order.id}
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full"
+                                  >
+                                    {processingRefill === order.id ? 'Processando...' : 'Solicitar Reposição'}
+                                  </Button>
+                                </div>
+                              )}
+                              
+                              {!isWithin30Days(order.created_at) && (!order.refills || order.refills.length === 0) && (
+                                <div className="text-xs text-red-500">
+                                  Prazo para reposição expirado
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -298,6 +480,8 @@ export default function AcompanharPedidoPage() {
 
               <p className="mt-4 text-sm text-gray-500 text-center">
                 Digite o email que você utilizou durante a compra para visualizar o status dos seus pedidos.
+                <br />
+                Você pode solicitar uma reposição gratuita em até 30 dias após a compra.
               </p>
             </div>
           </div>

@@ -15,8 +15,8 @@ interface PaymentPixModalProps {
   qrCodeText: string;
   paymentId: string;
   qrCodeBase64?: string;
-  serviceId: string;
-  targetProfileLink: string;
+  serviceId?: string;
+  targetProfileLink?: string;
   serviceName?: string;
 }
 
@@ -37,6 +37,7 @@ export function PaymentPixModal({
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [statusCheckAttempts, setStatusCheckAttempts] = useState(0);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [lastVerificationTime, setLastVerificationTime] = useState(0);
 
   useEffect(() => {
     console.log('Initial props:', { 
@@ -90,200 +91,119 @@ export function PaymentPixModal({
     let interval: NodeJS.Timeout;
 
     const checkPaymentStatus = async () => {
+      // Evitar verificações muito frequentes
+      const now = Date.now();
+      if (now - lastVerificationTime < 2000) {
+        console.log('Verificação muito frequente, ignorando');
+        return null;
+      }
+      
+      setLastVerificationTime(now);
+      setIsCheckingStatus(true);
+      
+      console.log('Verificando status de pagamento', { 
+        paymentId, 
+        attempt: statusCheckAttempts + 1
+      });
+
+      if (!paymentId) {
+        console.error('Payment ID is undefined or null');
+        setIsCheckingStatus(false);
+        return null;
+      }
+
       try {
-        console.log('Iniciando verificação de status de pagamento', { 
-          paymentId, 
-          isOpen,
-          fullUrl: `/api/payment/check-status`,
-          paymentIdType: typeof paymentId,
-          paymentIdLength: paymentId?.length,
-          paymentIdSource: paymentId ? 'transaction.payment_external_reference' : 'undefined',
-          nodeEnv: process.env.NODE_ENV,
-          nextPublicVercel: process.env.NEXT_PUBLIC_VERCEL_ENV
-        });
-
-        if (!paymentId) {
-          console.error('Payment ID is undefined or null');
-          return null;
-        }
-
-        const headers = {
-          'Content-Type': 'application/json',
-        };
-
-        const fullUrl = new URL('/api/payment/check-status', window.location.origin).toString();
-        console.log('URL completa da requisição:', fullUrl);
-
-        const response = await fetch(fullUrl, {
+        // Usar o novo endpoint de verificação rápida
+        const response = await fetch('/api/payment/verify-status', {
           method: 'POST',
-          headers,
+          headers: {
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({ payment_id: paymentId }),
-        });
-
-        console.log('Resposta da verificação de status:', {
-          status: response.status,
-          ok: response.ok,
-          headers: Object.fromEntries(response.headers.entries())
         });
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error('Erro detalhado na resposta:', {
+          console.error('Erro na verificação de status:', {
             status: response.status,
-            errorText,
-            contentType: response.headers.get('content-type')
+            error: errorText
           });
-          
-          try {
-            const errorJson = JSON.parse(errorText);
-            console.error('Erro em formato JSON:', errorJson);
-            
-            // Verificação adicional com Supabase
-            if (errorJson.details && errorJson.details.includes('No payment found')) {
-              console.warn('Possível problema: Pagamento não encontrado. Verificando detalhes...');
-              
-              const supabaseResponse = await fetch('/api/supabase/find-transaction', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                  payment_external_reference: paymentId 
-                })
-              });
-
-              const supabaseData = await supabaseResponse.json();
-              console.log('Resultado da busca no Supabase:', supabaseData);
-            }
-          } catch (parseError) {
-            console.error('Erro ao parsear JSON:', parseError);
-          }
-
-          // Tratamento de erro mais detalhado
-          const errorDetails = JSON.parse(errorText);
-          throw new Error(errorDetails.details || 'Erro ao verificar status do pagamento');
+          setIsCheckingStatus(false);
+          return null;
         }
 
         const data = await response.json();
-        console.log('Dados completos do status de pagamento:', data);
-
-        // Processamento dos diferentes status
-        const paymentStatus = data.status || 'unknown';
-        const supabaseTransaction = data.supabaseTransaction;
-
-        // Log detalhado do status
-        console.log('Status do pagamento processado:', {
-          status: paymentStatus,
-          supabaseTransaction
-        });
-
-        // Atualização do estado baseado no status
-        switch(paymentStatus) {
+        
+        console.log('Resposta da verificação de status:', data);
+        
+        // Atualizar o status do pagamento
+        const paymentStatus = data.status;
+        
+        switch (paymentStatus) {
           case 'approved':
             setPaymentStatus('success');
-            setIsSuccessModalOpen(true);
-            onClose(); // Fechar o modal de QR Code
+            console.log('Pagamento APROVADO');
+            
+            // Redirecionar para a página de agradecimento
+            if (data.transaction_id) {
+              router.push(`/obrigado?transaction_id=${data.transaction_id}`);
+              onClose();
+            }
             break;
           case 'pending':
             setPaymentStatus('pending');
+            console.log('Pagamento PENDENTE');
             break;
           case 'in_process':
             setPaymentStatus('processing');
+            console.log('Pagamento EM PROCESSAMENTO');
             break;
           case 'rejected':
             setPaymentStatus('error');
+            console.log('Pagamento REJEITADO');
             break;
           default:
             setPaymentStatus('unknown');
+            console.log('Status de pagamento DESCONHECIDO:', paymentStatus);
         }
 
+        setStatusCheckAttempts(prev => prev + 1);
         return data;
       } catch (error) {
-        console.error('Erro completo na verificação de status:', error);
-        setPaymentStatus('error');
-        throw error;
+        console.error('Erro na verificação de status:', error);
+        
+        // Verificar se é um erro de conexão e tratar adequadamente
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          console.log('Erro de conexão detectado. O servidor pode estar indisponível.');
+          
+          // Reduzir a frequência de verificação após falhas de conexão
+          if (statusCheckAttempts > 3) {
+            console.log('Reduzindo frequência de verificação após múltiplas falhas');
+            // Não vamos interromper completamente, apenas reduzir a frequência
+          }
+        }
+        
+        return null;
+      } finally {
+        setIsCheckingStatus(false);
       }
     };
 
     // Verificar imediatamente
     checkPaymentStatus();
 
-    // Verificar a cada 5 segundos
-    interval = setInterval(checkPaymentStatus, 5000);
+    // Definir intervalo adaptativo baseado no número de falhas
+    const intervalTime = statusCheckAttempts > 3 ? 10000 : 5000; // 10 segundos após 3 falhas, 5 segundos normalmente
+    
+    console.log(`Configurando verificação a cada ${intervalTime/1000} segundos`);
+    interval = setInterval(checkPaymentStatus, intervalTime);
 
     // Limpar o intervalo quando o componente for desmontado
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isOpen, paymentId, onClose, router]);
+  }, [isOpen, paymentId, onClose, router, statusCheckAttempts, lastVerificationTime]);
 
-  useEffect(() => {
-    if (!paymentId) return;
-
-    let eventSource: EventSource | null = null;
-
-    const startPaymentStatusStream = () => {
-      // Usar external_reference como parâmetro
-      const streamUrl = `/api/payment/status-stream?external_reference=${paymentId}`;
-      
-      console.log('Iniciando stream de status de pagamento:', streamUrl);
-
-      eventSource = new EventSource(streamUrl);
-
-      eventSource.addEventListener('statusPayment', (event) => {
-        const status = event.data;
-        
-        console.log('Status de pagamento recebido:', status);
-
-        if (status === 'true') {
-          // Pagamento aprovado
-          setPaymentStatus('approved');
-          toast.success('Pagamento aprovado! Redirecionando...');
-          
-          // Fechar o modal e redirecionar
-          setTimeout(() => {
-            onClose();
-            router.push(`/acompanhar-pedido?transaction_id=${paymentId}`);
-          }, 2000);
-
-          // Fechar event source
-          if (eventSource) {
-            eventSource.close();
-          }
-        } else if (status === 'false') {
-          // Pagamento ainda não aprovado, continuar monitorando
-          console.log('Pagamento ainda não aprovado');
-        } else if (status === 'error' || status === 'not_found') {
-          // Erro na verificação
-          toast.error('Erro ao verificar status do pagamento');
-          
-          if (eventSource) {
-            eventSource.close();
-          }
-        }
-      });
-
-      eventSource.onerror = (error) => {
-        console.error('Erro no stream de status:', error);
-        toast.error('Erro na conexão de status de pagamento');
-        
-        if (eventSource) {
-          eventSource.close();
-        }
-      };
-    };
-
-    startPaymentStatusStream();
-
-    // Limpar event source ao desmontar
-    return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
-    };
-  }, [paymentId, onClose, router]);
-
-  // Log para verificar o QR Code
   useEffect(() => {
     console.log('QR Code base64:', qrCodeBase64);
     console.log('QR Code length:', qrCodeBase64?.length);
@@ -292,19 +212,11 @@ export function PaymentPixModal({
   const copyQRCode = async () => {
     try {
       await navigator.clipboard.writeText(qrCodeText);
-      toast.success('Código PIX copiado!');
+      console.log('Código PIX copiado!');
     } catch (error) {
       console.error('Error copying to clipboard:', error);
-      toast.error('Erro ao copiar código PIX');
     }
   };
-
-  useEffect(() => {
-    if (paymentStatus === 'success') {
-      // Removido redirecionamento redundante
-      // Mantido o redirecionamento com transaction_id no outro bloco de código
-    }
-  }, [paymentStatus, router]);
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
@@ -372,7 +284,6 @@ export function PaymentPixModal({
                             className="mx-auto"
                             onError={(e) => {
                               console.error('Erro ao carregar imagem:', e);
-                              toast.error('Erro ao carregar QR Code');
                             }}
                           />
                         ) : (
