@@ -1,17 +1,24 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useState, useEffect, use } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase-client';
-import axios from 'axios';
-import Link from 'next/link';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-  faArrowLeft, faCoffee, faLemon, faCar, faHeart, faStar, faClock, faCheck, 
+  faPlus, faSave, faCoffee, faLemon, faCar, faHeart, faStar, faClock, faCheck, 
   faShield, faRocket, faGlobe, faUsers, faThumbsUp, faEye, faComment, 
-  faBolt, faMedal, faTrophy, faGem, faCrown, faFire, faSmile, faLock, faUnlock 
+  faBolt, faMedal, faTrophy, faGem, faCrown, faFire, faSmile, faLock, faUnlock,
+  faArrowLeft
 } from '@fortawesome/free-solid-svg-icons';
+import { EmojiSelector } from '@/components/emoji-picker';
+import axios from 'axios';
+import Link from 'next/link';
 
 interface ServiceQuantityPrice {
   quantidade: number;
@@ -19,16 +26,18 @@ interface ServiceQuantityPrice {
 }
 
 interface ServiceDetail {
-  icon: string;
   title: string;
+  emoji: string;
 }
 
 export default function EditarServicoImportadoPage() {
   const router = useRouter();
   const params = useParams();
+  const supabase = createClient();
+  const serviceId = params.serviceId as string;
   
   // Estados para campos do serviço
-  const [serviceId, setServiceId] = useState('');
+  const [serviceIdState, setServiceId] = useState('');
   const [famaServiceId, setFamaServiceId] = useState('');
   const [name, setName] = useState('');
   const [type, setType] = useState('');
@@ -41,10 +50,10 @@ export default function EditarServicoImportadoPage() {
   const [preco, setPreco] = useState('0');
   const [deliveryTime, setDeliveryTime] = useState('');
   const [successRate, setSuccessRate] = useState('');
-  const [refill, setRefill] = useState(false);
   const [checkoutTypeId, setCheckoutTypeId] = useState('');
   const [status, setStatus] = useState(true);
-  const [serviceDetails, setServiceDetails] = useState<ServiceDetail[]>([{ icon: '', title: '' }]);
+  const [serviceDetails, setServiceDetails] = useState<ServiceDetail[]>([{ title: '', emoji: '' }]);
+  const [refill, setRefill] = useState(false);
 
   // Estado para quantidades e preços
   const [quantityPrices, setQuantityPrices] = useState<ServiceQuantityPrice[]>([
@@ -77,12 +86,8 @@ export default function EditarServicoImportadoPage() {
     // Buscar detalhes do serviço da API do Fama Redes
     const fetchFamaService = async () => {
       try {
-        const serviceId = params.serviceId as string;
-        if (!serviceId) {
-          toast.error('ID do serviço não encontrado');
-          return;
-        }
-
+        setServiceId(serviceId);
+        
         const response = await axios.post('/api/fama-services', {
           action: 'service_details',
           service_id: serviceId
@@ -110,11 +115,11 @@ export default function EditarServicoImportadoPage() {
           setQuantidade(existingService.quantidade?.toString() || '0');
           setPreco(existingService.preco?.toString() || '0');
           setSuccessRate(existingService.success_rate?.toString() || '0');
-          setRefill(existingService.metadata?.refill || false);
           setCheckoutTypeId(existingService.checkout_type_id || '');
           setStatus(existingService.status !== false);
           setQuantityPrices(existingService.service_variations || existingService.metadata?.quantidade_preco || [{ quantidade: 50, preco: 10.00 }]);
-          setServiceDetails(existingService.service_details || existingService.metadata?.serviceDetails || [{ icon: '', title: '' }]);
+          setServiceDetails(existingService.service_details || existingService.metadata?.serviceDetails || [{ title: '', emoji: '' }]);
+          setRefill(existingService.metadata?.refill || false);
         } else {
           toast.error('Serviço não encontrado no banco de dados!');
         }
@@ -125,7 +130,7 @@ export default function EditarServicoImportadoPage() {
     };
 
     fetchFamaService();
-  }, [params.serviceId]);
+  }, [serviceId]);
 
   // Buscar dados de seleção
   useEffect(() => {
@@ -184,54 +189,40 @@ export default function EditarServicoImportadoPage() {
     value: string
   ) => {
     const newRows = [...quantityPrices];
-    newRows[index][field] = field === 'quantidade' 
-      ? parseInt(value) 
-      : parseFloat(value);
+    const parsedValue = field === 'quantidade' 
+      ? parseInt(value) || 0
+      : parseFloat(value) || 0;
+    
+    newRows[index][field] = parsedValue;
     setQuantityPrices(newRows);
   };
 
-  // Lista de ícones disponíveis para seleção
-  const availableIcons = [
-    { name: 'faCoffee', icon: faCoffee, label: 'Café' },
-    { name: 'faLemon', icon: faLemon, label: 'Limão' },
-    { name: 'faCar', icon: faCar, label: 'Carro' },
-    { name: 'faHeart', icon: faHeart, label: 'Coração' },
-    { name: 'faStar', icon: faStar, label: 'Estrela' },
-    { name: 'faClock', icon: faClock, label: 'Relógio' },
-    { name: 'faCheck', icon: faCheck, label: 'Verificado' },
-    { name: 'faShield', icon: faShield, label: 'Escudo' },
-    { name: 'faRocket', icon: faRocket, label: 'Foguete' },
-    { name: 'faGlobe', icon: faGlobe, label: 'Globo' },
-    { name: 'faUsers', icon: faUsers, label: 'Usuários' },
-    { name: 'faThumbsUp', icon: faThumbsUp, label: 'Curtida' },
-    { name: 'faEye', icon: faEye, label: 'Visualização' },
-    { name: 'faComment', icon: faComment, label: 'Comentário' },
-    { name: 'faBolt', icon: faBolt, label: 'Raio' },
-    { name: 'faMedal', icon: faMedal, label: 'Medalha' },
-    { name: 'faTrophy', icon: faTrophy, label: 'Troféu' },
-    { name: 'faGem', icon: faGem, label: 'Gema' },
-    { name: 'faCrown', icon: faCrown, label: 'Coroa' },
-    { name: 'faFire', icon: faFire, label: 'Fogo' },
-    { name: 'faSmile', icon: faSmile, label: 'Sorriso' },
-    { name: 'faLock', icon: faLock, label: 'Bloqueado' },
-    { name: 'faUnlock', icon: faUnlock, label: 'Desbloqueado' },
-  ];
-
   const addServiceDetail = () => {
-    setServiceDetails([...serviceDetails, { icon: 'faHeart', title: '' }]);
+    setServiceDetails([...serviceDetails, { title: '', emoji: '' }]);
   };
 
-  const updateServiceDetail = (index: number, field: 'icon' | 'title', value: string) => {
+  const updateServiceDetail = (index: number, field: 'title' | 'emoji', value: string) => {
     const newDetails = [...serviceDetails];
     newDetails[index][field] = value;
     setServiceDetails(newDetails);
   };
 
+  const removeServiceDetail = (index: number) => {
+    if (serviceDetails.length > 1) {
+      const newDetails = [...serviceDetails];
+      newDetails.splice(index, 1);
+      setServiceDetails(newDetails);
+    }
+  };
+
+  useEffect(() => {
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const serviceData = {
-        id: serviceId,
+        id: serviceIdState,
         external_id: famaServiceId,
         name,
         type,
@@ -239,12 +230,12 @@ export default function EditarServicoImportadoPage() {
         subcategory_id: subcategory,
         checkout_type_id: checkoutTypeId,
         descricao: description,
-        min_order: parseInt(minOrder),
-        max_order: parseInt(maxOrder),
-        quantidade: parseInt(quantidade),
-        preco: parseFloat(preco),
+        min_order: parseInt(minOrder) || 0,
+        max_order: parseInt(maxOrder) || 0,
+        quantidade: parseInt(quantidade) || 0,
+        preco: parseFloat(preco) || 0,
         delivery_time: deliveryTime,
-        success_rate: parseFloat(successRate),
+        success_rate: parseFloat(successRate) || 0,
         status,
         service_variations: quantityPrices,
         service_details: serviceDetails,
@@ -385,7 +376,7 @@ export default function EditarServicoImportadoPage() {
               <label className="block mb-2">Pedido Mínimo</label>
               <input
                 type="number"
-                value={minOrder}
+                value={minOrder || ''}
                 onChange={(e) => setMinOrder(e.target.value)}
                 className="w-full p-2 border rounded"
                 min="1"
@@ -395,7 +386,7 @@ export default function EditarServicoImportadoPage() {
               <label className="block mb-2">Pedido Máximo</label>
               <input
                 type="number"
-                value={maxOrder}
+                value={maxOrder || ''}
                 onChange={(e) => setMaxOrder(e.target.value)}
                 className="w-full p-2 border rounded"
                 min="1"
@@ -405,7 +396,7 @@ export default function EditarServicoImportadoPage() {
               <label className="block mb-2">Quantidade</label>
               <input
                 type="number"
-                value={quantidade}
+                value={quantidade || ''}
                 onChange={(e) => setQuantidade(e.target.value)}
                 className="w-full p-2 border rounded"
                 min="1"
@@ -417,7 +408,7 @@ export default function EditarServicoImportadoPage() {
               <input
                 type="number"
                 step="0.01"
-                value={preco}
+                value={preco || ''}
                 onChange={(e) => setPreco(e.target.value)}
                 className="w-full p-2 border rounded"
                 min="0.01"
@@ -443,7 +434,7 @@ export default function EditarServicoImportadoPage() {
             <label className="block mb-2">Taxa de Sucesso (%)</label>
             <input
               type="number"
-              value={successRate}
+              value={successRate || ''}
               onChange={(e) => setSuccessRate(e.target.value)}
               className="w-full p-2 border rounded"
               min="0"
@@ -469,29 +460,11 @@ export default function EditarServicoImportadoPage() {
             {serviceDetails.map((detail, index) => (
               <div key={index} className="flex items-center mb-4">
                 <div className="w-1/2 mr-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Ícone</label>
-                  <div className="relative">
-                    <select
-                      value={detail.icon}
-                      onChange={(e) => updateServiceDetail(index, 'icon', e.target.value)}
-                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    >
-                      <option value="">Selecione um ícone</option>
-                      {availableIcons.map((iconOption) => (
-                        <option key={iconOption.name} value={iconOption.name}>
-                          {iconOption.label}
-                        </option>
-                      ))}
-                    </select>
-                    {detail.icon && (
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                        <FontAwesomeIcon 
-                          icon={availableIcons.find(i => i.name === detail.icon)?.icon || faHeart} 
-                          className="text-gray-500" 
-                        />
-                      </div>
-                    )}
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Emoji</label>
+                  <EmojiSelector
+                    value={detail.emoji}
+                    onChange={(value) => updateServiceDetail(index, 'emoji', value)}
+                  />
                 </div>
                 <div className="w-1/2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
@@ -514,11 +487,7 @@ export default function EditarServicoImportadoPage() {
                   {serviceDetails.length > 1 && (
                     <button 
                       type="button" 
-                      onClick={() => {
-                        const newDetails = [...serviceDetails];
-                        newDetails.splice(index, 1);
-                        setServiceDetails(newDetails);
-                      }} 
+                      onClick={() => removeServiceDetail(index)} 
                       className="mb-1 ml-1 bg-red-500 hover:bg-red-600 text-white rounded-md px-2 py-1"
                     >
                       -
@@ -562,7 +531,7 @@ export default function EditarServicoImportadoPage() {
                   <label className="block mb-1">Quantidade</label>
                   <input
                     type="number"
-                    value={qp.quantidade}
+                    value={qp.quantidade || ''}
                     onChange={(e) => updateQuantityPrice(index, 'quantidade', e.target.value)}
                     className="w-full p-2 border rounded"
                     min="1"
@@ -574,7 +543,7 @@ export default function EditarServicoImportadoPage() {
                   <input
                     type="number"
                     step="0.01"
-                    value={qp.preco}
+                    value={qp.preco || ''}
                     onChange={(e) => updateQuantityPrice(index, 'preco', e.target.value)}
                     className="w-full p-2 border rounded"
                     min="0.01"
