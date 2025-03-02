@@ -162,6 +162,16 @@ class FamaRedesOrderService {
 
 const famaRedesOrderService = new FamaRedesOrderService();
 
+export { famaRedesOrderService };
+
+export const {
+  createOrder,
+  getOrderStatus,
+  getMultipleOrdersStatus,
+  createRefill,
+  getRefillStatus
+} = famaRedesOrderService;
+
 export async function processTransaction(transactionId: string) {
   console.log('[ProcessTransaction] Iniciando processamento:', transactionId);
   const startTime = new Date();
@@ -430,11 +440,3 @@ export async function processTransaction(transactionId: string) {
     throw error;
   }
 }
-
-export const {
-  createOrder,
-  getOrderStatus,
-  getMultipleOrdersStatus,
-  createRefill,
-  getRefillStatus
-} = famaRedesOrderService;
