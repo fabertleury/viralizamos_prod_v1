@@ -22,6 +22,30 @@ export default function AgradecimentoPage() {
     
     if (id) setTransactionId(id);
     if (emailParam) setEmail(emailParam);
+    
+    // Se temos um ID de transação mas não temos email, buscar o email da transação
+    if (id && !emailParam) {
+      const fetchTransactionEmail = async () => {
+        try {
+          const response = await fetch(`/api/transactions/${id}/details`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.customer_email) {
+              setEmail(data.customer_email);
+              
+              // Atualizar a URL para incluir o email
+              const url = new URL(window.location.href);
+              url.searchParams.set('email', data.customer_email);
+              window.history.replaceState({}, '', url.toString());
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao buscar detalhes da transação:', error);
+        }
+      };
+      
+      fetchTransactionEmail();
+    }
   }, [searchParams]);
 
   return (
