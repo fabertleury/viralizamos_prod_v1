@@ -8,6 +8,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Footer } from '@/components/layout/footer';
 import { LanguageProvider } from '@/contexts/LanguageContext';
+import Script from 'next/script';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -40,6 +41,16 @@ export default async function RootLayout({
             crossOrigin="anonymous"
             referrerPolicy="no-referrer"
           />
+          {/* Google Tag (gtag.js) */}
+          <Script async src="https://www.googletagmanager.com/gtag/js?id=AW-16904345570" strategy="afterInteractive" />
+          <Script id="google-analytics" strategy="afterInteractive">
+            {`
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', 'AW-16904345570');
+            `}
+          </Script>
         </head>
         <body className={inter.className} suppressHydrationWarning>
           <div className="min-h-screen flex flex-col w-full">
@@ -72,6 +83,16 @@ export default async function RootLayout({
           crossOrigin="anonymous"
           referrerPolicy="no-referrer"
         />
+        {/* Google Tag (gtag.js) */}
+        <Script async src="https://www.googletagmanager.com/gtag/js?id=AW-16904345570" strategy="afterInteractive" />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'AW-16904345570');
+          `}
+        </Script>
       </head>
       <body className={inter.className} suppressHydrationWarning>
         <div className="min-h-screen flex flex-col w-full">
