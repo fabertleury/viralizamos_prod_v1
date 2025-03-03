@@ -19,11 +19,10 @@ export async function POST(request: NextRequest) {
     const { service, profile, customer, posts = [], amount } = body;
     
     // Usar o amount do body ou calcular a partir do service.price
-    const paymentAmount = amount || service.price || 0;
+    const paymentAmount = amount || service.price || service.preco || 0;
 
-    // Garantir que o valor seja pelo menos 1 real (ou o mínimo aceito pelo Mercado Pago)
-    const minimumAmount = 1.00; // Valor mínimo de 1 real
-    const finalAmount = Math.max(paymentAmount, minimumAmount);
+    // Não forçar mais um valor mínimo, usar o valor real do serviço
+    const finalAmount = paymentAmount;
 
     console.log('Valor do pagamento:', finalAmount);
 
