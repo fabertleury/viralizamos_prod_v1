@@ -241,51 +241,62 @@ function ReelSelector({
 
   // Função para obter URL da imagem através do proxy
   const getProxiedImageUrl = (url: string): string => {
-    if (!url) return '/images/placeholder-reel.svg';
-    
-    // Se já for uma URL local, retornar diretamente
-    if (url.startsWith('/')) {
-      return url;
-    }
-    
-    // Se for uma URL de placeholder.com, usar o placeholder local
-    if (url.includes('placeholder.com')) {
+    if (!url || url.includes('placeholder')) {
       return '/images/placeholder-reel.svg';
     }
     
-    // Caso contrário, usar o proxy
-    return `/api/proxy/image?url=${encodeURIComponent(url)}`;
+    // Usar o proxy de imagens para evitar problemas de CORS
+    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
   };
 
   // Função para selecionar a melhor URL de imagem disponível
-  const selectBestImageUrl = (reel: any): string => {
-    console.log('Selecionando imagem para reel:', reel.id || reel.code);
-    
-    // Verificar todas as possíveis fontes de imagem
-    const possibleSources = [
-      reel.image_versions?.items?.[0]?.url,
-      reel.thumbnail_url,
-      reel.image_url,
-      reel.cover_frame_url,
-      reel.display_url,
-      reel.carousel_media?.[0]?.image_versions?.items?.[0]?.url,
-      // Novas fontes de imagem do formato da API
-      reel.image_versions?.additional_items?.first_frame?.url,
-      reel.image_versions?.additional_items?.smart_frame?.url,
-      reel.image_versions?.additional_items?.igtv_first_frame?.url
-    ];
-    
-    // Filtrar fontes válidas
-    const validSources = possibleSources.filter(source => source && typeof source === 'string');
-    
-    if (validSources.length > 0) {
-      console.log('Fonte de imagem encontrada:', validSources[0]);
-      return validSources[0];
+  const selectBestImageUrl = (post: any): string => {
+    // Se for um carrossel, usar a imagem principal ou a primeira do carrossel
+    if (post.is_carousel && post.image_versions?.items?.[0]?.url) {
+      return post.image_versions.items[0].url;
     }
     
-    console.warn('Nenhuma fonte de imagem válida encontrada para o reel:', reel.id || reel.code);
-    // Usar um SVG local que não precisa passar pelo proxy
-    return '/images/placeholder-reel.svg';
+    // Tentar obter a URL da imagem de várias propriedades possíveis
+    if (post.image_url) return post.image_url;
+    if (post.display_url) return post.display_url;
+    if (post.thumbnail_url) return post.thumbnail_url;
+    
+    // Verificar se temos image_versions
+    if (post.image_versions?.items?.[0]?.url) {
+      return post.image_versions.items[0].url;
+    }
+    
+    // Se nada funcionar, usar um placeholder
+    return '/images/placeholder-post.svg';
+  };
+
+  // Função para extrair o código correto de um post do Instagram
+  const extractPostCode = (post: any): string => {
+    // Se o post já tem um código que não é numérico, usar esse código
+    if (post.code && !/^\d+$/.test(post.code)) {
+      console.log('✅ Usando código existente:', post.code);
+      return post.code;
+    }
+    
+    // Se tem shortcode, usar o shortcode
+    if (post.shortcode) {
+      console.log('✅ Usando shortcode:', post.shortcode);
+      return post.shortcode;
+    }
+    
+    // Se tem permalink ou link, extrair o código da URL
+    if (post.permalink || post.link) {
+      const url = post.permalink || post.link;
+      const match = url.match(/instagram\.com\/p\/([^\/]+)/);
+      if (match && match[1]) {
+        console.log('✅ Código extraído da URL:', match[1]);
+        return match[1];
+      }
+    }
+    
+    // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
+    console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
+    return post.id;
   };
 
   // Função para calcular curtidas por item
@@ -298,6 +309,19 @@ function ReelSelector({
   const handleSelectReel = (reel: InstagramPost) => {
     const totalSelectedItems = selectedReels.length + (selectedPosts?.length || 0);
     const isAlreadySelected = selectedReels.some(r => r.id === reel.id);
+    
+    // Log detalhado do reel selecionado
+    console.log('🔍 Reel selecionado - dados completos:', {
+      id: reel.id,
+      code: reel.code,
+      shortcode: reel.shortcode,
+      image_url: reel.image_url,
+      caption: reel.caption
+    });
+    
+    // Extrair o código correto
+    const reelCode = extractPostCode(reel);
+    console.log('🔍 Código extraído para o reel:', reelCode);
     
     if (isAlreadySelected) {
       // Se já selecionado, remover
@@ -314,12 +338,20 @@ function ReelSelector({
       return;
     }
 
-    // Adicionar reel com emoji de coração
+    // Adicionar reel com emoji de coração e código correto
     const selectedReel = {
       ...reel,
+      code: reelCode, // Usar o código extraído
+      shortcode: reelCode,
       selected: true,
       displayName: `❤️ ${reel.caption || 'Reel sem legenda'}`
     };
+
+    console.log('✅ Reel adicionado à seleção:', {
+      id: selectedReel.id,
+      code: selectedReel.code,
+      url: `https://instagram.com/p/${selectedReel.code}`
+    });
 
     const updatedSelectedReels = [...selectedReels, selectedReel];
     setSelectedReels(updatedSelectedReels);

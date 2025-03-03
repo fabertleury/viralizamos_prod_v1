@@ -66,7 +66,12 @@ export async function GET(
     console.log('Dados dos posts recebidos:', JSON.stringify(postsData, null, 2));
 
     // Processar posts considerando posts com múltiplas imagens
-    const processedPosts = postsData.data.items.flatMap(post => {
+    const processedPosts = [];
+    
+    // Primeiro, processar os posts normais e criar um mapeamento para carrosséis
+    const carouselGroups = {};
+    
+    postsData.data.items.forEach(post => {
       // Log para depuração do tipo de post
       console.log('Processando post:', {
         id: post.id,
@@ -77,10 +82,63 @@ export async function GET(
       
       // Se for um post com múltiplas imagens (carousel)
       if (post.media_type === 8 && post.carousel_media) {
-        return post.carousel_media.map(carouselItem => ({
-          id: carouselItem.id,
-          code: carouselItem.id,
-          image_versions: carouselItem.image_versions,
+        // Criar um grupo para este carrossel
+        carouselGroups[post.id] = {
+          id: post.id,
+          code: post.code,
+          carousel_media_count: post.carousel_media.length,
+          like_count: post.like_count || 0,
+          comment_count: post.comment_count || 0,
+          views_count: post.view_count || 
+                    post.views_count || 
+                    post.view_count_formatted || 
+                    post.video_view_count || 
+                    (post.video_versions && post.video_versions.view_count) || 
+                    0,
+          caption: { 
+            text: (() => {
+              if (!post.caption) return 'Sem legenda';
+              
+              if (typeof post.caption === 'string') {
+                return post.caption;
+              }
+              
+              if (typeof post.caption === 'object') {
+                if ('text' in post.caption) {
+                  return (post.caption as { text: string }).text;
+                }
+                
+                // Se for um objeto sem 'text', tenta converter para string
+                return JSON.stringify(post.caption);
+              }
+              
+              return 'Legenda inválida';
+            })()
+          },
+          link: `https://www.instagram.com/p/${post.code}/`,
+          media_type: post.media_type,
+          is_carousel: true,
+          is_video: false,
+          is_reel: post.product_type === 'clips' || post.product_type === 'reels',
+          image_versions: post.image_versions || 
+                        (post.carousel_media[0] && post.carousel_media[0].image_versions) || 
+                        { items: [{ url: post.thumbnail_src || '' }] },
+          carousel_items: post.carousel_media.map(item => ({
+            id: item.id,
+            media_type: item.media_type,
+            is_video: item.is_video,
+            image_versions: item.image_versions
+          }))
+        };
+        
+        // Adicionar o carrossel processado à lista de posts
+        processedPosts.push(carouselGroups[post.id]);
+      } else {
+        // Posts normais
+        processedPosts.push({
+          id: post.id,
+          code: post.code,
+          image_versions: post.image_versions,
           like_count: post.like_count || 0,
           comment_count: post.comment_count || 0,
           views_count: post.view_count || 
@@ -110,50 +168,12 @@ export async function GET(
             })()
           },
           link: `https://www.instagram.com/p/${post.code}/`,
-          media_type: carouselItem.media_type,
-          is_video: carouselItem.is_video,
+          media_type: post.media_type,
+          is_carousel: false,
+          is_video: post.is_video,
           is_reel: post.product_type === 'clips' || post.product_type === 'reels'
-        }));
+        });
       }
-      
-      // Posts normais
-      return [{
-        id: post.id,
-        code: post.code,
-        image_versions: post.image_versions,
-        like_count: post.like_count || 0,
-        comment_count: post.comment_count || 0,
-        views_count: post.view_count || 
-                    post.views_count || 
-                    post.view_count_formatted || 
-                    post.video_view_count || 
-                    (post.video_versions && post.video_versions.view_count) || 
-                    0,
-        caption: { 
-          text: (() => {
-            if (!post.caption) return 'Sem legenda';
-            
-            if (typeof post.caption === 'string') {
-              return post.caption;
-            }
-            
-            if (typeof post.caption === 'object') {
-              if ('text' in post.caption) {
-                return (post.caption as { text: string }).text;
-              }
-              
-              // Se for um objeto sem 'text', tenta converter para string
-              return JSON.stringify(post.caption);
-            }
-            
-            return 'Legenda inválida';
-          })()
-        },
-        link: `https://www.instagram.com/p/${post.code}/`,
-        media_type: post.media_type,
-        is_video: post.is_video,
-        is_reel: post.product_type === 'clips' || post.product_type === 'reels'
-      }];
     });
 
     console.log('Posts processados:', processedPosts.map(post => ({

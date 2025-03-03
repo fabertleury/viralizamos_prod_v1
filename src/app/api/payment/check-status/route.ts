@@ -247,20 +247,56 @@ export async function POST(request: NextRequest) {
           console.error('Erro ao fazer parse dos metadados da transação:', parseError);
         }
         
+        // Função para extrair o código correto de um post do Instagram
+        const extractPostCode = (post: any): string => {
+          // Se o post já tem um código que não é numérico, usar esse código
+          if (post.code && !/^\d+$/.test(post.code)) {
+            console.log('✅ Usando código existente:', post.code);
+            return post.code;
+          }
+          
+          // Se tem shortcode, usar o shortcode
+          if (post.shortcode) {
+            console.log('✅ Usando shortcode:', post.shortcode);
+            return post.shortcode;
+          }
+          
+          // Se tem permalink ou link, extrair o código da URL
+          if (post.permalink || post.link || post.url) {
+            const url = post.permalink || post.link || post.url;
+            const match = url.match(/instagram\.com\/p\/([^\/]+)/);
+            if (match && match[1]) {
+              console.log('✅ Código extraído da URL:', match[1]);
+              return match[1];
+            }
+          }
+          
+          // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
+          console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
+          return post.id;
+        };
+        
         // Obter posts do metadata e garantir que os links estejam no formato correto
         let postLinks = [];
         let originalPosts = [];
         
         // Verificar se temos posts no metadata
         if (transactionMetadata.posts && Array.isArray(transactionMetadata.posts)) {
-          console.log('Posts encontrados no metadata:', transactionMetadata.posts);
+          console.log('📋 Posts encontrados no metadata:', transactionMetadata.posts);
           originalPosts = transactionMetadata.posts;
           
           postLinks = transactionMetadata.posts.map((post: any) => {
             // Garantir que estamos usando o código correto para o link
             // Priorizar o campo 'code' conforme as boas práticas
-            const postCode = post.code || post.shortcode || post.id;
-            console.log(`Processando post ${post.id}: código=${postCode}`);
+            const postCode = extractPostCode(post);
+            
+            console.log(`🔍 Processando post ${post.id} na verificação de status:`, {
+              id: post.id,
+              code: post.code,
+              shortcode: post.shortcode,
+              postCode: postCode,
+              finalUrl: `https://instagram.com/p/${postCode}`
+            });
             
             // Garantir que o link esteja no formato correto: https://instagram.com/p/{code}
             return `https://instagram.com/p/${postCode}`;

@@ -28,62 +28,96 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Primeiro, busca o ID do usuário
-    const userInfoResponse = await axios.post(
-      'https://rocketapi-for-instagram.p.rapidapi.com/instagram/user/get_info',
-      { username },
+    // Primeiro, busca o perfil do usuário
+    const userInfoResponse = await axios.get(
+      'https://instagram-scraper-api2.p.rapidapi.com/v1/info',
       {
+        params: {
+          username_or_id_or_url: username
+        },
         headers: {
           'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-          'x-rapidapi-host': 'rocketapi-for-instagram.p.rapidapi.com',
-          'Content-Type': 'application/json'
+          'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
         },
         timeout: 5000
       }
     );
 
-    const userId = userInfoResponse.data.response.body.data.user.pk;
-
-    console.log('ID do usuário:', userId); // Log de depuração
+    const userData = userInfoResponse.data.data;
+    console.log('Dados do usuário:', userData); // Log de depuração
 
     // Agora busca as mídias do usuário
-    const mediaResponse = await axios.post(
-      'https://rocketapi-for-instagram.p.rapidapi.com/instagram/user/get_media',
+    const mediaResponse = await axios.get(
+      'https://instagram-scraper-api2.p.rapidapi.com/v1/posts',
       { 
-        id: userId, 
-        count: parseInt(count), 
-        max_id: null 
-      },
-      {
+        params: {
+          username_or_id_or_url: username,
+          count: parseInt(count)
+        },
         headers: {
           'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-          'x-rapidapi-host': 'rocketapi-for-instagram.p.rapidapi.com',
-          'Content-Type': 'application/json'
+          'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
         },
-        timeout: 5000
+        timeout: 8000
       }
     );
 
     console.log('Resposta da API de mídia:', mediaResponse.data); // Log de depuração
 
-    const mediaData = mediaResponse.data.response.body.data.media;
+    const mediaData = mediaResponse.data.data;
+
+    // Função para extrair o código correto de um post do Instagram
+    const extractPostCode = (post: any): string => {
+      // Se o post já tem um código que não é numérico, usar esse código
+      if (post.code && !/^\d+$/.test(post.code)) {
+        console.log('✅ Usando código existente:', post.code);
+        return post.code;
+      }
+      
+      // Se tem shortcode, usar o shortcode
+      if (post.shortcode) {
+        console.log('✅ Usando shortcode:', post.shortcode);
+        return post.shortcode;
+      }
+      
+      // Se tem permalink ou link, extrair o código da URL
+      if (post.permalink || post.link) {
+        const url = post.permalink || post.link;
+        const match = url.match(/instagram\.com\/p\/([^\/]+)/);
+        if (match && match[1]) {
+          console.log('✅ Código extraído da URL:', match[1]);
+          return match[1];
+        }
+      }
+      
+      // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
+      console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
+      return post.id;
+    };
 
     // Formata os dados das mídias
-    const formattedMedia = mediaData.map((media: any) => ({
-      id: media.pk,
-      type: media.media_type, // 1: foto, 2: vídeo, 8: carrossel
-      url: media.image_versions2?.candidates[0]?.url || media.video_versions[0]?.url,
-      caption: media.caption?.text || '',
-      likes: media.like_count,
-      comments: media.comment_count,
-      timestamp: media.taken_at
-    }));
+    const formattedMedia = mediaData.map((media: any) => {
+      // Extrair o código correto do post
+      const code = extractPostCode(media);
+      
+      return {
+        id: media.id,
+        code: code,
+        type: media.media_type, // 1: foto, 2: vídeo, 8: carrossel
+        url: media.display_url || media.video_url,
+        caption: media.caption?.text || '',
+        likes: media.like_count,
+        comments: media.comment_count,
+        timestamp: media.taken_at_timestamp,
+        link: `https://instagram.com/p/${code}`
+      };
+    });
 
     console.log('Mídias formatadas:', formattedMedia); // Log de depuração
 
     return NextResponse.json({
       username: username,
-      userId: userId,
+      userId: userData.id,
       media: formattedMedia
     });
 

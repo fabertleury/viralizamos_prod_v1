@@ -33,6 +33,7 @@ interface Service {
 
 interface Post {
   id: string;
+  code: string;
   shortcode: string;
   image_url: string;
   caption?: string;
@@ -45,6 +46,7 @@ interface Post {
 
 interface InstagramPost {
   id: string;
+  code: string;
   shortcode: string;
   image_url: string;
   caption?: string;
@@ -95,6 +97,35 @@ export default function Step2Page() {
     ? Math.floor(service.quantidade / selectedItemsCount) 
     : 0;
 
+  // Função para extrair o código correto de um post do Instagram
+  const extractPostCode = (post: any): string => {
+    // Se o post já tem um código que não é numérico, usar esse código
+    if (post.code && !/^\d+$/.test(post.code)) {
+      console.log('✅ Usando código existente:', post.code);
+      return post.code;
+    }
+    
+    // Se tem shortcode, usar o shortcode
+    if (post.shortcode) {
+      console.log('✅ Usando shortcode:', post.shortcode);
+      return post.shortcode;
+    }
+    
+    // Se tem permalink ou link, extrair o código da URL
+    if (post.permalink || post.link) {
+      const url = post.permalink || post.link;
+      const match = url.match(/instagram\.com\/p\/([^\/]+)/);
+      if (match && match[1]) {
+        console.log('✅ Código extraído da URL:', match[1]);
+        return match[1];
+      }
+    }
+    
+    // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
+    console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
+    return post.id;
+  };
+
   const fetchInstagramPosts = async (username: string) => {
     try {
       // Se já carregou os posts, não precisa buscar novamente
@@ -126,6 +157,7 @@ export default function Step2Page() {
         // Log para depuração
         console.log('Analisando post:', {
           id: post.id,
+          code: post.code,
           media_type: post.media_type,
           is_video: post.is_video,
           product_type: post.product_type,
@@ -156,9 +188,13 @@ export default function Step2Page() {
           post.image_versions?.items?.[0]?.url || 
           post.display_url;
 
+        // Extrair o código correto do post para a URL
+        const postCode = extractPostCode(post);
+        
         return {
-          id: post.code || post.id || post.shortcode,
-          shortcode: post.code || post.id || post.shortcode,
+          id: post.id || '',
+          code: postCode,
+          shortcode: postCode,
           image_url: imageUrl,
           caption: post.caption 
               ? (typeof post.caption === 'object' 
@@ -166,7 +202,10 @@ export default function Step2Page() {
                 : String(post.caption)) 
               : 'Sem legenda',
           like_count: post.like_count || post.likes_count || 0,
-          comment_count: post.comment_count || post.comments_count || 0
+          comment_count: post.comment_count || post.comments_count || 0,
+          thumbnail_url: post.thumbnail_url || '',
+          display_url: post.display_url || '',
+          image_versions: post.image_versions || null
         };
       }).filter(post => post.image_url); // Remover posts sem imagem
 
@@ -217,9 +256,13 @@ export default function Step2Page() {
           reel.cover_frame_url || 
           reel.display_url;
 
+        // Extrair o código correto do reel para a URL
+        const reelCode = extractPostCode(reel);
+        
         return {
-          id: reel.code || reel.id || reel.shortcode,
-          shortcode: reel.code || reel.id || reel.shortcode,
+          id: reel.id || '',
+          code: reelCode,
+          shortcode: reelCode,
           image_url: imageUrl,
           caption: reel.caption 
               ? (typeof reel.caption === 'object' 
@@ -309,7 +352,8 @@ export default function Step2Page() {
             }
           }
           
-          data.fama_id = '1';
+          // Definir o ID do provedor padrão
+          data.provider_id = '1'; // Usar provider_id em vez de fama_id
           setService(data);
           return data;
         }
@@ -427,19 +471,27 @@ export default function Step2Page() {
     const remainingLikes = totalLikes % totalItems;
 
     // Preparar metadados dos posts
-    const postsMetadata = selectedPosts.map((post, index) => ({
-      postId: post.id,
-      postCode: post.code || post.shortcode || post.id,
-      postLink: `https://www.instagram.com/p/${post.code || post.shortcode || post.id}/`,
-      likes: index === 0 ? likesPerItem + remainingLikes : likesPerItem
-    }));
+    const postsMetadata = selectedPosts.map((post, index) => {
+      // Usar o campo code correto para a URL do post
+      const postCode = post.code || post.shortcode || post.id;
+      return {
+        postId: post.id,
+        postCode: postCode,
+        postLink: `https://instagram.com/p/${postCode}`,
+        likes: index === 0 ? likesPerItem + remainingLikes : likesPerItem
+      };
+    });
 
-    const reelsMetadata = selectedReels.map((reel, index) => ({
-      postId: reel.id,
-      postCode: reel.code || reel.shortcode || reel.id,
-      postLink: `https://www.instagram.com/p/${reel.code || reel.shortcode || reel.id}/`,
-      likes: likesPerItem
-    }));
+    const reelsMetadata = selectedReels.map((reel, index) => {
+      // Usar o campo code correto para a URL do reel
+      const reelCode = reel.code || reel.shortcode || reel.id;
+      return {
+        postId: reel.id,
+        postCode: reelCode,
+        postLink: `https://instagram.com/p/${reelCode}`,
+        likes: likesPerItem
+      };
+    });
 
     return {
       user_id: formData.name || null,
@@ -500,6 +552,21 @@ export default function Step2Page() {
     setLoading(true);
 
     try {
+      // Log detalhado dos posts e reels selecionados
+      console.log('📊 Posts selecionados para pagamento:', selectedPosts.map(post => ({
+        id: post.id,
+        code: post.code,
+        shortcode: post.shortcode,
+        url: `https://instagram.com/p/${post.code}`
+      })));
+      
+      console.log('📊 Reels selecionados para pagamento:', selectedReels.map(reel => ({
+        id: reel.id,
+        code: reel.code,
+        shortcode: reel.shortcode,
+        url: `https://instagram.com/p/${reel.code}`
+      })));
+
       // Criar pagamento via Pix
       const response = await fetch('/api/payment/pix', {
         method: 'POST',
@@ -513,7 +580,7 @@ export default function Step2Page() {
             id: service.id,
             name: service.name,
             quantity: service.quantidade,
-            fama_id: service.fama_id
+            provider_id: service.provider_id || service.fama_id // Usar provider_id com fallback para fama_id
           },
           user_id: null,
           profile: {
@@ -527,18 +594,20 @@ export default function Step2Page() {
             phone: formData.phone
           },
           posts: [...selectedPosts, ...selectedReels].map(post => {
-            // Garantir que temos um código válido para o link
-            const postCode = post.code || post.shortcode || post.id;
+            // Garantir que temos um código válido para o link usando nossa função auxiliar
+            const postCode = extractPostCode(post);
             
-            console.log('Processando post para pagamento:', {
+            console.log('🔄 Processando post/reel para pagamento:', {
               id: post.id,
               code: post.code,
               shortcode: post.shortcode,
-              postCode: postCode
+              extractedCode: postCode,
+              finalUrl: `https://instagram.com/p/${postCode}`
             });
             
             return {
               id: post.id,
+              code: postCode,
               shortcode: postCode,
               image_url: post.image_url,
               caption: post.caption 

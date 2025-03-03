@@ -37,14 +37,55 @@ export async function POST(request: NextRequest) {
     // Configurar o cliente do Mercado Pago
     mercadopago.configurations.setAccessToken(process.env.MERCADO_PAGO_ACCESS_TOKEN || '');
 
+    // Função para extrair o código correto de um post do Instagram
+    const extractPostCode = (post: any): string => {
+      // Se o post já tem um código que não é numérico, usar esse código
+      if (post.code && !/^\d+$/.test(post.code)) {
+        console.log('✅ Usando código existente:', post.code);
+        return post.code;
+      }
+      
+      // Se tem shortcode, usar o shortcode
+      if (post.shortcode) {
+        console.log('✅ Usando shortcode:', post.shortcode);
+        return post.shortcode;
+      }
+      
+      // Se tem permalink ou link, extrair o código da URL
+      if (post.permalink || post.link || post.url) {
+        const url = post.permalink || post.link || post.url;
+        const match = url.match(/instagram\.com\/p\/([^\/]+)/);
+        if (match && match[1]) {
+          console.log('✅ Código extraído da URL:', match[1]);
+          return match[1];
+        }
+      }
+      
+      // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
+      console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
+      return post.id;
+    };
+
     // Processar os posts (se houver)
     const processedPosts = posts.map((post: any) => {
+      // Garantir que estamos usando o campo 'code' correto para o link do Instagram
+      // Priorizar o campo 'code' sobre 'shortcode' ou 'id', conforme as boas práticas
+      const postCode = extractPostCode(post);
+      
+      console.log('🔍 Processando post/reel na API de pagamento:', {
+        id: post.id,
+        code: post.code,
+        shortcode: post.shortcode,
+        postCode: postCode,
+        finalUrl: `https://instagram.com/p/${postCode}`
+      });
+      
       return {
-        id: post.id || post.shortcode || post.code,
-        code: post.shortcode || post.code || post.id,
+        id: post.id,
+        code: postCode, // Armazenar o código correto
         username: post.username || profile.username,
         caption: post.caption || '',
-        url: post.url || `https://instagram.com/p/${post.shortcode || post.code || post.id}`
+        url: `https://instagram.com/p/${postCode}` // Garantir o formato correto do link
       };
     });
 
@@ -102,7 +143,12 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         payment_method: 'pix',
         payment_id: result.body.id.toString(),
+        payment_external_reference: result.body.id.toString(),
+        external_id: result.body.id.toString(),
+        payment_qr_code: result.body.point_of_interaction.transaction_data.qr_code,
+        payment_qr_code_base64: qrCodeBase64,
         service_id: service.id,
+        order_created: false,
         customer_name: customer.name || 'N/A',
         customer_email: customer.email || 'N/A',
         customer_phone: customer.phone || 'N/A',
@@ -112,7 +158,7 @@ export async function POST(request: NextRequest) {
         metadata: {
           service: {
             id: service.id,
-            fama_id: service.fama_id,
+            provider_id: service.fama_id || service.provider_id, // Usar provider_id em vez de fama_id
             name: service.name,
             quantity: service.quantity
           },
@@ -155,7 +201,7 @@ export async function POST(request: NextRequest) {
       metadataData: {
         service: {
           id: service.id,
-          fama_id: service.fama_id,
+          provider_id: service.fama_id || service.provider_id, // Usar provider_id em vez de fama_id
           name: service.name,
           quantity: service.quantity
         },

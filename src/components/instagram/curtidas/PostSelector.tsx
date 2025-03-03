@@ -65,50 +65,64 @@ export function PostSelector({
     }
   }, [initialSelectedPosts]);
 
-  const getProxiedImageUrl = (originalUrl: string) => {
-    if (!originalUrl) return '/images/placeholder-post.svg';
-    
-    // Se já for uma URL local, retornar diretamente
-    if (originalUrl.startsWith('/')) {
-      return originalUrl;
+  // Função para selecionar a melhor URL de imagem disponível
+  const selectBestImageUrl = (post: any): string => {
+    // Se for um carrossel, usar a imagem principal ou a primeira do carrossel
+    if (post.is_carousel && post.image_versions?.items?.[0]?.url) {
+      return post.image_versions.items[0].url;
     }
     
-    // Se for uma URL de placeholder.com, usar o placeholder local
-    if (originalUrl.includes('placeholder.com')) {
+    // Tentar obter a URL da imagem de várias propriedades possíveis
+    if (post.image_url) return post.image_url;
+    if (post.display_url) return post.display_url;
+    if (post.thumbnail_url) return post.thumbnail_url;
+    
+    // Verificar se temos image_versions
+    if (post.image_versions?.items?.[0]?.url) {
+      return post.image_versions.items[0].url;
+    }
+    
+    // Se nada funcionar, usar um placeholder
+    return '/images/placeholder-post.svg';
+  };
+
+  // Função para processar a URL da imagem através de um proxy
+  const getProxiedImageUrl = (url: string): string => {
+    if (!url || url.includes('placeholder-post.svg')) {
       return '/images/placeholder-post.svg';
     }
     
-    // Caso contrário, usar o proxy
-    return `/api/proxy/image?url=${encodeURIComponent(originalUrl)}`;
+    // Usar o proxy de imagens para evitar problemas de CORS
+    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
   };
 
-  const selectBestImageUrl = (post: any): string => {
-    console.log('Selecionando imagem para post:', post.id || post.pk);
-    
-    // Verificar todas as possíveis fontes de imagem
-    const possibleSources = [
-      post.image_url,
-      post.thumbnail_url,
-      post.display_url,
-      post.image_versions?.items?.[0]?.url,
-      post.carousel_media?.[0]?.image_versions?.items?.[0]?.url,
-      // Novas fontes de imagem do formato da API
-      post.image_versions?.additional_items?.first_frame?.url,
-      post.image_versions?.additional_items?.smart_frame?.url,
-      post.image_versions?.additional_items?.igtv_first_frame?.url
-    ];
-    
-    // Filtrar fontes válidas
-    const validSources = possibleSources.filter(source => source && typeof source === 'string');
-    
-    if (validSources.length > 0) {
-      console.log('Fonte de imagem encontrada:', validSources[0]);
-      return validSources[0];
+  // Função para extrair o código correto de um post do Instagram
+  const extractPostCode = (post: any): string => {
+    // Se o post já tem um código que não é numérico, usar esse código
+    if (post.code && !/^\d+$/.test(post.code)) {
+      console.log('✅ Usando código existente:', post.code);
+      return post.code;
     }
     
-    console.warn('Nenhuma fonte de imagem válida encontrada para o post:', post.id || post.pk);
-    // Usar um SVG local que não precisa passar pelo proxy
-    return '/images/placeholder-post.svg';
+    // Se tem shortcode, usar o shortcode
+    if (post.shortcode) {
+      console.log('✅ Usando shortcode:', post.shortcode);
+      return post.shortcode;
+    }
+    
+    // Se tem permalink ou link, extrair o código da URL
+    if (post.permalink || post.link) {
+      const url = post.permalink || post.link;
+      const match = url.match(/instagram\.com\/p\/([^\/]+)/);
+      if (match && match[1]) {
+        console.log('✅ Código extraído da URL:', match[1]);
+        return match[1];
+      }
+    }
+    
+    // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
+    console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
+    return post.id;
   };
 
   // Função para calcular curtidas por item
@@ -121,6 +135,19 @@ export function PostSelector({
   const handleSelectPost = (post: InstagramPost) => {
     const totalSelectedItems = selectedPosts.length + selectedReels.length;
     const isAlreadySelected = selectedPosts.some(selectedPost => selectedPost.id === post.id);
+
+    // Log detalhado do post selecionado
+    console.log('🔍 Post selecionado - dados completos:', {
+      id: post.id,
+      code: post.code,
+      shortcode: post.shortcode,
+      image_url: post.image_url,
+      caption: post.caption
+    });
+    
+    // Extrair o código correto
+    const postCode = extractPostCode(post);
+    console.log('🔍 Código extraído para o post:', postCode);
 
     if (isAlreadySelected) {
       // Se já selecionado, remover
@@ -137,12 +164,20 @@ export function PostSelector({
       return;
     }
 
-    // Adicionar post com emoji de coração
+    // Adicionar post com emoji de coração e código correto
     const selectedPost = {
       ...post,
+      code: postCode, // Usar o código extraído
+      shortcode: postCode,
       selected: true,
       displayName: `❤️ ${post.caption || 'Post sem legenda'}`
     };
+
+    console.log('✅ Post adicionado à seleção:', {
+      id: selectedPost.id,
+      code: selectedPost.code,
+      url: `https://instagram.com/p/${selectedPost.code}`
+    });
 
     const updatedSelectedPosts = [...selectedPosts, selectedPost];
     setSelectedPosts(updatedSelectedPosts);
@@ -207,6 +242,7 @@ export function PostSelector({
                   media_type: post.media_type,
                   is_video: post.is_video,
                   is_reel: post.is_reel || false,
+                  is_carousel: post.is_carousel || false,
                   product_type: post.product_type
                 });
                 
@@ -218,18 +254,18 @@ export function PostSelector({
                   post.product_type !== 'clips' && 
                   post.product_type !== 'reels' &&
                   // Tipo 1 = imagem, Tipo 8 = carrossel
-                  (post.media_type === 1 || post.media_type === 8) && 
-                  // Garantir que não é um vídeo
-                  !post.is_video &&
+                  (post.media_type === 1 || post.media_type === 8 || post.is_carousel) && 
+                  // Garantir que não é um vídeo (a menos que seja um carrossel)
+                  (!post.is_video || post.is_carousel) &&
                   // Garantir que tem uma imagem válida
-                  post.image_versions?.items?.[0]?.url
+                  (post.image_versions?.items?.[0]?.url || post.image_url)
                 );
               })
               .map(post => ({
                 ...post,
                 likes_count: post.like_count || post.likes_count || 0,
                 comments_count: post.comment_count || post.comments_count || 0,
-                image_url: post.image_versions?.items?.[0]?.url || ''
+                image_url: post.image_versions?.items?.[0]?.url || post.image_url || ''
               }));
 
             console.log('Posts filtrados:', {
@@ -336,6 +372,16 @@ export function PostSelector({
               }}
               unoptimized={getProxiedImageUrl(post.image_url).includes('placeholder-post.svg')}
             />
+            
+            {/* Indicador de carrossel */}
+            {post.is_carousel && (
+              <div className="absolute top-2 left-2 bg-white bg-opacity-70 text-black rounded-md px-2 py-1 text-xs flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+                </svg>
+                {post.carousel_media_count || '+'} fotos
+              </div>
+            )}
             
             {selectedPosts.some(selectedPost => selectedPost.id === post.id) && (
               <>
