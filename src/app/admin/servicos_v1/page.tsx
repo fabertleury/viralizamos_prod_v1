@@ -331,6 +331,7 @@ export default function ServicosV1Page() {
 
   const fetchServices = async () => {
     try {
+      console.log('Buscando serviços...');
       const { data, error } = await supabase
         .from('services')
         .select(`
@@ -345,16 +346,21 @@ export default function ServicosV1Page() {
               icon
             )
           ),
-          provider:providers(
+          provider:provider_id(
             id,
             name,
-            slug
+            slug,
+            api_key,
+            api_url
           )
         `)
         .order('name');
 
       if (error) throw error;
 
+      console.log('Serviços carregados:', data?.length);
+      console.log('Exemplo de serviço:', data?.[0]);
+      
       setServices(data || []);
     } catch (error) {
       console.error('Erro ao buscar serviços:', error);

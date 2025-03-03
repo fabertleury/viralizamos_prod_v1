@@ -66,6 +66,7 @@ export function ServiceFormModal({
 }: ServiceFormModalProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [socials, setSocials] = useState<Social[]>([]);
+  const [providers, setProviders] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedSocial, setSelectedSocial] = useState<string>("");
   const [formData, setFormData] = useState({
@@ -94,29 +95,32 @@ export function ServiceFormModal({
     if (editingService) {
       setFormData({
         name: editingService.name || '',
-        descricao: editingService.descricao || '',
         type: editingService.type || '',
         quantidade: editingService.quantidade || 0,
         preco: editingService.preco || 0,
+        descricao: editingService.descricao || '',
         category_id: editingService.category_id || '',
         subcategory_id: editingService.subcategory_id || '',
         checkout_type_id: editingService.checkout_type_id || '',
-        status: editingService.status !== false,
+        status: editingService.status !== undefined ? editingService.status : true,
         delivery_time: editingService.delivery_time || '',
-        min_order: editingService.min_order || 20,
-        max_order: editingService.max_order || 10000,
-        featured: editingService.featured || false,
-        external_id: editingService.external_id || '',
+        min_order: editingService.min_order || 0,
+        max_order: editingService.max_order || 0,
         provider_id: editingService.provider_id || '',
+        external_id: editingService.external_id || '',
         success_rate: editingService.success_rate || 0,
+        featured: editingService.featured || false,
         metadata: editingService.metadata || {}
       });
+      
+      console.log('Editando serviço:', editingService);
+      console.log('Provider ID:', editingService.provider_id);
     }
   }, [editingService]);
 
   useEffect(() => {
     const fetchData = async () => {
-      const [socialsResponse, categoriesResponse] = await Promise.all([
+      const [socialsResponse, categoriesResponse, providersResponse] = await Promise.all([
         supabase
           .from('socials')
           .select('*')
@@ -134,7 +138,11 @@ export function ServiceFormModal({
             )
           `)
           .eq('active', true)
-          .order('order_position')
+          .order('order_position'),
+        supabase
+          .from('providers')
+          .select('*')
+          .order('name')
       ]);
 
       if (socialsResponse.data) {
@@ -143,6 +151,10 @@ export function ServiceFormModal({
 
       if (categoriesResponse.data) {
         setCategories(categoriesResponse.data);
+      }
+
+      if (providersResponse.data) {
+        setProviders(providersResponse.data);
       }
 
       // Se estiver editando, buscar a rede social da categoria
@@ -431,14 +443,25 @@ export function ServiceFormModal({
           </div>
 
           <div>
-            <Label>ID do Provedor</Label>
-            <Input 
-              name="provider_id"
-              value={formData.provider_id}
-              onChange={handleInputChange}
-              placeholder="Ex: ID do provedor"
-              required
-            />
+            <Label>Provedor</Label>
+            <Select 
+              value={formData.provider_id} 
+              onValueChange={(value) => setFormData(prev => ({ 
+                ...prev, 
+                provider_id: value 
+              }))}
+            >
+              <SelectTrigger className="bg-white">
+                <SelectValue placeholder="Selecione o provedor" />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                {providers.map(provider => (
+                  <SelectItem key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>

@@ -5,14 +5,15 @@ import axios from 'axios';
 export async function POST(request: NextRequest) {
   try {
     console.log('=== ENDPOINT ADD-ORDER CHAMADO ===');
-    const { service, link, quantity, transaction_id, target_username } = await request.json();
+    const { service, link, quantity, transaction_id, target_username, provider_id } = await request.json();
     
-    console.log('Enviando pedido para o provedor Fama nas Redes:', {
+    console.log('Enviando pedido para o provedor:', {
       service,
       link,
       quantity,
       transaction_id,
-      target_username
+      target_username,
+      provider_id
     });
 
     if (!service || !link || !quantity) {
@@ -22,27 +23,99 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const apiKey = process.env.FAMA_REDES_API_KEY;
-    const apiUrl = process.env.FAMA_REDES_API_URL || 'https://famanasredes.com.br/api/v2';
+    const supabase = createClient();
     
-    if (!apiKey) {
-      console.error('API Key do Fama nas Redes não configurada');
+    // Buscar o provedor no Supabase
+    const { data: provider, error: providerError } = await supabase
+      .from('providers')
+      .select('*')
+      .eq('id', provider_id)
+      .single();
+      
+    if (providerError || !provider) {
+      console.error('Erro ao buscar provedor:', providerError);
+      
+      // Tentar usar as variáveis de ambiente como fallback (compatibilidade)
+      const apiKey = process.env.FAMA_REDES_API_KEY;
+      const apiUrl = process.env.FAMA_REDES_API_URL || 'https://famanasredes.com.br/api/v2';
+      
+      if (!apiKey) {
+        return NextResponse.json({
+          error: 'Provider not found and no fallback API key configured',
+          status: 'error'
+        }, { status: 500 });
+      }
+      
+      console.warn('Usando API key e URL de fallback das variáveis de ambiente');
+      
+      // Verificar se o link é para um post do Instagram e garantir que esteja no formato correto
+      let finalLink = link;
+      if (link.includes('instagram.com/p/')) {
+        // Extrair o código do post da URL
+        let postCode = link.split('/p/')[1]?.split('/')[0];
+        if (postCode) {
+          // Garantir que estamos usando o código correto do post
+          console.log('Código do post extraído:', postCode);
+          finalLink = `https://instagram.com/p/${postCode}`;
+        }
+      }
+
+      // Enviar pedido para o provedor usando as variáveis de ambiente
+      const response = await axios.post(apiUrl, {
+        key: apiKey,
+        action: 'add',
+        service,
+        link: finalLink,
+        quantity
+      });
+      
+      console.log('Resposta do provedor (fallback):', response.data);
+      
+      if (!response.data || !response.data.order) {
+        return NextResponse.json({
+          error: 'Invalid response from provider',
+          response: response.data,
+          status: 'error'
+        }, { status: 500 });
+      }
+      
+      // Resto do código para salvar o pedido...
+      return processOrderResponse(response.data, supabase, transaction_id, service, finalLink, quantity, target_username);
+    }
+    
+    // Verificar se o provedor tem API key e URL configuradas
+    if (!provider.api_key || !provider.api_url) {
+      console.error('Provedor não tem API key ou URL configurada:', provider.name);
       return NextResponse.json({
-        error: 'Provider API key not configured',
+        error: 'Provider API configuration missing',
         status: 'error'
       }, { status: 500 });
     }
+    
+    console.log(`Usando provedor: ${provider.name} (${provider.api_url})`);
+    
+    // Verificar se o link é para um post do Instagram e garantir que esteja no formato correto
+    let finalLink = link;
+    if (link.includes('instagram.com/p/')) {
+      // Extrair o código do post da URL
+      let postCode = link.split('/p/')[1]?.split('/')[0];
+      if (postCode) {
+        // Garantir que estamos usando o código correto do post
+        console.log('Código do post extraído:', postCode);
+        finalLink = `https://instagram.com/p/${postCode}`;
+      }
+    }
 
     // Enviar pedido para o provedor
-    const response = await axios.post(apiUrl, {
-      key: apiKey,
+    const response = await axios.post(provider.api_url, {
+      key: provider.api_key,
       action: 'add',
       service,
-      link,
+      link: finalLink,
       quantity
     });
 
-    console.log('Resposta do provedor:', response.data);
+    console.log(`Resposta do provedor ${provider.name}:`, response.data);
 
     if (!response.data || !response.data.order) {
       return NextResponse.json({
@@ -52,128 +125,70 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    const supabase = createClient();
-
-    // Buscar a transação para obter detalhes adicionais
-    const { data: transaction, error: transactionError } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('id', transaction_id)
-      .single();
-
-    if (transactionError) {
-      console.error('Erro ao buscar transação:', transactionError);
-      return NextResponse.json({
-        error: 'Transaction not found',
-        status: 'error'
-      }, { status: 404 });
-    }
-
-    // Salvar o pedido no banco de dados usando a estrutura existente
-    const { data: order, error } = await supabase
-      .from('orders')
-      .insert({
-        service_id: service,
-        quantity,
-        target_username,
-        status: 'processing', // Alterado de 'pending' para 'processing' para indicar que foi enviado
-        payment_status: 'approved',
-        payment_method: 'pix',
-        payment_id: transaction.payment_external_reference,
-        external_order_id: response.data.order.toString(),
-        transaction_id,
-        user_id: transaction.user_id, // Adicionado user_id para rastreabilidade
-        metadata: {
-          provider: 'fama_redes',
-          link,
-          order_details: response.data,
-          email: transaction.metadata?.email || transaction.metadata?.profile?.email // Armazenar email para consulta futura
-        }
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Erro ao salvar pedido no banco de dados:', error);
-      return NextResponse.json({
-        error: 'Failed to save order',
-        provider_response: response.data,
-        status: 'error'
-      }, { status: 500 });
-    }
-
-    // Salvar ou atualizar o perfil do usuário
-    const email = transaction.metadata?.email || 
-                 transaction.metadata?.contact?.email || 
-                 transaction.metadata?.profile?.email;
+    return processOrderResponse(response.data, supabase, transaction_id, service, finalLink, quantity, target_username);
     
-    if (email) {
-      // Verificar se o usuário já existe
-      const { data: existingUser, error: userError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email)
-        .single();
-      
-      if (userError) {
-        // Extrair nome do usuário
-        const userName = transaction.metadata?.profile?.full_name || 
-                        transaction.metadata?.profile?.username || 
-                        target_username;
-        
-        // Usuário não existe, criar novo
-        const { error: createError } = await supabase
-          .from('profiles')
-          .insert({
-            email: email,
-            name: userName || email.split('@')[0],
-            role: 'user',
-            active: true
-          });
-        
-        if (createError) {
-          console.error('Erro ao criar perfil do usuário:', createError);
-        } else {
-          console.log('Perfil do usuário criado com sucesso');
-        }
-      } else {
-        console.log('Usuário já existe no sistema:', existingUser);
-      }
-    }
-
-    // Atualizar a transação com o ID do pedido
-    const { error: updateError } = await supabase
-      .from('transactions')
-      .update({
-        metadata: {
-          ...transaction.metadata,
-          provider_order_id: response.data.order
-        }
-      })
-      .eq('id', transaction_id);
-
-    if (updateError) {
-      console.error('Erro ao atualizar transação com ID do pedido:', updateError);
-    }
-
-    return NextResponse.json({
-      status: 'success',
-      order: {
-        id: order.id,
-        external_order_id: response.data.order,
-        service_id: service,
-        link,
-        quantity,
-        transaction_id,
-        created_at: order.created_at
-      }
-    });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erro ao processar pedido:', error);
     return NextResponse.json({
-      error: 'Failed to process order',
-      details: error instanceof Error ? error.message : String(error),
+      error: error.message || 'Unknown error',
       status: 'error'
     }, { status: 500 });
   }
+}
+
+// Função auxiliar para processar a resposta da ordem e salvar no banco de dados
+async function processOrderResponse(responseData: any, supabase: any, transaction_id: string, service: string, finalLink: string, quantity: number, target_username: string) {
+  // Buscar a transação para obter detalhes adicionais
+  const { data: transaction, error: transactionError } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('id', transaction_id)
+    .single();
+
+  if (transactionError) {
+    console.error('Erro ao buscar transação:', transactionError);
+    return NextResponse.json({
+      error: 'Transaction not found',
+      status: 'error'
+    }, { status: 404 });
+  }
+
+  // Salvar o pedido no banco de dados usando a estrutura existente
+  const { data: order, error } = await supabase
+    .from('orders')
+    .insert({
+      service_id: service,
+      quantity,
+      target_username,
+      status: 'processing', // Alterado de 'pending' para 'processing' para indicar que foi enviado
+      payment_status: 'approved',
+      payment_method: 'pix',
+      payment_id: transaction.payment_external_reference,
+      external_order_id: responseData.order.toString(),
+      transaction_id,
+      user_id: transaction.user_id, // Adicionado user_id para rastreabilidade
+      metadata: {
+        provider: 'external_provider',
+        provider_id: service, // Usar provider_id em vez de fama_id
+        link: finalLink,
+        order_details: responseData,
+        email: transaction.metadata?.email || transaction.metadata?.profile?.email // Armazenar email para consulta futura
+      }
+    })
+    .select();
+
+  if (error) {
+    console.error('Erro ao salvar pedido:', error);
+    return NextResponse.json({
+      error: 'Failed to save order',
+      details: error,
+      status: 'error'
+    }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    order: order[0],
+    provider_response: responseData,
+    status: 'success'
+  });
 }

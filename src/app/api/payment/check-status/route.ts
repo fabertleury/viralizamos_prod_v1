@@ -129,6 +129,7 @@ export async function POST(request: NextRequest) {
           .from('transactions')
           .update({ 
             status: paymentStatus,
+            status_payment: paymentStatus, // Adicionar status_payment para compatibilidade
             metadata: {
               ...supabaseTransaction.metadata,
               payment_details: paymentData
@@ -153,12 +154,38 @@ export async function POST(request: NextRequest) {
           orderCreated: supabaseTransaction.order_created
         });
 
+        // Verificar se a ordem já foi criada para esta transação
+        if (supabaseTransaction.order_created) {
+          console.log('⚠️ Ordem já foi criada para esta transação. Pulando criação de ordem.');
+          
+          // Verificar se existem ordens para esta transação
+          const { data: existingOrders, error: ordersError } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('transaction_id', supabaseTransaction.id);
+            
+          if (ordersError) {
+            console.error('❌ Erro ao verificar ordens existentes:', ordersError);
+          } else {
+            console.log(`ℹ️ Encontradas ${existingOrders?.length || 0} ordens para esta transação.`);
+          }
+          
+          return NextResponse.json({
+            payment: paymentData,
+            status: paymentStatus,
+            statusDetail: paymentStatusDetail,
+            supabaseTransaction,
+            ordersAlreadyCreated: true,
+            existingOrders: existingOrders || []
+          });
+        }
+
         console.log('📦 Conteúdo completo da transação:', supabaseTransaction);
 
         // Buscar detalhes do serviço
         const { data: serviceData, error: serviceError } = await supabase
           .from('services')
-          .select('*')
+          .select('*, provider:providers(*)')
           .eq('id', supabaseTransaction.service_id)
           .single();
 
@@ -170,7 +197,20 @@ export async function POST(request: NextRequest) {
           throw new Error('Serviço não encontrado');
         }
 
-        // Parse dos metadados do serviço
+        // Verificar se o serviço tem um provedor associado
+        if (!serviceData.provider_id) {
+          console.error('❌ Serviço não tem provedor associado:', serviceData);
+          throw new Error('Serviço não tem provedor associado');
+        }
+
+        console.log('📦 Detalhes do serviço:', {
+          id: serviceData.id,
+          name: serviceData.name,
+          provider_id: serviceData.provider_id,
+          provider: serviceData.provider?.name || 'N/A'
+        });
+        
+        // Parse dos metadados do serviço para obter os serviços
         let serviceMetadata = {};
         try {
           if (typeof serviceData.metadata === 'string') {
@@ -182,8 +222,19 @@ export async function POST(request: NextRequest) {
           console.error('Erro ao fazer parse dos metadados do serviço:', parseError);
         }
         
-        const services = serviceMetadata.services || [];
-
+        // Obter serviços do metadata ou usar o próprio serviço
+        const services = serviceMetadata.services && serviceMetadata.services.length > 0 
+          ? serviceMetadata.services 
+          : [{ 
+              id: serviceData.id, 
+              external_id: serviceData.external_id,
+              provider_id: serviceData.provider_id,
+              quantity: supabaseTransaction.metadata?.service?.quantity || 1,
+              amount: serviceData.price || 0
+            }];
+            
+        console.log('📦 Serviços a processar:', services);
+        
         // Extrair links de posts do metadata da transação
         let transactionMetadata = {};
         try {
@@ -196,7 +247,38 @@ export async function POST(request: NextRequest) {
           console.error('Erro ao fazer parse dos metadados da transação:', parseError);
         }
         
-        const postLinks = transactionMetadata.post_links || [];
+        // Obter posts do metadata e garantir que os links estejam no formato correto
+        let postLinks = [];
+        let originalPosts = [];
+        
+        // Verificar se temos posts no metadata
+        if (transactionMetadata.posts && Array.isArray(transactionMetadata.posts)) {
+          console.log('Posts encontrados no metadata:', transactionMetadata.posts);
+          originalPosts = transactionMetadata.posts;
+          
+          postLinks = transactionMetadata.posts.map((post: any) => {
+            // Garantir que estamos usando o código correto para o link
+            // Priorizar o campo 'code' conforme as boas práticas
+            const postCode = post.code || post.shortcode || post.id;
+            console.log(`Processando post ${post.id}: código=${postCode}`);
+            
+            // Garantir que o link esteja no formato correto: https://instagram.com/p/{code}
+            return `https://instagram.com/p/${postCode}`;
+          });
+        } else if (transactionMetadata.post_links && Array.isArray(transactionMetadata.post_links)) {
+          // Compatibilidade com formato antigo
+          console.log('Links de posts encontrados no formato antigo:', transactionMetadata.post_links);
+          postLinks = transactionMetadata.post_links;
+        } else {
+          console.warn('Nenhum post encontrado no metadata da transação:', transactionMetadata);
+        }
+        
+        if (postLinks.length === 0) {
+          console.error('❌ Nenhum link de post encontrado para processar');
+          throw new Error('Nenhum link de post encontrado para processar');
+        }
+        
+        console.log('Links de posts extraídos:', postLinks);
 
         // Criar ordem mestra no Supabase
         const { data: masterOrderData, error: masterOrderError } = await supabase
@@ -216,7 +298,18 @@ export async function POST(request: NextRequest) {
               service_details: serviceData,
               transaction_details: supabaseTransaction,
               services: services,
-              post_links: postLinks
+              post_links: postLinks,
+              original_posts: originalPosts,
+              payment_data: {
+                id: paymentData.id,
+                status: paymentStatus,
+                status_detail: paymentStatusDetail,
+                date: new Date().toISOString()
+              },
+              processing_info: {
+                created_at: new Date().toISOString(),
+                processor: 'payment-check-status-api'
+              }
             }
           })
           .select()
@@ -239,12 +332,36 @@ export async function POST(request: NextRequest) {
             try {
               const postQuantity = quantityPerPost + (i < remainderQuantity ? 1 : 0);
               
-              const orderResponse = await socialMediaService.createOrder({
-                service: service.id,
-                link: postLinks[i],
+              // Garantir que o link do Instagram esteja no formato correto
+              const postLink = postLinks[i];
+              console.log(`Criando ordem para post ${i+1}/${postsCount}: ${postLink} com ${postQuantity} unidades`);
+              
+              // Verificar se o link está no formato correto
+              if (!postLink || !postLink.includes('instagram.com/p/')) {
+                console.error(`❌ Link inválido para o post ${i+1}: ${postLink}`);
+                throw new Error(`Link inválido para o post ${i+1}: ${postLink}`);
+              }
+              
+              // Logs detalhados dos dados do serviço
+              console.log(`🔄 Detalhes do serviço para ordem ${i+1}:`, {
+                serviceId: service.id,
+                providerId: service.provider_id,
+                providerName: serviceData.provider?.name || 'N/A',
+                serviceExternalId: service.external_id,
                 quantity: postQuantity,
-                username: supabaseTransaction.target_username
+                link: postLink
               });
+              
+              const orderResponse = await socialMediaService.createOrder({
+                service: service.external_id || service.id,
+                provider_id: service.provider_id || serviceData.provider_id,
+                link: postLink,
+                quantity: postQuantity,
+                username: supabaseTransaction.target_username,
+                transaction_id: supabaseTransaction.id
+              });
+              
+              console.log(`✅ Resposta da API para ordem ${i+1}:`, orderResponse);
 
               const { data: subOrderData, error: subOrderError } = await supabase
                 .from('orders')
@@ -263,7 +380,7 @@ export async function POST(request: NextRequest) {
                   parent_order_id: masterOrderData.id,
                   metadata: {
                     service_details: service,
-                    post_link: postLinks[i],
+                    post_link: postLink,
                     external_order_response: orderResponse
                   }
                 })
@@ -303,7 +420,10 @@ export async function POST(request: NextRequest) {
         // Marcar transação como processada
         const { error: transactionUpdateError } = await supabase
           .from('transactions')
-          .update({ order_created: true })
+          .update({ 
+            order_created: true,
+            order_id: masterOrderData.id // Definir order_id para a ordem mestra
+          })
           .eq('id', supabaseTransaction.id);
 
         if (transactionUpdateError) {
