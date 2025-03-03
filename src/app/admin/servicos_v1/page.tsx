@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 import { ServiceFormModal } from './components/ServiceFormModal';
 import { ServiceVariationModal } from './components/ServiceVariationModal';
 import { ServiceApiModal } from './components/ServiceApiModal';
+import { ProviderSelectionModal } from './components/ProviderSelectionModal';
+import { ServiceSelectionModal } from './components/ServiceSelectionModal';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faEdit, 
@@ -49,35 +51,59 @@ interface Service {
   featured: boolean;
   checkout_type_id?: string;
   subcategory_id?: string;
-  category: {
+  category?: {
     id: string;
     name: string;
     icon: string;
-    social: {
+    social?: {
       id: string;
       name: string;
       icon: string;
-    };
-  };
+    }
+  }
+  provider?: {
+    id: string;
+    name: string;
+    slug: string;
+  }
+}
+
+interface Provider {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  api_key: string;
+  api_url: string;
+  status: boolean;
+  metadata: any;
+  created_at: string;
+  updated_at: string;
 }
 
 export default function ServicosV1Page() {
-  const router = useRouter();
   const [services, setServices] = useState<Service[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFormModal, setShowFormModal] = useState(false);
-  const [showVariationModal, setShowVariationModal] = useState(false);
-  const [showApiModal, setShowApiModal] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [selectedSocial, setSelectedSocial] = useState<string | null>(null);
+  const [selectedServiceVariations, setSelectedServiceVariations] = useState<Service | null>(null);
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [showProviderModal, setShowProviderModal] = useState(false);
+  const [showVariationModal, setShowVariationModal] = useState(false);
+  const [showServiceSelectionModal, setShowServiceSelectionModal] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const supabase = createClient();
+  const router = useRouter();
 
   // Estado para controlar quais serviços têm variações expandidas
   const [expandedServiceVariations, setExpandedServiceVariations] = useState<{ [key: string]: boolean }>({});
 
   // Estado para controlar o modal de variações
-  const [selectedServiceVariations, setSelectedServiceVariations] = useState<any | null>(null);
+  const [selectedSocial, setSelectedSocial] = useState<string | null>(null);
+  const [selectedProviderFilter, setSelectedProviderFilter] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Função para alternar a expansão das variações de um serviço
   const toggleServiceVariations = (serviceId: string) => {
@@ -318,6 +344,11 @@ export default function ServicosV1Page() {
               name,
               icon
             )
+          ),
+          provider:providers(
+            id,
+            name,
+            slug
           )
         `)
         .order('name');
@@ -427,6 +458,21 @@ export default function ServicosV1Page() {
     return acc;
   }, {} as Record<string, Service[]>);
 
+  // Agrupar serviços por provedor
+  const servicesByProvider = services.reduce((acc, service) => {
+    const providerName = service.provider?.name || 'Sem provedor';
+    if (!acc[providerName]) {
+      acc[providerName] = [];
+    }
+    acc[providerName].push(service);
+    return acc;
+  }, {} as Record<string, Service[]>);
+
+  const handleOpenApiModal = () => {
+    console.log('Abrindo modal de importação via API');
+    setShowProviderModal(true);
+  };
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
@@ -440,7 +486,7 @@ export default function ServicosV1Page() {
           </Link>
           <Button 
             variant="secondary" 
-            onClick={() => router.push('/admin/servicos_v1/importar')}
+            onClick={handleOpenApiModal}
           >
             Importar via API
           </Button>
@@ -466,6 +512,25 @@ export default function ServicosV1Page() {
         ))}
       </div>
 
+      {/* Filtro de provedores */}
+      <div className="flex space-x-2 mb-4">
+        <Button 
+          variant={selectedProviderFilter === null ? 'default' : 'outline'}
+          onClick={() => setSelectedProviderFilter(null)}
+        >
+          Todos
+        </Button>
+        {Object.keys(servicesByProvider).map((providerName) => (
+          <Button 
+            key={providerName}
+            variant={selectedProviderFilter === providerName ? 'default' : 'outline'}
+            onClick={() => setSelectedProviderFilter(providerName)}
+          >
+            {providerName}
+          </Button>
+        ))}
+      </div>
+
       {loading ? (
         <div>Carregando...</div>
       ) : (
@@ -476,177 +541,202 @@ export default function ServicosV1Page() {
               <div key={socialName} className="bg-white border rounded-lg p-4">
                 <h2 className="text-xl font-semibold mb-4">{socialName}</h2>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {socialServices.map((service) => (
-                    <div 
-                      key={service.id} 
-                      className="border rounded-lg p-4 flex flex-col"
-                    >
-                      <div className="flex flex-col">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <SocialIcon 
-                              social={service.category?.social?.name || 'default'} 
-                              className="w-6 h-6" 
-                            />
-                            <span className="font-semibold text-sm">{service.name}</span>
-                          </div>
-                          <div className={`px-2 py-1 rounded-full text-xs ${
-                            service.status ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}>
-                            {service.status ? 'Ativo' : 'Inativo'}
-                          </div>
-                        </div>
-
-                        <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                          <div className="bg-gray-50 p-2 rounded">
-                            <div className="font-medium text-gray-600">Preço Base</div>
-                            <div className="font-bold text-blue-700">
-                              R$ {service.preco.toFixed(2)}
+                  {socialServices
+                    .filter(service => selectedProviderFilter === null || service.provider?.name === selectedProviderFilter)
+                    .map((service) => (
+                      <div 
+                        key={service.id} 
+                        className="border rounded-lg p-4 flex flex-col"
+                      >
+                        <div className="flex flex-col">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <SocialIcon 
+                                social={service.category?.social?.name || 'default'} 
+                                className="w-6 h-6" 
+                              />
+                              <span className="font-semibold text-sm">{service.name}</span>
+                            </div>
+                            <div className={`px-2 py-1 rounded-full text-xs ${
+                              service.status ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {service.status ? 'Ativo' : 'Inativo'}
                             </div>
                           </div>
-                          <div className="bg-gray-50 p-2 rounded">
-                            <div className="font-medium text-gray-600">Categoria</div>
-                            <div>{service.category?.name || 'Não definida'}</div>
+
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                            <div className="bg-gray-50 p-2 rounded">
+                              <div className="font-medium text-gray-600">Preço Base</div>
+                              <div className="font-bold text-blue-700">
+                                R$ {service.preco.toFixed(2)}
+                              </div>
+                            </div>
+                            <div className="bg-gray-50 p-2 rounded">
+                              <div className="font-medium text-gray-600">Categoria</div>
+                              <div>{service.category?.name || 'Não definida'}</div>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="mt-4 border-t pt-2 flex justify-between items-center">
-                          <div className="text-xs text-gray-500">
-                            Criado em: {new Date(service.created_at).toLocaleDateString()}
+                          {/* Informação do provedor */}
+                          <div className="mt-2 bg-gray-50 p-2 rounded text-xs">
+                            <div className="font-medium text-gray-600">Provedor</div>
+                            <div className="font-semibold text-purple-700">
+                              {service.provider?.name || 'Sem provedor'}
+                            </div>
                           </div>
-                          <div className="flex space-x-2">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Link 
-                                    href={`/admin/servicos_v1/importar/editar/${service.id}`} 
-                                    className="text-blue-500 hover:text-blue-700"
-                                  >
-                                    <FontAwesomeIcon icon={faEdit} />
-                                  </Link>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Editar Serviço</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
 
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button 
-                                    onClick={() => openVariationsModal(service)}
-                                    className="text-green-500 hover:text-green-700"
-                                  >
-                                    <FontAwesomeIcon icon={faLayerGroup} />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Variações de Preço</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                          <div className="mt-4 border-t pt-2 flex justify-between items-center">
+                            <div className="text-xs text-gray-500">
+                              Criado em: {new Date(service.created_at).toLocaleDateString()}
+                            </div>
+                            <div className="flex space-x-2">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Link 
+                                      href={`/admin/servicos_v1/importar/editar/${service.id}`} 
+                                      className="text-blue-500 hover:text-blue-700"
+                                    >
+                                      <FontAwesomeIcon icon={faEdit} />
+                                    </Link>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Editar Serviço</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
 
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button 
-                                    onClick={() => handleStatusToggle(service)}
-                                    className={`${service.status ? 'text-green-500' : 'text-red-500'} hover:opacity-75`}
-                                  >
-                                    <FontAwesomeIcon icon={service.status ? faToggleOn : faToggleOff} />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{service.status ? 'Desativar' : 'Ativar'} Serviço</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button 
+                                      onClick={() => openVariationsModal(service)}
+                                      className="text-green-500 hover:text-green-700"
+                                    >
+                                      <FontAwesomeIcon icon={faLayerGroup} />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Variações de Preço</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
 
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button 
-                                    onClick={() => handleToggleFeatured(service)}
-                                    className={`${service.featured ? 'text-yellow-500' : 'text-gray-400'} hover:opacity-75`}
-                                  >
-                                    <FontAwesomeIcon icon={faStar} />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{service.featured ? 'Remover Destaque' : 'Destacar'}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button 
+                                      onClick={() => handleStatusToggle(service)}
+                                      className={`${service.status ? 'text-green-500' : 'text-red-500'} hover:opacity-75`}
+                                    >
+                                      <FontAwesomeIcon icon={service.status ? faToggleOn : faToggleOff} />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{service.status ? 'Desativar' : 'Ativar'} Serviço</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
 
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button 
-                                    onClick={() => handleDelete(service.id)}
-                                    className="text-red-500 hover:text-red-700"
-                                  >
-                                    <FontAwesomeIcon icon={faTrash} />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Deletar Serviço</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button 
+                                      onClick={() => handleToggleFeatured(service)}
+                                      className={`${service.featured ? 'text-yellow-500' : 'text-gray-400'} hover:opacity-75`}
+                                    >
+                                      <FontAwesomeIcon icon={faStar} />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{service.featured ? 'Remover Destaque' : 'Destacar'}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button 
+                                      onClick={() => handleDelete(service.id)}
+                                      className="text-red-500 hover:text-red-700"
+                                    >
+                                      <FontAwesomeIcon icon={faTrash} />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Deletar Serviço</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               </div>
             ))}
         </div>
       )}
 
-      {showFormModal && (
-        <ServiceFormModal 
-          isOpen={showFormModal} 
-          onClose={() => {
-            setShowFormModal(false);
-            setEditingService(null);
-          }}
-          service={editingService}
-          onSuccess={() => {
-            setShowFormModal(false);
-            setEditingService(null);
-            setRefreshKey(prev => prev + 1);
-          }}
-        />
-      )}
+      {/* Modal de Formulário */}
+      <ServiceFormModal 
+        isOpen={showFormModal}
+        onClose={() => setShowFormModal(false)}
+        onSuccess={() => {
+          setRefreshKey(prev => prev + 1);
+          setShowFormModal(false);
+        }}
+        editingService={editingService}
+      />
 
-      {showVariationModal && (
-        <ServiceVariationModal 
-          isOpen={showVariationModal} 
-          onClose={() => {
-            setShowVariationModal(false);
-            setEditingService(null);
-          }}
-          service={editingService}
-          onSuccess={() => {
-            setShowVariationModal(false);
-            setEditingService(null);
-            setRefreshKey(prev => prev + 1);
-          }}
-        />
-      )}
+      {/* Modal de Variações */}
+      <ServiceVariationModal 
+        isOpen={showVariationModal}
+        onClose={() => {
+          setShowVariationModal(false);
+          setEditingService(null);
+        }}
+        onSuccess={() => {
+          setRefreshKey(prev => prev + 1);
+          setShowVariationModal(false);
+          setEditingService(null);
+        }}
+        service={editingService || null}
+      />
 
-      {showApiModal && (
-        <ServiceApiModal 
-          isOpen={showApiModal} 
-          onClose={() => setShowApiModal(false)}
-          onSuccess={() => {
-            setShowApiModal(false);
-            setRefreshKey(prev => prev + 1);
-          }}
-        />
-      )}
+      {/* Modal de API */}
+      <ServiceApiModal 
+        isOpen={showApiModal}
+        onClose={() => setShowApiModal(false)}
+        onSuccess={() => {
+          setRefreshKey(prev => prev + 1);
+          setShowApiModal(false);
+        }}
+        selectedProvider={selectedProvider}
+      />
+
+      {/* Modal de Seleção de Provedor */}
+      <ProviderSelectionModal
+        isOpen={showProviderModal}
+        onClose={() => setShowProviderModal(false)}
+        onSelectProvider={(provider) => {
+          // Salvar o provedor selecionado
+          setSelectedProvider(provider);
+          // Fechar o modal de seleção de provedores
+          setShowProviderModal(false);
+          // Abrir o modal de seleção de serviços
+          setShowServiceSelectionModal(true);
+        }}
+      />
+
+      {/* Modal de Seleção de Serviços */}
+      <ServiceSelectionModal
+        isOpen={showServiceSelectionModal}
+        onClose={() => setShowServiceSelectionModal(false)}
+        selectedProvider={selectedProvider}
+      />
 
       {/* Modal de Variações */}
       {selectedServiceVariations && (

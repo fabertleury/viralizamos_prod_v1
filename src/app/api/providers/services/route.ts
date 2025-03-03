@@ -1,104 +1,112 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    console.log('Request body:', body);
-
-    if (!body || !body.provider) {
-      console.log('Invalid request body:', body);
-      return NextResponse.json({ 
-        error: 'Provider is required',
-        receivedBody: body 
-      }, { status: 400 });
+    const supabase = createClient();
+    const requestData = await request.json();
+    
+    // Obter o provedor selecionado
+    const { provider } = requestData;
+    
+    if (!provider) {
+      return NextResponse.json({ error: 'Provedor não especificado' }, { status: 400 });
     }
-
-    const { provider } = body;
-    console.log('Provider data:', provider);
-
-    // Usar a chave da API do .env para o Fama nas Redes
-    const apiKey = provider.name.toLowerCase().includes('fama') 
-      ? process.env.FAMA_REDES_API_KEY 
-      : provider.api_key;
-
-    if (!apiKey) {
-      console.error('API key not found');
-      return NextResponse.json({ 
-        error: 'API key not found',
-        provider: provider.name
-      }, { status: 400 });
+    
+    console.log('Buscando serviços do provedor:', provider.name);
+    
+    // Verificar se o provedor tem API URL e API Key
+    if (!provider.api_url) {
+      return NextResponse.json({ error: 'URL da API não configurada para este provedor' }, { status: 400 });
     }
-
-    console.log('Using API key:', apiKey);
-
-    // Fazer a requisição à API do FamaRedes
+    
+    // Construir o corpo da requisição - sempre usar form-urlencoded por padrão
+    const formData = new URLSearchParams();
+    formData.append('key', provider.api_key);
+    formData.append('action', 'services');
+    
+    console.log('Fazendo requisição para:', provider.api_url);
+    
+    // Fazer a requisição para a API do provedor
+    const response = await fetch(provider.api_url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: formData
+    });
+    
+    if (!response.ok) {
+      console.error('Erro na resposta da API:', response.status, response.statusText);
+      return NextResponse.json({ 
+        error: `Erro na resposta da API: ${response.status} ${response.statusText}` 
+      }, { status: response.status });
+    }
+    
+    // Tentar processar a resposta como JSON
+    let responseData;
     try {
-      const requestBody = {
-        key: apiKey,
-        action: 'services'
-      };
-      
-      console.log('Making request to FamaRedes API with body:', requestBody);
-      
-      const response = await fetch('https://famanasredes.com.br/api/v2', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams(requestBody).toString()
-      });
-
-      console.log('Response status:', response.status);
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Provider API error response:', errorText);
-        throw new Error(`Provider API error: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      const rawData = await response.text();
-      console.log('Raw response data:', rawData);
-
-      let data;
+      responseData = await response.json();
+      console.log('Resposta recebida (JSON)');
+    } catch (e) {
+      // Se não for JSON, tentar como texto
+      const textData = await response.text();
+      console.log('Resposta recebida (texto)');
       try {
-        data = JSON.parse(rawData);
-      } catch (e) {
-        console.error('Failed to parse JSON:', e);
-        throw new Error('Invalid JSON response from provider');
+        // Tentar converter para JSON
+        responseData = JSON.parse(textData);
+      } catch (e2) {
+        // Se não for JSON, retornar como texto
+        console.error('Resposta não é um JSON válido');
+        return NextResponse.json({ 
+          error: 'A resposta da API não é um JSON válido',
+          data: textData.substring(0, 1000) // Limitar o tamanho para evitar respostas muito grandes
+        }, { status: 500 });
       }
-
-      console.log('Parsed API response:', data);
-
-      // Verificar se a resposta é um array ou um objeto com erro
-      if (data.error) {
-        throw new Error(`Provider API error: ${data.error}`);
-      }
-
-      if (!Array.isArray(data)) {
-        console.error('Unexpected response format:', data);
-        throw new Error('Invalid response format from provider - expected array');
-      }
-
-      return NextResponse.json({
-        services: data
-      });
-
-    } catch (error) {
-      console.error('Provider API error:', error);
+    }
+    
+    // Processar a resposta
+    let services = [];
+    
+    // Tentar extrair serviços de diferentes formatos comuns de resposta
+    if (Array.isArray(responseData)) {
+      // Resposta é um array direto de serviços
+      services = responseData;
+    } else if (responseData.data && Array.isArray(responseData.data)) {
+      // Resposta tem um campo data que é um array
+      services = responseData.data;
+    } else if (responseData.services && Array.isArray(responseData.services)) {
+      // Resposta tem um campo services que é um array
+      services = responseData.services;
+    } else if (responseData.result && Array.isArray(responseData.result)) {
+      // Resposta tem um campo result que é um array
+      services = responseData.result;
+    } else if (responseData.items && Array.isArray(responseData.items)) {
+      // Resposta tem um campo items que é um array
+      services = responseData.items;
+    } else if (typeof responseData === 'object') {
+      // Resposta é um objeto com serviços como propriedades
+      services = Object.values(responseData);
+    } else {
+      console.error('Formato de resposta não reconhecido:', responseData);
       return NextResponse.json({ 
-        error: 'Failed to fetch services from provider',
-        message: error.message,
-        details: error.stack
+        error: 'Formato de resposta não reconhecido', 
+        data: JSON.stringify(responseData).substring(0, 1000) // Limitar o tamanho
       }, { status: 500 });
     }
-
-  } catch (error) {
-    console.error('Error in services route:', error);
+    
+    console.log(`${services.length} serviços encontrados`);
+    
     return NextResponse.json({ 
-      error: 'Internal server error',
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      success: true, 
+      services,
+      provider: provider.slug
+    });
+    
+  } catch (error) {
+    console.error('Erro ao buscar serviços:', error);
+    return NextResponse.json({ 
+      error: `Erro ao buscar serviços: ${error.message}` 
     }, { status: 500 });
   }
 }

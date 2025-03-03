@@ -16,7 +16,8 @@ interface Provider {
   metadata: {
     last_check?: string;
     balance?: number;
-    api_status?: 'active' | 'inactive' | 'error';
+    currency?: string;
+    api_status?: 'online' | 'inactive' | 'error' | 'checking' | 'active';
     api_error?: string;
   };
   created_at: string;
@@ -71,61 +72,99 @@ export default function ProvidersPage() {
     }
   };
 
-  const checkApiStatus = async (provider: Provider) => {
+  const checkProviderApi = async (provider: Provider) => {
     try {
-      // Faz a requisição através da API route
-      const response = await fetch('/api/providers/check-status', {
+      // Atualizar o status da API para 'checking'
+      await supabase
+        .from('providers')
+        .update({
+          metadata: {
+            ...provider.metadata,
+            api_status: 'checking',
+            last_check: new Date().toISOString()
+          }
+        })
+        .eq('id', provider.id);
+      
+      // Fazer uma requisição para a API do provedor
+      const formData = new URLSearchParams();
+      formData.append('key', provider.api_key);
+      formData.append('action', 'balance'); // Muitos provedores suportam 'balance' para verificar o saldo
+      
+      const response = await fetch(provider.api_url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded'
         },
-        body: JSON.stringify({
-          api_url: provider.api_url,
-          api_key: provider.api_key
-        })
+        body: formData
       });
-
-      const data = await response.json();
-
-      // Atualiza o status no banco
-      const { error } = await supabase
-        .from('providers')
-        .update({
-          metadata: {
-            ...provider.metadata,
-            last_check: new Date().toISOString(),
-            api_status: data.success ? 'active' : 'error',
-            api_error: data.error,
-            balance: data.balance || provider.metadata?.balance || 0
-          },
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', provider.id);
-
-      if (error) throw error;
-      await fetchProviders();
-    } catch (error: any) {
-      console.error('Erro ao verificar status da API:', error);
       
-      // Atualiza o status como erro no banco
-      const { error: updateError } = await supabase
-        .from('providers')
-        .update({
-          metadata: {
-            ...provider.metadata,
-            last_check: new Date().toISOString(),
-            api_status: 'error',
-            api_error: error.message || 'Erro ao verificar API'
-          },
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', provider.id);
-
-      if (updateError) {
-        console.error('Erro ao atualizar status no banco:', updateError);
+      if (!response.ok) {
+        throw new Error(`API retornou status ${response.status}`);
       }
       
-      await fetchProviders();
+      // Tentar processar a resposta
+      let data;
+      try {
+        data = await response.json();
+      } catch (error) {
+        throw new Error('Resposta não é um JSON válido');
+      }
+      
+      // Verificar se a resposta contém informações de saldo
+      let balance = null;
+      let currency = null;
+      
+      if (data.balance) {
+        balance = parseFloat(data.balance);
+        currency = data.currency || 'USD';
+      } else if (typeof data === 'object' && data !== null) {
+        // Tentar encontrar um campo que pareça ser o saldo
+        const possibleBalanceFields = ['balance', 'funds', 'credit', 'credits', 'amount'];
+        for (const field of possibleBalanceFields) {
+          if (data[field] !== undefined) {
+            balance = parseFloat(data[field]);
+            break;
+          }
+        }
+      }
+      
+      // Atualizar o status da API para 'active' (mantendo compatibilidade com registros existentes)
+      await supabase
+        .from('providers')
+        .update({
+          metadata: {
+            ...provider.metadata,
+            api_status: 'active',
+            balance,
+            currency,
+            last_check: new Date().toISOString(),
+            api_error: null
+          }
+        })
+        .eq('id', provider.id);
+      
+      // Atualizar a lista de provedores
+      fetchProviders();
+      
+    } catch (error) {
+      console.error('Erro ao verificar API:', error);
+      
+      // Atualizar o status da API para 'error'
+      await supabase
+        .from('providers')
+        .update({
+          metadata: {
+            ...provider.metadata,
+            api_status: 'error',
+            last_check: new Date().toISOString(),
+            api_error: error.message
+          }
+        })
+        .eq('id', provider.id);
+      
+      // Atualizar a lista de provedores
+      fetchProviders();
     }
   };
 
@@ -189,7 +228,7 @@ export default function ProvidersPage() {
                         {provider.api_url}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        R$ {provider.metadata?.balance?.toFixed(2) || '0.00'}
+                        {provider.metadata?.currency || 'BRL'} {typeof provider.metadata?.balance === 'number' ? provider.metadata.balance.toFixed(2) : '0.00'}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                         <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
@@ -202,16 +241,29 @@ export default function ProvidersPage() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                         <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
-                          provider.metadata?.api_status === 'active'
+                          provider.metadata?.api_status === 'online' || provider.metadata?.api_status === 'active'
                             ? 'bg-green-100 text-green-800'
                             : provider.metadata?.api_status === 'error'
                             ? 'bg-red-100 text-red-800'
+                            : provider.metadata?.api_status === 'checking'
+                            ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-gray-100 text-gray-800'
                         }`}>
-                          {provider.metadata?.api_status === 'active' ? 'Online' : 
-                           provider.metadata?.api_status === 'error' ? 'Erro' : 
-                           'Não Verificado'}
+                          {provider.metadata?.api_status === 'online' || provider.metadata?.api_status === 'active'
+                            ? 'Online'
+                            : provider.metadata?.api_status === 'error'
+                            ? 'Erro'
+                            : provider.metadata?.api_status === 'checking'
+                            ? 'Verificando'
+                            : 'Inativo'}
                         </span>
+                        {provider.metadata?.api_error && (
+                          <span className="block text-xs text-red-500 mt-1" title={provider.metadata.api_error}>
+                            {provider.metadata.api_error.length > 30
+                              ? provider.metadata.api_error.substring(0, 30) + '...'
+                              : provider.metadata.api_error}
+                          </span>
+                        )}
                       </td>
                       <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                         <div className="flex justify-end gap-2">
@@ -223,7 +275,7 @@ export default function ProvidersPage() {
                             <PencilIcon className="h-5 w-5" />
                           </button>
                           <button
-                            onClick={() => checkApiStatus(provider)}
+                            onClick={() => checkProviderApi(provider)}
                             className="text-indigo-600 hover:text-indigo-900"
                             title="Verificar API"
                           >

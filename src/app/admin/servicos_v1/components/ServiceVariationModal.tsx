@@ -66,6 +66,10 @@ export function ServiceVariationModal({
     setLoading(true);
 
     try {
+      if (!service || !service.id) {
+        throw new Error('Serviço não encontrado');
+      }
+
       const data = {
         service_id: service.id,
         quantidade: formData.quantidade,
@@ -103,13 +107,13 @@ export function ServiceVariationModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] bg-white">
         <DialogHeader>
           <DialogTitle>
             {variation ? 'Editar Variação de Serviço' : 'Nova Variação de Serviço'}
           </DialogTitle>
           <p className="text-sm text-gray-500">
-            Serviço: {service.name}
+            Serviço: {service?.name || 'Carregando...'}
           </p>
         </DialogHeader>
         

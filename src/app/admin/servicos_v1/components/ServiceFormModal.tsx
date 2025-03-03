@@ -30,18 +30,39 @@ interface Subcategory {
   category_id: string;
 }
 
+interface Service {
+  id: string;
+  name: string;
+  descricao: string;
+  type: string;
+  quantidade: number;
+  preco: number;
+  category_id: string;
+  subcategory_id: string;
+  checkout_type_id: string;
+  status: boolean;
+  delivery_time: string;
+  min_order: number;
+  max_order: number;
+  featured: boolean;
+  external_id: string;
+  provider_id: string;
+  success_rate: number;
+  metadata: any;
+}
+
 interface ServiceFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  service?: any;
   onSuccess: () => void;
+  editingService: Service | null;
 }
 
 export function ServiceFormModal({ 
   isOpen, 
   onClose, 
-  service, 
-  onSuccess 
+  onSuccess,
+  editingService
 }: ServiceFormModalProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [socials, setSocials] = useState<Social[]>([]);
@@ -70,28 +91,28 @@ export function ServiceFormModal({
   const supabase = createClient();
 
   useEffect(() => {
-    if (service) {
+    if (editingService) {
       setFormData({
-        name: service.name || '',
-        descricao: service.descricao || '',
-        type: service.type || '',
-        quantidade: service.quantidade || 0,
-        preco: service.preco || 0,
-        category_id: service.category_id || '',
-        subcategory_id: service.subcategory_id || '',
-        checkout_type_id: service.checkout_type_id || '',
-        status: service.status !== false,
-        delivery_time: service.delivery_time || '',
-        min_order: service.min_order || 20,
-        max_order: service.max_order || 10000,
-        featured: service.featured || false,
-        external_id: service.external_id || '',
-        provider_id: service.provider_id || '',
-        success_rate: service.success_rate || 0,
-        metadata: service.metadata || {}
+        name: editingService.name || '',
+        descricao: editingService.descricao || '',
+        type: editingService.type || '',
+        quantidade: editingService.quantidade || 0,
+        preco: editingService.preco || 0,
+        category_id: editingService.category_id || '',
+        subcategory_id: editingService.subcategory_id || '',
+        checkout_type_id: editingService.checkout_type_id || '',
+        status: editingService.status !== false,
+        delivery_time: editingService.delivery_time || '',
+        min_order: editingService.min_order || 20,
+        max_order: editingService.max_order || 10000,
+        featured: editingService.featured || false,
+        external_id: editingService.external_id || '',
+        provider_id: editingService.provider_id || '',
+        success_rate: editingService.success_rate || 0,
+        metadata: editingService.metadata || {}
       });
     }
-  }, [service]);
+  }, [editingService]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -125,8 +146,8 @@ export function ServiceFormModal({
       }
 
       // Se estiver editando, buscar a rede social da categoria
-      if (service?.category_id) {
-        const category = categoriesResponse.data?.find(c => c.id === service.category_id);
+      if (editingService?.category_id) {
+        const category = categoriesResponse.data?.find(c => c.id === editingService.category_id);
         if (category) {
           setSelectedSocial(category.social_id);
         }
@@ -136,7 +157,7 @@ export function ServiceFormModal({
     if (isOpen) {
       fetchData();
     }
-  }, [isOpen, service]);
+  }, [isOpen, editingService]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -190,12 +211,12 @@ export function ServiceFormModal({
         metadata: formData.metadata
       };
 
-      if (service?.id) {
+      if (editingService?.id) {
         // Atualizar serviço existente
         const { error } = await supabase
           .from('services')
           .update(data)
-          .eq('id', service.id);
+          .eq('id', editingService.id);
 
         if (error) throw error;
         toast.success('Serviço atualizado com sucesso!');
@@ -227,10 +248,10 @@ export function ServiceFormModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[600px] bg-white">
         <DialogHeader>
           <DialogTitle>
-            {service ? 'Editar Serviço' : 'Novo Serviço'}
+            {editingService ? 'Editar Serviço' : 'Novo Serviço'}
           </DialogTitle>
         </DialogHeader>
         

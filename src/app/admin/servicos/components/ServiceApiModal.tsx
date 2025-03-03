@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { toast } from "sonner";
 import { ServiceFormModal } from "./ServiceFormModal";
+import { ProviderSelectionModal } from "./ProviderSelectionModal";
 
 interface Provider {
   id: string;
@@ -67,6 +68,7 @@ export function ServiceApiModal({ isOpen, onClose, onSuccess }: ServiceApiModalP
   const [loading, setLoading] = useState(false);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [selectedProviderData, setSelectedProviderData] = useState<Provider | null>(null);
   const [services, setServices] = useState<ApiService[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
@@ -75,14 +77,17 @@ export function ServiceApiModal({ isOpen, onClose, onSuccess }: ServiceApiModalP
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedSubcategory, setSelectedSubcategory] = useState<string>("");
   const [showSelectionModal, setShowSelectionModal] = useState(false);
+  const [showProviderModal, setShowProviderModal] = useState(true);
   const [socials, setSocials] = useState<Social[]>([]);
   const [selectedSocial, setSelectedSocial] = useState<string>("");
   const supabase = createClientComponentClient();
 
   useEffect(() => {
     if (isOpen) {
-      setShowSelectionModal(true);
+      setShowProviderModal(true);
+      setShowSelectionModal(false);
     } else {
+      setShowProviderModal(false);
       setShowSelectionModal(false);
     }
   }, [isOpen]);
@@ -170,6 +175,13 @@ export function ServiceApiModal({ isOpen, onClose, onSuccess }: ServiceApiModalP
     fetchServices();
   }, [selectedProvider]);
 
+  const handleProviderSelect = (provider: Provider) => {
+    setSelectedProviderData(provider);
+    setSelectedProvider(provider.id);
+    setShowProviderModal(false);
+    setShowSelectionModal(true);
+  };
+
   const handleServiceSelect = (service: ApiService) => {
     if (!selectedCategory) {
       toast.error("Selecione uma categoria primeiro");
@@ -212,6 +224,12 @@ export function ServiceApiModal({ isOpen, onClose, onSuccess }: ServiceApiModalP
 
   return (
     <>
+      <ProviderSelectionModal 
+        isOpen={showProviderModal && isOpen} 
+        onClose={onClose}
+        onProviderSelect={handleProviderSelect}
+      />
+
       <Dialog open={showSelectionModal} onOpenChange={(open) => {
         if (!open) onClose();
       }}>
@@ -300,74 +318,44 @@ export function ServiceApiModal({ isOpen, onClose, onSuccess }: ServiceApiModalP
               </div>
             )}
 
-            {/* Seleção de Provedor */}
+            {/* Busca de Serviços */}
             <div>
               <label className="block text-sm font-medium mb-2">
-                Selecione o Provedor
+                Buscar Serviços
               </label>
-              <Select
-                value={selectedProvider}
-                onValueChange={(value) => {
-                  setSelectedProvider(value);
-                  setSelectedService(null);
-                  setServices([]);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione um provedor" />
-                </SelectTrigger>
-                <SelectContent className="bg-white">
-                  {providers.map((provider) => (
-                    <SelectItem key={provider.id} value={provider.id}>
-                      {provider.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                type="text"
+                placeholder="Digite para buscar..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
 
-            {selectedProvider && (
-              <>
-                {/* Busca de Serviços */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Buscar Serviços
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder="Digite para buscar..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-
-                {/* Lista de Serviços */}
-                <div className="border rounded-md">
-                  <div className="grid grid-cols-4 gap-4 p-4 bg-gray-50 font-medium">
-                    <div>Nome</div>
-                    <div>Categoria Original</div>
-                    <div>Preço</div>
-                    <div>Min/Max</div>
+            {/* Lista de Serviços */}
+            <div className="border rounded-md">
+              <div className="grid grid-cols-4 gap-4 p-4 bg-gray-50 font-medium">
+                <div>Nome</div>
+                <div>Categoria Original</div>
+                <div>Preço</div>
+                <div>Min/Max</div>
+              </div>
+              <div className="divide-y max-h-[500px] overflow-y-auto">
+                {filteredServices.map((service) => (
+                  <div
+                    key={service.service}
+                    className="grid grid-cols-4 gap-4 p-4 cursor-pointer hover:bg-gray-50"
+                    onClick={() => handleServiceSelect(service)}
+                  >
+                    <div>{service.name}</div>
+                    <div>{service.category}</div>
+                    <div>{service.rate}</div>
+                    <div>
+                      {service.min} - {service.max}
+                    </div>
                   </div>
-                  <div className="divide-y max-h-[500px] overflow-y-auto">
-                    {filteredServices.map((service) => (
-                      <div
-                        key={service.service}
-                        className="grid grid-cols-4 gap-4 p-4 cursor-pointer hover:bg-gray-50"
-                        onClick={() => handleServiceSelect(service)}
-                      >
-                        <div>{service.name}</div>
-                        <div>{service.category}</div>
-                        <div>{service.rate}</div>
-                        <div>
-                          {service.min} - {service.max}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
+                ))}
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

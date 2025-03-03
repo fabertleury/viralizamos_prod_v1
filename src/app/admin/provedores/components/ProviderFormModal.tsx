@@ -82,14 +82,33 @@ export default function ProviderFormModal({
     setError(null);
 
     try {
+      // Validar campos obrigatórios
+      if (!formData.name || !formData.api_url) {
+        setError('Nome e URL da API são obrigatórios');
+        setLoading(false);
+        return;
+      }
+
+      // Gerar slug se estiver vazio
+      if (!formData.slug) {
+        formData.slug = formData.name
+          .toLowerCase()
+          .replace(/[^\w\s]/gi, '')
+          .replace(/\s+/g, '-');
+      }
+
+      // Preparar os metadados
+      const metadata = {
+        ...provider?.metadata,
+        api_status: provider?.metadata?.api_status || 'inactive',
+        last_check: provider?.metadata?.last_check || new Date().toISOString(),
+        balance: provider?.metadata?.balance || 0,
+        currency: provider?.metadata?.currency || 'BRL'
+      };
+
       const dataToSave = {
         ...formData,
-        slug: formData.slug || generateSlug(formData.name),
-        metadata: {
-          ...formData.metadata,
-          last_check: null,
-          balance: 0
-        }
+        metadata
       };
 
       if (provider) {

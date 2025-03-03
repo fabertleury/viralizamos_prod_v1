@@ -1,7 +1,7 @@
 'use client';
 
 import React, { Fragment, useState, useEffect } from 'react';
-import { Dialog, Transition } from '@headlessui/react';
+import { Dialog as HeadlessDialog, Transition } from '@headlessui/react';
 import {
   Bars3Icon,
   XMarkIcon,
@@ -178,7 +178,7 @@ export default function AdminLayout({
       <Toaster />
       {/* Mobile sidebar */}
       <Transition.Root show={sidebarOpen} as={Fragment}>
-        <Dialog as="div" className="relative z-50 lg:hidden" onClose={setSidebarOpen}>
+        <HeadlessDialog as="div" className="relative z-50 lg:hidden" onClose={setSidebarOpen}>
           <Transition.Child
             as={Fragment}
             enter="transition-opacity ease-linear duration-300"
@@ -201,7 +201,7 @@ export default function AdminLayout({
               leaveFrom="translate-x-0"
               leaveTo="-translate-x-full"
             >
-              <Dialog.Panel className="relative mr-16 flex w-full max-w-xs flex-1">
+              <HeadlessDialog.Panel className="relative mr-16 flex w-full max-w-xs flex-1">
                 <div className="flex grow flex-col gap-y-5 overflow-y-auto bg-white px-6 pb-4">
                   <div className="flex h-16 shrink-0 items-center">
                     <Image
@@ -250,10 +250,10 @@ export default function AdminLayout({
                     </ul>
                   </nav>
                 </div>
-              </Dialog.Panel>
+              </HeadlessDialog.Panel>
             </Transition.Child>
           </div>
-        </Dialog>
+        </HeadlessDialog>
       </Transition.Root>
 
       {/* Static sidebar for desktop */}

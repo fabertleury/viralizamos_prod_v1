@@ -188,7 +188,9 @@ export async function processTransaction(transactionId: string) {
           external_id,
           name,
           quantidade,
-          type
+          type,
+          provider_id,
+          metadata
         ),
         user:user_id (
           id,
@@ -210,7 +212,8 @@ export async function processTransaction(transactionId: string) {
     console.log('[ProcessTransaction] Dados da transação:', JSON.stringify(transaction, null, 2));
 
     // Salvar ou atualizar o perfil do usuário
-    const email = transaction.metadata?.email || 
+    const email = transaction.customer_email || 
+                 transaction.metadata?.email || 
                  transaction.metadata?.contact?.email || 
                  transaction.metadata?.profile?.email || 
                  transaction.user?.email;
@@ -223,9 +226,14 @@ export async function processTransaction(transactionId: string) {
         .eq('email', email)
         .single();
       
-      if (userError) {
+      if (userError && userError.code !== 'PGRST116') { // PGRST116 é o código para "não encontrado"
+        console.error('[ProcessTransaction] Erro ao verificar perfil do usuário:', userError);
+      }
+      
+      if (!existingUser) {
         // Extrair nome do usuário
-        const userName = transaction.metadata?.profile?.full_name || 
+        const userName = transaction.customer_name || 
+                        transaction.metadata?.profile?.full_name || 
                         transaction.metadata?.profile?.username || 
                         transaction.metadata?.target_username;
         
@@ -237,7 +245,7 @@ export async function processTransaction(transactionId: string) {
           .insert({
             email: email,
             name: userName || email.split('@')[0],
-            role: 'user',
+            role: 'customer',
             active: true
           });
         
@@ -262,6 +270,28 @@ export async function processTransaction(transactionId: string) {
       return existingOrders;
     }
 
+    // Verificar se o serviço tem um provedor específico
+    let provider = null;
+    if (transaction.service.provider_id) {
+      const { data: providerData, error: providerError } = await supabase
+        .from('providers')
+        .select('*')
+        .eq('id', transaction.service.provider_id)
+        .single();
+      
+      if (providerError) {
+        console.error('[ProcessTransaction] Erro ao buscar provedor:', providerError);
+      } else {
+        provider = providerData;
+        console.log('[ProcessTransaction] Provedor encontrado:', provider);
+      }
+    }
+
+    // Se não encontrou um provedor específico, usar o provedor padrão (Fama)
+    if (!provider) {
+      console.log('[ProcessTransaction] Usando provedor padrão (Fama)');
+    }
+
     console.log('[ProcessTransaction] Tipo de serviço:', transaction.service.type);
     if (transaction.service.type === 'likes') {
       console.log('[ProcessTransaction] Posts para processar:', transaction.metadata?.posts || []);
@@ -281,19 +311,54 @@ export async function processTransaction(transactionId: string) {
         const postLink = `https://instagram.com/p/${postCode}`;
         
         try {
-          console.log('[ProcessTransaction] Criando pedido na API Fama:', {
-            serviceId: transaction.service.external_id,
-            quantity: quantityPerPost,
-            link: postLink
-          });
-
-          const orderResponse = await famaRedesOrderService.createOrder(
-            transaction.service.external_id,
-            quantityPerPost,
-            postLink
-          );
-
-          console.log('[ProcessTransaction] Resposta da API Fama:', orderResponse);
+          let orderResponse;
+          
+          if (provider) {
+            // Usar a API genérica de provedores
+            console.log('[ProcessTransaction] Criando pedido no provedor:', provider.name);
+            
+            // Preparar o corpo da requisição
+            const requestBody = {
+              provider: provider,
+              service: {
+                id: transaction.service.id,
+                service: transaction.service.external_id
+              },
+              quantity: quantityPerPost,
+              link: postLink
+            };
+            
+            // Fazer a requisição para a API de provedores
+            const response = await fetch('/api/providers/add-order', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(requestBody)
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Erro ao criar pedido no provedor: ${response.statusText}`);
+            }
+            
+            orderResponse = await response.json();
+            console.log('[ProcessTransaction] Resposta da API do provedor:', orderResponse);
+          } else {
+            // Usar a API do Fama (legado)
+            console.log('[ProcessTransaction] Criando pedido na API Fama:', {
+              serviceId: transaction.service.external_id,
+              quantity: quantityPerPost,
+              link: postLink
+            });
+            
+            orderResponse = await famaRedesOrderService.createOrder(
+              transaction.service.external_id,
+              quantityPerPost,
+              postLink
+            );
+            
+            console.log('[ProcessTransaction] Resposta da API Fama:', orderResponse);
+          }
 
           console.log('[ProcessTransaction] Criando pedido no banco...');
           const { data: order, error: orderError } = await supabase
@@ -302,17 +367,19 @@ export async function processTransaction(transactionId: string) {
               transaction_id: transactionId,
               user_id: transaction.user_id,
               service_id: transaction.service_id,
-              external_order_id: orderResponse.data.order_id,
-              status: orderResponse.data.status,
+              provider_id: provider?.id || null,
+              external_order_id: provider ? orderResponse.orderId : orderResponse.data.order_id,
+              status: provider ? orderResponse.status : orderResponse.data.status,
               amount: amountPerPost,
               quantity: quantityPerPost,
               target_username: post.username || transaction.metadata?.username,
               metadata: {
                 post: post,
                 link: postLink,
-                provider: 'fama',
+                provider: provider?.slug || 'fama',
                 provider_service_id: transaction.service.external_id,
-                provider_order_id: orderResponse.data.order_id
+                provider_order_id: provider ? orderResponse.orderId : orderResponse.data.order_id,
+                provider_response: orderResponse
               }
             })
             .select()
@@ -361,19 +428,54 @@ export async function processTransaction(transactionId: string) {
       const profileLink = `https://instagram.com/${username}`;
       
       try {
-        console.log('[ProcessTransaction] Criando pedido na API Fama:', {
-          serviceId: transaction.service.external_id,
-          quantity: transaction.service.quantidade,
-          link: profileLink
-        });
-
-        const orderResponse = await famaRedesOrderService.createOrder(
-          transaction.service.external_id,
-          transaction.service.quantidade,
-          profileLink
-        );
-
-        console.log('[ProcessTransaction] Resposta da API Fama:', orderResponse);
+        let orderResponse;
+        
+        if (provider) {
+          // Usar a API genérica de provedores
+          console.log('[ProcessTransaction] Criando pedido no provedor:', provider.name);
+          
+          // Preparar o corpo da requisição
+          const requestBody = {
+            provider: provider,
+            service: {
+              id: transaction.service.id,
+              service: transaction.service.external_id
+            },
+            quantity: transaction.service.quantidade,
+            link: profileLink
+          };
+          
+          // Fazer a requisição para a API de provedores
+          const response = await fetch('/api/providers/add-order', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Erro ao criar pedido no provedor: ${response.statusText}`);
+          }
+          
+          orderResponse = await response.json();
+          console.log('[ProcessTransaction] Resposta da API do provedor:', orderResponse);
+        } else {
+          // Usar a API do Fama (legado)
+          console.log('[ProcessTransaction] Criando pedido na API Fama:', {
+            serviceId: transaction.service.external_id,
+            quantity: transaction.service.quantidade,
+            link: profileLink
+          });
+          
+          orderResponse = await famaRedesOrderService.createOrder(
+            transaction.service.external_id,
+            transaction.service.quantidade,
+            profileLink
+          );
+          
+          console.log('[ProcessTransaction] Resposta da API Fama:', orderResponse);
+        }
 
         console.log('[ProcessTransaction] Criando pedido no banco...');
         const { data: order, error: orderError } = await supabase
@@ -382,16 +484,18 @@ export async function processTransaction(transactionId: string) {
             transaction_id: transactionId,
             user_id: transaction.user_id,
             service_id: transaction.service_id,
-            external_order_id: orderResponse.data.order_id,
-            status: orderResponse.data.status,
+            provider_id: provider?.id || null,
+            external_order_id: provider ? orderResponse.orderId : orderResponse.data.order_id,
+            status: provider ? orderResponse.status : orderResponse.data.status,
             amount: transaction.amount,
             quantity: transaction.service.quantidade,
             target_username: username,
             metadata: {
               link: profileLink,
-              provider: 'fama',
+              provider: provider?.slug || 'fama',
               provider_service_id: transaction.service.external_id,
-              provider_order_id: orderResponse.data.order_id
+              provider_order_id: provider ? orderResponse.orderId : orderResponse.data.order_id,
+              provider_response: orderResponse
             }
           })
           .select()

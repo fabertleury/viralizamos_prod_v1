@@ -1,146 +1,162 @@
 'use server';
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { processTransaction } from '@/lib/famaapi';
 
-export async function POST(request: Request) {
-  const startTime = new Date();
-  console.log(`[${startTime.toISOString()}] Webhook iniciado`);
-
+export async function POST(request: NextRequest) {
+  console.log('[MercadoPagoWebhook] Recebendo notificação');
+  
   try {
     const body = await request.json();
-    console.log('[Webhook] Payload recebido:', JSON.stringify(body, null, 2));
+    console.log('[MercadoPagoWebhook] Corpo da requisição:', JSON.stringify(body, null, 2));
 
+    // Verificar se é uma notificação de pagamento
     if (body.type !== 'payment') {
-      console.log('[Webhook] Não é um webhook de pagamento, ignorando');
-      return NextResponse.json({ message: 'Not a payment webhook' });
+      console.log('[MercadoPagoWebhook] Ignorando notificação não relacionada a pagamento:', body.type);
+      return NextResponse.json({ message: 'Notificação recebida, mas não é de pagamento' });
     }
 
-    if (!process.env.MERCADO_PAGO_ACCESS_TOKEN) {
-      console.error('[Webhook] Token do Mercado Pago não configurado');
-      throw new Error('Token do Mercado Pago não configurado');
+    // Obter o ID do pagamento
+    const paymentId = body.data?.id;
+    if (!paymentId) {
+      console.error('[MercadoPagoWebhook] ID de pagamento não encontrado na notificação');
+      return NextResponse.json({ error: 'ID de pagamento não encontrado' }, { status: 400 });
     }
 
-    const client = new MercadoPagoConfig({ 
-      accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN 
+    console.log('[MercadoPagoWebhook] Consultando detalhes do pagamento:', paymentId);
+    
+    // Obter token de acesso do Mercado Pago
+    const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    if (!accessToken) {
+      console.error('[MercadoPagoWebhook] Token de acesso do Mercado Pago não configurado');
+      return NextResponse.json({ error: 'Configuração incompleta' }, { status: 500 });
+    }
+
+    // Consultar detalhes do pagamento na API do Mercado Pago
+    const paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
     });
-    const payment = new Payment(client);
 
-    // Buscar dados do pagamento
-    console.log('[Webhook] Buscando dados do pagamento:', body.data.id);
-    const paymentData = await payment.get({ id: body.data.id });
-    console.log('[Webhook] Dados do pagamento:', JSON.stringify(paymentData, null, 2));
-
-    // O status vem dentro do response
-    const paymentStatus = paymentData.response?.status || paymentData.status;
-    if (!paymentStatus) {
-      console.error('[Webhook] Status do pagamento não encontrado');
-      throw new Error('Status do pagamento não encontrado');
+    if (!paymentResponse.ok) {
+      console.error('[MercadoPagoWebhook] Erro ao consultar pagamento:', await paymentResponse.text());
+      return NextResponse.json({ error: 'Erro ao consultar pagamento' }, { status: 500 });
     }
 
-    console.log('[Webhook] Status do pagamento:', paymentStatus);
+    const paymentData = await paymentResponse.json();
+    console.log('[MercadoPagoWebhook] Detalhes do pagamento:', JSON.stringify(paymentData, null, 2));
 
+    // Verificar status do pagamento
+    const status = paymentData.status;
+    console.log('[MercadoPagoWebhook] Status do pagamento:', status);
+
+    // Buscar a transação correspondente no banco de dados
     const supabase = createClient();
-
-    // Buscar transação pelo payment_id
-    console.log('[Webhook] Buscando transação para payment_id:', body.data.id);
-    const { data: transactions, error: searchError } = await supabase
+    const { data: transactions, error: transactionError } = await supabase
       .from('transactions')
       .select('*')
-      .filter('metadata->payment->id', 'eq', body.data.id)
-      .single();
+      .eq('payment_id', paymentId.toString());
 
-    if (searchError) {
-      console.error('[Webhook] Erro ao buscar transação:', searchError);
-      throw searchError;
+    if (transactionError) {
+      console.error('[MercadoPagoWebhook] Erro ao buscar transação:', transactionError);
+      return NextResponse.json({ error: 'Erro ao buscar transação' }, { status: 500 });
     }
 
-    if (!transactions) {
-      console.error('[Webhook] Transação não encontrada para payment_id:', body.data.id);
-      return NextResponse.json(
-        { message: 'Transaction not found' },
-        { status: 404 }
-      );
+    if (!transactions || transactions.length === 0) {
+      console.error('[MercadoPagoWebhook] Transação não encontrada para o pagamento:', paymentId);
+      return NextResponse.json({ error: 'Transação não encontrada' }, { status: 404 });
     }
 
-    console.log('[Webhook] Transação encontrada:', JSON.stringify(transactions, null, 2));
+    const transaction = transactions[0];
+    console.log('[MercadoPagoWebhook] Transação encontrada:', transaction.id);
 
-    // Atualizar a transação no banco
-    console.log('[Webhook] Atualizando status da transação para:', paymentStatus);
+    // Mapear status do Mercado Pago para status da transação
+    let transactionStatus;
+    switch (status) {
+      case 'approved':
+        transactionStatus = 'completed';
+        break;
+      case 'pending':
+        transactionStatus = 'pending';
+        break;
+      case 'in_process':
+        transactionStatus = 'processing';
+        break;
+      case 'rejected':
+        transactionStatus = 'failed';
+        break;
+      case 'cancelled':
+        transactionStatus = 'cancelled';
+        break;
+      case 'refunded':
+        transactionStatus = 'refunded';
+        break;
+      default:
+        transactionStatus = 'unknown';
+    }
+
+    // Atualizar a transação com o novo status
     const { error: updateError } = await supabase
       .from('transactions')
       .update({
-        status: paymentStatus,
+        status: transactionStatus,
+        updated_at: new Date().toISOString(),
         metadata: {
-          ...transactions.metadata,
-          payment: {
-            ...transactions.metadata.payment,
-            status: paymentStatus,
-            updated_at: new Date().toISOString()
-          }
-        },
-        updated_at: new Date().toISOString()
+          ...transaction.metadata,
+          payment_data: paymentData,
+          email: paymentData.payer?.email || transaction.metadata?.email,
+          customer_name: paymentData.payer?.first_name 
+            ? `${paymentData.payer.first_name} ${paymentData.payer.last_name || ''}`
+            : transaction.customer_name
+        }
       })
-      .eq('id', transactions.id);
+      .eq('id', transaction.id);
 
     if (updateError) {
-      console.error('[Webhook] Erro ao atualizar transação:', updateError);
-      throw updateError;
+      console.error('[MercadoPagoWebhook] Erro ao atualizar transação:', updateError);
+      return NextResponse.json({ error: 'Erro ao atualizar transação' }, { status: 500 });
     }
 
-    console.log('[Webhook] Transação atualizada com sucesso');
+    console.log('[MercadoPagoWebhook] Transação atualizada com status:', transactionStatus);
 
-    // Se o pagamento foi aprovado, criar o pedido e processar na API do FAMA
-    if (paymentStatus === 'approved') {
-      console.log('[Webhook] Pagamento aprovado, processando pedido...');
-      try {
-        // Processar o pedido na API do FAMA
-        const orderResult = await processTransaction(transactions.id);
-        console.log('[Webhook] Pedido criado na API do FAMA:', orderResult);
-
-        // Criar o pedido no banco
-        const { error: orderError } = await supabase
-          .from('orders')
-          .insert({
-            status: 'pending',
-            amount: transactions.amount,
-            payment_method: transactions.payment_method,
-            payment_status: paymentStatus,
-            transaction_id: transactions.id,
-            service_id: transactions.service_id,
-            user_id: transactions.user_id,
-            metadata: {
-              fama_order: orderResult
-            }
-          });
-
-        if (orderError) {
-          console.error('[Webhook] Erro ao criar pedido:', orderError);
-          throw orderError;
+    // Se o pagamento foi aprovado, processar a transação
+    if (status === 'approved' && transaction.status !== 'completed') {
+      console.log('[MercadoPagoWebhook] Pagamento aprovado, processando transação...');
+      
+      // Atualizar os dados do cliente na transação
+      if (paymentData.payer?.email) {
+        const { error: customerUpdateError } = await supabase
+          .from('transactions')
+          .update({
+            customer_email: paymentData.payer.email,
+            customer_name: paymentData.payer.first_name 
+              ? `${paymentData.payer.first_name} ${paymentData.payer.last_name || ''}`
+              : transaction.customer_name
+          })
+          .eq('id', transaction.id);
+        
+        if (customerUpdateError) {
+          console.error('[MercadoPagoWebhook] Erro ao atualizar dados do cliente:', customerUpdateError);
+        } else {
+          console.log('[MercadoPagoWebhook] Dados do cliente atualizados com sucesso');
         }
-
-        console.log('[Webhook] Pedido criado com sucesso');
+      }
+      
+      try {
+        const result = await processTransaction(transaction.id);
+        console.log('[MercadoPagoWebhook] Transação processada com sucesso:', result);
+        return NextResponse.json({ message: 'Pagamento processado com sucesso', orderId: result.id });
       } catch (error) {
-        console.error('[Webhook] Erro ao processar pedido FAMA:', error);
-        // Não vamos lançar o erro aqui para não impedir a atualização do status
+        console.error('[MercadoPagoWebhook] Erro ao processar transação:', error);
+        return NextResponse.json({ error: 'Erro ao processar transação' }, { status: 500 });
       }
     }
 
-    const endTime = new Date();
-    const duration = endTime.getTime() - startTime.getTime();
-    console.log(`[${endTime.toISOString()}] Webhook finalizado em ${duration}ms`);
-
-    return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error('[Webhook] Erro:', error);
-    return NextResponse.json(
-      { 
-        message: error.message || 'Internal server error',
-        details: error.response?.data || error
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: 'Notificação processada com sucesso' });
+  } catch (error) {
+    console.error('[MercadoPagoWebhook] Erro ao processar webhook:', error);
+    return NextResponse.json({ error: 'Erro ao processar webhook' }, { status: 500 });
   }
 }

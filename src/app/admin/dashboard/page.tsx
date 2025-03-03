@@ -13,6 +13,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { useInstagramAPI } from '@/hooks/useInstagramAPI';
 import { CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon } from '@heroicons/react/24/solid';
+import { ProvidersStatusCard } from './components/ProvidersStatusCard';
 
 interface Stats {
   totalClients: number;
@@ -128,6 +129,8 @@ export default function DashboardPage() {
 
   const fetchStats = async () => {
     try {
+      setLoading(true);
+      
       // Total de Clientes
       const { data: clients } = await supabase
         .from('profiles')
@@ -222,198 +225,207 @@ export default function DashboardPage() {
     fetchStats();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-      </div>
-    );
-  }
-
-  const stats_cards = [
-    {
-      name: 'Total de Clientes',
-      value: stats.totalClients,
-      icon: UserGroupIcon,
-      change: '12%',
-      changeType: 'increase',
-    },
-    {
-      name: 'Total de Pedidos',
-      value: stats.totalOrders,
-      icon: ShoppingCartIcon,
-      change: '2.1%',
-      changeType: 'increase',
-    },
-    {
-      name: 'Receita Total',
-      value: new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'BRL',
-      }).format(stats.totalRevenue),
-      icon: CurrencyDollarIcon,
-      change: '4.3%',
-      changeType: 'decrease',
-    },
-    {
-      name: 'Tickets Abertos',
-      value: stats.openTickets,
-      icon: ChatBubbleLeftRightIcon,
-      change: '3%',
-      changeType: 'decrease',
-    },
-  ];
-
   return (
     <div className="container mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight mb-6">Dashboard</h1>
-        
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {stats_cards.map((item) => (
-            <Card key={item.name}>
-              <div className="p-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <item.icon className="h-6 w-6 text-gray-400" aria-hidden="true" />
-                  </div>
-                  <div className="ml-4 flex-1">
-                    <h3 className="text-sm font-medium text-gray-900">{item.name}</h3>
-                    <p className="mt-1 text-2xl font-semibold text-gray-900">{item.value}</p>
-                  </div>
-                </div>
-                <div className="absolute bottom-0 inset-x-0 bg-gray-50 px-4 py-2">
-                  <div className="text-sm">
-                    <div className="flex items-center justify-between">
-                      <div
-                        className={classNames(
-                          item.changeType === 'increase' ? 'text-green-600' : 'text-red-600',
-                          'flex items-center text-sm font-medium'
-                        )}
-                      >
-                        {item.changeType === 'increase' ? (
-                          <ArrowUpIcon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-                        ) : (
-                          <ArrowDownIcon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-                        )}
-                        <span className="ml-1">{item.change}</span>
-                      </div>
-                      <div className="text-gray-500">vs. último mês</div>
+      <div className="space-y-6">
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Carregando dados...</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <Card>
+                <div className="p-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <UserGroupIcon className="h-8 w-8 text-indigo-600" aria-hidden="true" />
+                    </div>
+                    <div className="ml-5 w-0 flex-1">
+                      <dl>
+                        <dt className="text-sm font-medium text-gray-500 truncate">Total de Clientes</dt>
+                        <dd>
+                          <div className="text-lg font-medium text-gray-900">{stats.totalClients}</div>
+                        </dd>
+                      </dl>
                     </div>
                   </div>
                 </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+              </Card>
 
-        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Pedidos Recentes */}
-          <Card>
-            <div className="p-6">
-              <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
-                Pedidos Recentes
-              </h3>
-              <div className="flow-root">
-                <ul role="list" className="-mb-8">
-                  {stats.recentOrders.map((order, orderIdx) => (
-                    <li key={order.id}>
-                      <div className="relative pb-8">
-                        {orderIdx !== stats.recentOrders.length - 1 ? (
-                          <span
-                            className="absolute left-4 top-4 -ml-px h-full w-0.5 bg-gray-200"
-                            aria-hidden="true"
-                          />
-                        ) : null}
-                        <div className="relative flex space-x-3">
-                          <div>
-                            <span
-                              className={classNames(
-                                'bg-blue-500',
-                                'h-8 w-8 rounded-full flex items-center justify-center ring-8 ring-white'
-                              )}
-                            >
-                              <ShoppingCartIcon className="h-5 w-5 text-white" aria-hidden="true" />
-                            </span>
+              <Card>
+                <div className="p-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <ShoppingCartIcon className="h-8 w-8 text-indigo-600" aria-hidden="true" />
+                    </div>
+                    <div className="ml-5 w-0 flex-1">
+                      <dl>
+                        <dt className="text-sm font-medium text-gray-500 truncate">Total de Pedidos</dt>
+                        <dd>
+                          <div className="text-lg font-medium text-gray-900">{stats.totalOrders}</div>
+                        </dd>
+                      </dl>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card>
+                <div className="p-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <CurrencyDollarIcon className="h-8 w-8 text-indigo-600" aria-hidden="true" />
+                    </div>
+                    <div className="ml-5 w-0 flex-1">
+                      <dl>
+                        <dt className="text-sm font-medium text-gray-500 truncate">Receita Total</dt>
+                        <dd>
+                          <div className="text-lg font-medium text-gray-900">
+                            R$ {stats.totalRevenue.toFixed(2)}
                           </div>
-                          <div className="flex min-w-0 flex-1 justify-between space-x-4">
-                            <div>
-                              <p className="text-sm text-gray-500">
-                                Pedido de <span className="font-medium text-gray-900">
-                                  {order.user?.name || 'Usuário Removido'}
+                        </dd>
+                      </dl>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card>
+                <div className="p-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <ChatBubbleLeftRightIcon className="h-8 w-8 text-indigo-600" aria-hidden="true" />
+                    </div>
+                    <div className="ml-5 w-0 flex-1">
+                      <dl>
+                        <dt className="text-sm font-medium text-gray-500 truncate">Tickets Abertos</dt>
+                        <dd>
+                          <div className="text-lg font-medium text-gray-900">{stats.openTickets}</div>
+                        </dd>
+                      </dl>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* Status das APIs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <InstagramAPIStatusCard />
+              <ProvidersStatusCard />
+            </div>
+
+            {/* Gráficos e Listas */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Pedidos Recentes */}
+              <Card>
+                <div className="p-6">
+                  <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
+                    Pedidos Recentes
+                  </h3>
+                  <div className="flow-root">
+                    <ul role="list" className="-mb-8">
+                      {stats.recentOrders.map((order, orderIdx) => (
+                        <li key={order.id}>
+                          <div className="relative pb-8">
+                            {orderIdx !== stats.recentOrders.length - 1 ? (
+                              <span
+                                className="absolute left-4 top-4 -ml-px h-full w-0.5 bg-gray-200"
+                                aria-hidden="true"
+                              />
+                            ) : null}
+                            <div className="relative flex space-x-3">
+                              <div>
+                                <span
+                                  className={classNames(
+                                    'bg-blue-500',
+                                    'h-8 w-8 rounded-full flex items-center justify-center ring-8 ring-white'
+                                  )}
+                                >
+                                  <ShoppingCartIcon className="h-5 w-5 text-white" aria-hidden="true" />
                                 </span>
-                              </p>
-                            </div>
-                            <div className="whitespace-nowrap text-right text-sm text-gray-500">
-                              <time dateTime={order.created_at}>
-                                {new Date(order.created_at).toLocaleDateString('pt-BR')}
-                              </time>
+                              </div>
+                              <div className="flex min-w-0 flex-1 justify-between space-x-4">
+                                <div>
+                                  <p className="text-sm text-gray-500">
+                                    Pedido de <span className="font-medium text-gray-900">
+                                      {order.user?.name || 'Usuário Removido'}
+                                    </span>
+                                  </p>
+                                </div>
+                                <div className="whitespace-nowrap text-right text-sm text-gray-500">
+                                  <time dateTime={order.created_at}>
+                                    {new Date(order.created_at).toLocaleDateString('pt-BR')}
+                                  </time>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </Card>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </Card>
 
-          {/* Tickets Recentes */}
-          <Card>
-            <div className="p-6">
-              <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
-                Tickets Recentes
-              </h3>
-              <div className="flow-root">
-                <ul role="list" className="-mb-8">
-                  {stats.recentTickets.map((ticket, ticketIdx) => (
-                    <li key={ticket.id}>
-                      <div className="relative pb-8">
-                        {ticketIdx !== stats.recentTickets.length - 1 ? (
-                          <span
-                            className="absolute left-4 top-4 -ml-px h-full w-0.5 bg-gray-200"
-                            aria-hidden="true"
-                          />
-                        ) : null}
-                        <div className="relative flex space-x-3">
-                          <div>
-                            <span
-                              className={classNames(
-                                ticket.status === 'open' ? 'bg-yellow-500' : 'bg-green-500',
-                                'h-8 w-8 rounded-full flex items-center justify-center ring-8 ring-white'
-                              )}
-                            >
-                              <ChatBubbleLeftRightIcon className="h-5 w-5 text-white" aria-hidden="true" />
-                            </span>
-                          </div>
-                          <div className="flex min-w-0 flex-1 justify-between space-x-4">
-                            <div>
-                              <p className="text-sm text-gray-500">
-                                {ticket.title}
-                              </p>
-                              <p className="text-xs text-gray-400">
-                                por {ticket.user?.name || 'Usuário Removido'}
-                              </p>
+              {/* Tickets Recentes */}
+              <Card>
+                <div className="p-6">
+                  <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
+                    Tickets Recentes
+                  </h3>
+                  <div className="flow-root">
+                    <ul role="list" className="-mb-8">
+                      {stats.recentTickets.map((ticket, ticketIdx) => (
+                        <li key={ticket.id}>
+                          <div className="relative pb-8">
+                            {ticketIdx !== stats.recentTickets.length - 1 ? (
+                              <span
+                                className="absolute left-4 top-4 -ml-px h-full w-0.5 bg-gray-200"
+                                aria-hidden="true"
+                              />
+                            ) : null}
+                            <div className="relative flex space-x-3">
+                              <div>
+                                <span
+                                  className={classNames(
+                                    ticket.status === 'open' ? 'bg-yellow-500' : 'bg-green-500',
+                                    'h-8 w-8 rounded-full flex items-center justify-center ring-8 ring-white'
+                                  )}
+                                >
+                                  <ChatBubbleLeftRightIcon className="h-5 w-5 text-white" aria-hidden="true" />
+                                </span>
+                              </div>
+                              <div className="flex min-w-0 flex-1 justify-between space-x-4">
+                                <div>
+                                  <p className="text-sm text-gray-500">
+                                    {ticket.title}
+                                  </p>
+                                  <p className="text-xs text-gray-400">
+                                    por {ticket.user?.name || 'Usuário Removido'}
+                                  </p>
+                                </div>
+                                <div className="whitespace-nowrap text-right text-sm text-gray-500">
+                                  <time dateTime={ticket.created_at}>
+                                    {new Date(ticket.created_at).toLocaleDateString('pt-BR')}
+                                  </time>
+                                </div>
+                              </div>
                             </div>
-                            <div className="whitespace-nowrap text-right text-sm text-gray-500">
-                              <time dateTime={ticket.created_at}>
-                                {new Date(ticket.created_at).toLocaleDateString('pt-BR')}
-                              </time>
-                            </div>
                           </div>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </Card>
             </div>
-          </Card>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <InstagramAPIStatusCard />
+          </>
+        )}
       </div>
     </div>
   );

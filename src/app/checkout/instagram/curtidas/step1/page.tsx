@@ -17,8 +17,8 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 
 interface ServiceDetail {
-  icon: string;
   title: string;
+  emoji: string;
 }
 
 interface QuantidadePreco {
@@ -231,41 +231,9 @@ export default function Step1Page() {
                 <ul className="space-y-2 mt-2">
                   {service?.service_details || service?.metadata?.serviceDetails ? (
                     (service.service_details || service.metadata?.serviceDetails || []).map((detail, index) => {
-                      // Mapeamento de nomes de ícones para objetos de ícone
-                      const iconMap = {
-                        'faCoffee': faCoffee,
-                        'faLemon': faLemon,
-                        'faCar': faCar,
-                        'faHeart': faHeart,
-                        'faStar': faStar,
-                        'faClock': faClock,
-                        'faCheck': faCheck,
-                        'faShield': faShield,
-                        'faRocket': faRocket,
-                        'faGlobe': faGlobe,
-                        'faUsers': faUsers,
-                        'faThumbsUp': faThumbsUp,
-                        'faEye': faEye,
-                        'faComment': faComment,
-                        'faBolt': faBolt,
-                        'faMedal': faMedal,
-                        'faTrophy': faTrophy,
-                        'faGem': faGem,
-                        'faCrown': faCrown,
-                        'faFire': faFire,
-                        'faSmile': faSmile,
-                        'faLock': faLock,
-                        'faUnlock': faUnlock,
-                      };
-                      
-                      // Usar o ícone mapeado ou um ícone padrão se não encontrado
-                      const iconObject = detail.icon && iconMap[detail.icon as keyof typeof iconMap] 
-                        ? iconMap[detail.icon as keyof typeof iconMap] 
-                        : faHeart;
-                      
                       return (
                         <li key={index} className="flex items-center">
-                          <FontAwesomeIcon icon={iconObject} className="mr-2" />
+                          <span className="mr-2">{detail.emoji}</span>
                           <span className="font-semibold text-gray-800">{detail.title}</span>
                         </li>
                       );
