@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useSupabase } from '../../../../../../src/lib/hooks/useSupabase';
 import { LoadingProfileModal } from '../../components/LoadingProfileModal';
 import { toast } from 'sonner';
-import { Header } from '../../components/Header';
+import { Header } from '@/components/layout/header';
 import { useForm } from 'react-hook-form';
 import Image from 'next/image';
 

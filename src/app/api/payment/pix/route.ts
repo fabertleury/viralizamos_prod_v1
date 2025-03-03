@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { MercadoPagoConfig, Payment } from 'mercadopago';
+import mercadopago from 'mercadopago';
 import QRCode from 'qrcode';
 
 export async function POST(request: NextRequest) {
@@ -16,15 +16,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { service, profile, customer, posts = [] } = body;
-    const amount = service.price || 0;
+    const { service, profile, customer, posts = [], amount } = body;
+    
+    // Usar o amount do body ou calcular a partir do service.price
+    const paymentAmount = amount || service.price || 0;
 
-    if (!amount || amount <= 0) {
-      return NextResponse.json(
-        { error: 'Valor inválido' },
-        { status: 400 }
-      );
-    }
+    // Garantir que o valor seja pelo menos 1 real (ou o mínimo aceito pelo Mercado Pago)
+    const minimumAmount = 1.00; // Valor mínimo de 1 real
+    const finalAmount = Math.max(paymentAmount, minimumAmount);
+
+    console.log('Valor do pagamento:', finalAmount);
 
     // Verificar se o token do Mercado Pago está configurado
     if (!process.env.MERCADO_PAGO_ACCESS_TOKEN) {
@@ -35,10 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Configurar o cliente do Mercado Pago
-    const client = new MercadoPagoConfig({
-      accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN
-    });
-    const payment = new Payment(client);
+    mercadopago.configurations.setAccessToken(process.env.MERCADO_PAGO_ACCESS_TOKEN || '');
 
     // Processar os posts (se houver)
     const processedPosts = posts.map((post: any) => {
@@ -53,24 +51,22 @@ export async function POST(request: NextRequest) {
 
     // Criar o pagamento no Mercado Pago
     console.log('Criando pagamento PIX no Mercado Pago...');
-    const result = await payment.create({
-      body: {
-        transaction_amount: Number(amount),
-        description: `${service.name} para @${profile.username}`,
-        payment_method_id: 'pix',
-        payer: {
-          email: customer.email,
-          first_name: customer.name?.split(' ')[0] || 'Cliente',
-          last_name: customer.name?.split(' ').slice(1).join(' ') || 'Anônimo'
-        },
-        metadata: {
-          service_id: service.id,
-          service_name: service.name,
-          profile_username: profile.username,
-          customer_email: customer.email,
-          customer_name: customer.name,
-          customer_phone: customer.phone
-        }
+    const result = await mercadopago.payment.create({
+      transaction_amount: Number(finalAmount),
+      description: `${service.name} para @${profile.username}`,
+      payment_method_id: 'pix',
+      payer: {
+        email: customer.email,
+        first_name: customer.name?.split(' ')[0] || 'Cliente',
+        last_name: customer.name?.split(' ').slice(1).join(' ') || 'Anônimo'
+      },
+      metadata: {
+        service_id: service.id,
+        service_name: service.name,
+        profile_username: profile.username,
+        customer_email: customer.email,
+        customer_name: customer.name,
+        customer_phone: customer.phone
       }
     });
 
@@ -78,7 +74,18 @@ export async function POST(request: NextRequest) {
 
     // Gerar QR Code em base64
     const qrCodeText = result.body.point_of_interaction.transaction_data.qr_code;
-    const qrCodeBase64 = await QRCode.toDataURL(qrCodeText);
+    let qrCodeBase64 = '';
+    
+    try {
+      // Gerar QR Code em base64 sem o prefixo data:image/png;base64,
+      qrCodeBase64 = await QRCode.toDataURL(qrCodeText);
+      // Remover o prefixo para armazenar apenas os dados base64
+      qrCodeBase64 = qrCodeBase64.replace(/^data:image\/png;base64,/, '');
+      console.log('QR Code gerado com sucesso');
+    } catch (qrError) {
+      console.error('Erro ao gerar QR Code:', qrError);
+      // Continuar mesmo se houver erro na geração do QR Code
+    }
 
     // Obter o usuário atual (se autenticado)
     const supabase = createClient();
@@ -92,7 +99,7 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id,
         type: 'payment',
-        amount: Number(amount),
+        amount: Number(finalAmount),
         status: 'pending',
         payment_method: 'pix',
         payment_id: result.body.id.toString(),
@@ -135,7 +142,7 @@ export async function POST(request: NextRequest) {
       columnData: {
         user_id,
         type: 'payment',
-        amount: Number(amount),
+        amount: Number(finalAmount),
         status: 'pending',
         payment_method: 'pix',
         service_id: service.id,
@@ -166,7 +173,8 @@ export async function POST(request: NextRequest) {
       qr_code: result.body.point_of_interaction.transaction_data.qr_code,
       qr_code_base64: qrCodeBase64,
       status: 'pending',
-      amount: Number(amount)
+      amount: Number(finalAmount),
+      transaction_id: transaction?.[0]?.id || null
     }, { status: 200 });
   } catch (error) {
     console.error('Error creating payment:', error);

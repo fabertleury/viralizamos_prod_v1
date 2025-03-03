@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/hooks/useSupabase';
 import { toast } from 'sonner';
 import { PostSelector } from '../../components/PostSelector';
-import { Header } from '../../components/Header';
+import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';

@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import PostSelector from '@/components/instagram/curtidas/PostSelector';
 import ReelSelector from '@/components/instagram/curtidas/ReelSelector';
-import { Header } from '../../components/Header';
+import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -566,6 +566,11 @@ export default function Step2Page() {
         paymentData: JSON.stringify(paymentData, null, 2)
       });
 
+      // Garantir que temos todos os dados necessários
+      if (!paymentData.id || !paymentData.qr_code) {
+        throw new Error('Dados de pagamento incompletos');
+      }
+
       setPaymentData({
         qrCodeText: paymentData.qr_code,
         paymentId: paymentData.id,
@@ -820,7 +825,7 @@ export default function Step2Page() {
                   </Button>
 
                   <p className="text-xs text-gray-500 text-center">
-                    Após o pagamento, as curtidas serão adicionadas em até 24 horas.
+                    Após o pagamento as curtidas iniciaram automaticamente em 15 a 30 minutos.
                   </p>
                 </div>
               </Card>

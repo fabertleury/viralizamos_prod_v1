@@ -5,6 +5,13 @@ import { createClient } from '@/lib/supabase/server';
 // Configuração do Mercado Pago
 mercadopago.configurations.setAccessToken(process.env.MERCADO_PAGO_ACCESS_TOKEN || '');
 
+// Cache temporário para reduzir consultas ao Mercado Pago
+// Formato: { paymentId: { status, timestamp } }
+const statusCache: Record<string, { status: string, timestamp: number }> = {};
+
+// Tempo de validade do cache em milissegundos (5 segundos)
+const CACHE_TTL = 5000;
+
 export async function POST(request: NextRequest) {
   try {
     const { payment_id } = await request.json();
@@ -16,6 +23,18 @@ export async function POST(request: NextRequest) {
         error: 'Payment ID is required',
         status: 'error'
       }, { status: 400 });
+    }
+
+    // Verificar se temos um cache válido para este pagamento
+    const now = Date.now();
+    const cachedData = statusCache[payment_id];
+    
+    if (cachedData && (now - cachedData.timestamp < CACHE_TTL)) {
+      console.log(`Usando cache para payment_id ${payment_id}, status: ${cachedData.status}`);
+      return NextResponse.json({
+        status: cachedData.status,
+        source: 'cache'
+      });
     }
 
     const supabase = createClient();
@@ -36,6 +55,12 @@ export async function POST(request: NextRequest) {
         const paymentData = paymentResponse.body;
 
         console.log(`Status do pagamento (Mercado Pago direto): ${paymentData.status}`);
+
+        // Armazenar no cache
+        statusCache[payment_id] = {
+          status: paymentData.status,
+          timestamp: now
+        };
 
         return NextResponse.json({
           status: paymentData.status,
@@ -66,6 +91,12 @@ export async function POST(request: NextRequest) {
       const currentStatus = paymentData.status;
 
       console.log(`Status atual do pagamento (Mercado Pago): ${currentStatus}`);
+
+      // Armazenar no cache
+      statusCache[payment_id] = {
+        status: currentStatus,
+        timestamp: now
+      };
 
       // Se o status mudou, atualizar no Supabase
       if (transaction.status !== currentStatus) {

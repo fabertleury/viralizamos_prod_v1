@@ -23,13 +23,22 @@ export function PixPayment({
   const [isLoading, setIsLoading] = useState(false);
   const [paymentApproved, setPaymentApproved] = useState(false);
   const [isManualCheckInProgress, setIsManualCheckInProgress] = useState(false);
+  const [lastCheckTime, setLastCheckTime] = useState(0);
   const router = useRouter();
 
   // Função para verificar o status do pagamento
   const checkPaymentStatus = useCallback(async () => {
+    // Evitar verificações muito frequentes (mínimo 3 segundos entre verificações)
+    const now = Date.now();
+    if (now - lastCheckTime < 3000) {
+      console.log('Verificação muito frequente no PixPayment, ignorando');
+      return;
+    }
+    
     if (isLoading || paymentApproved) return;
     
     try {
+      setLastCheckTime(now);
       setIsLoading(true);
       const response = await fetch(`/api/payment/verify-status`, {
         method: 'POST',
@@ -41,7 +50,7 @@ export function PixPayment({
       const data = await response.json();
       setIsLoading(false);
 
-      console.log('Status do pagamento:', data);
+      console.log('Status do pagamento (PixPayment):', data);
 
       if (data.status === 'approved') {
         setPaymentApproved(true);
@@ -52,7 +61,7 @@ export function PixPayment({
         
         // Obter email dos metadados da transação
         const email = data.transaction?.metadata?.email || 
-                     data.transaction?.metadata?.contact?.email || 
+                     data.transaction?.metadata?.customer?.email || 
                      data.transaction?.metadata?.profile?.email || '';
         
         // Redirecionar para a página de agradecimento após 2 segundos
@@ -68,35 +77,43 @@ export function PixPayment({
       setIsManualCheckInProgress(false);
       console.error('Erro ao verificar status do pagamento:', error);
     }
-  }, [orderId, onPaymentSuccess, router, isLoading, paymentApproved, isManualCheckInProgress]);
+  }, [orderId, onPaymentSuccess, router, isLoading, paymentApproved, isManualCheckInProgress, lastCheckTime]);
 
-  // Verificação automática a cada 5 segundos
   useEffect(() => {
-    const interval = setInterval(checkPaymentStatus, 5000);
+    if (!orderId || paymentApproved) return;
 
-    // Limpa o intervalo quando o componente é desmontado
-    return () => clearInterval(interval);
-  }, [checkPaymentStatus]);
+    // Verificar o status do pagamento a cada 8 segundos (reduzindo a frequência)
+    const intervalId = setInterval(checkPaymentStatus, 8000);
 
-  // Função para verificação manual do pagamento
-  const handleManualCheck = () => {
-    setIsManualCheckInProgress(true);
-    toast.info('Verificando seu pagamento...');
+    // Verificar o status imediatamente
     checkPaymentStatus();
+
+    return () => clearInterval(intervalId);
+  }, [orderId, paymentApproved, checkPaymentStatus]);
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(copyPasteCode)
+      .then(() => {
+        setCopied(true);
+        toast.success('Código PIX copiado!');
+        setTimeout(() => setCopied(false), 3000);
+      })
+      .catch(err => {
+        console.error('Erro ao copiar código:', err);
+        toast.error('Não foi possível copiar o código');
+      });
   };
 
-  const handleCopyPix = async () => {
-    try {
-      await navigator.clipboard.writeText(copyPasteCode);
-      setCopied(true);
-      toast.success('Código PIX copiado!');
-      
-      // Reset copied state after 3 seconds
-      setTimeout(() => setCopied(false), 3000);
-    } catch (error) {
-      console.error('Erro ao copiar código PIX:', error);
-      toast.error('Não foi possível copiar o código PIX');
-    }
+  const handleManualCheck = () => {
+    if (isManualCheckInProgress) return;
+    
+    setIsManualCheckInProgress(true);
+    toast.info('Verificando seu pagamento...');
+    checkPaymentStatus().finally(() => {
+      setTimeout(() => {
+        setIsManualCheckInProgress(false);
+      }, 2000);
+    });
   };
 
   return (
@@ -121,12 +138,25 @@ export function PixPayment({
         ) : (
           <>
             <div className="bg-gray-100 p-4 rounded-lg mb-4 flex justify-center">
-              {qrCodeBase64 && (
+              {qrCodeBase64 ? (
                 <img 
-                  src={`data:image/png;base64,${qrCodeBase64}`} 
+                  src={qrCodeBase64.startsWith('data:') ? qrCodeBase64 : `data:image/png;base64,${qrCodeBase64}`} 
                   alt="QR Code PIX" 
                   className="w-48 h-48"
+                  onError={(e) => {
+                    // Em caso de erro ao carregar a imagem, não mostrar mensagem de erro
+                    console.log('Erro ao carregar QR code, tentando usar formato alternativo');
+                    const target = e.target as HTMLImageElement;
+                    // Tentar formato alternativo se o atual falhar
+                    if (!target.src.includes('data:image/png;base64,') && qrCodeBase64) {
+                      target.src = `data:image/png;base64,${qrCodeBase64}`;
+                    }
+                  }}
                 />
+              ) : (
+                <div className="w-48 h-48 flex items-center justify-center">
+                  <p className="text-gray-500">QR Code não disponível</p>
+                </div>
               )}
             </div>
             
@@ -145,44 +175,39 @@ export function PixPayment({
                   className="w-full px-3 py-2 border border-gray-300 rounded-l-md bg-gray-50"
                 />
                 <button
-                  onClick={handleCopyPix}
+                  onClick={handleCopyCode}
                   className={`px-4 py-2 rounded-r-md flex items-center justify-center ${
                     copied ? 'bg-green-500 text-white' : 'bg-blue-600 text-white'
                   }`}
                 >
-                  <FaCopy className="mr-2" />
-                  {copied ? 'Copiado!' : 'Copiar'}
+                  {copied ? 'Copiado!' : <FaCopy />}
                 </button>
               </div>
-            </div>
-            
-            <div className="mt-6 text-sm text-gray-600">
-              <p className="mb-1">• Abra o app do seu banco</p>
-              <p className="mb-1">• Escolha pagar via PIX</p>
-              <p className="mb-1">• Escaneie o QR code ou cole o código</p>
-              <p>• Confirme o pagamento</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Você também pode copiar o código e pagar pelo aplicativo do seu banco
+              </p>
             </div>
             
             <div className="mt-6">
-              <button 
+              <button
                 onClick={handleManualCheck}
-                disabled={isLoading || paymentApproved}
-                className="w-full bg-green-600 text-white font-medium py-3 px-4 rounded-md hover:bg-green-700 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
+                disabled={isManualCheckInProgress || isLoading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center justify-center mx-auto disabled:opacity-50"
               >
-                {isLoading ? (
-                  <span className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Verificando pagamento...
-                  </span>
+                {isManualCheckInProgress || isLoading ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Verificando...
+                  </>
                 ) : (
-                  "Já efetuei o pagamento"
+                  'Verificar Pagamento'
                 )}
               </button>
-              
-              <p className="text-sm text-gray-600 text-center">
-                {isLoading ? 
-                  "Verificando status do pagamento..." : 
-                  "O sistema verifica automaticamente a cada 5 segundos"}
+              <p className="text-xs text-gray-500 mt-2">
+                Após realizar o pagamento, clique no botão acima para verificar o status
               </p>
             </div>
           </>

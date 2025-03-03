@@ -86,7 +86,12 @@ export function PaymentPixModal({
   useEffect(() => {
     console.log('Initial qrCode:', qrCode);
     console.log('Initial qrCodeBase64:', qrCodeBase64);
-  }, [qrCode, qrCodeBase64]);
+    
+    // Se recebermos initialQrCodeBase64 mas qrCodeBase64 ainda não estiver definido, atualizá-lo
+    if (initialQrCodeBase64 && !qrCodeBase64) {
+      setQrCodeBase64(initialQrCodeBase64);
+    }
+  }, [qrCode, qrCodeBase64, initialQrCodeBase64]);
 
   useEffect(() => {
     if (!isOpen || !paymentId) return;
@@ -96,15 +101,15 @@ export function PaymentPixModal({
     const checkPaymentStatus = async () => {
       // Evitar verificações muito frequentes
       const now = Date.now();
-      if (now - lastVerificationTime < 2000) {
-        console.log('Verificação muito frequente, ignorando');
+      if (now - lastVerificationTime < 3000) {
+        console.log('Verificação muito frequente no PaymentPixModal, ignorando');
         return null;
       }
       
       setLastVerificationTime(now);
       setIsCheckingStatus(true);
       
-      console.log('Verificando status de pagamento', { 
+      console.log('Verificando status de pagamento (PaymentPixModal)', { 
         paymentId, 
         attempt: statusCheckAttempts + 1
       });
@@ -132,12 +137,13 @@ export function PaymentPixModal({
             error: errorText
           });
           setIsCheckingStatus(false);
+          // Não mostrar erro para o usuário, apenas logar no console
           return null;
         }
 
         const data = await response.json();
         
-        console.log('Resposta da verificação de status:', data);
+        console.log('Resposta da verificação de status (PaymentPixModal):', data);
         
         // Atualizar o status do pagamento
         const paymentStatus = data.status;
@@ -196,9 +202,10 @@ export function PaymentPixModal({
     checkPaymentStatus();
 
     // Definir intervalo adaptativo baseado no número de falhas
-    const intervalTime = statusCheckAttempts > 3 ? 10000 : 5000; // 10 segundos após 3 falhas, 5 segundos normalmente
+    // Aumentando o intervalo para reduzir o número de requisições
+    const intervalTime = statusCheckAttempts > 3 ? 15000 : 10000; // 15 segundos após 3 falhas, 10 segundos normalmente
     
-    console.log(`Configurando verificação a cada ${intervalTime/1000} segundos`);
+    console.log(`Configurando verificação a cada ${intervalTime/1000} segundos (PaymentPixModal)`);
     interval = setInterval(checkPaymentStatus, intervalTime);
 
     // Limpar o intervalo quando o componente for desmontado
@@ -269,10 +276,10 @@ export function PaymentPixModal({
                   ) : (
                     <div className="w-full space-y-4">
                       <PixPayment
-                        qrCodeBase64={qrCodeBase64 || ''}
+                        qrCodeBase64={qrCodeBase64 || getQRCodeSrc() || ''}
                         copyPasteCode={qrCodeText}
                         orderId={paymentId}
-                        amount={amount || 0} // Você pode adicionar o valor aqui se disponível
+                        amount={amount || 0}
                         onPaymentSuccess={() => {
                           setPaymentStatus('success');
                           // Aguardar um pouco antes de fechar o modal
