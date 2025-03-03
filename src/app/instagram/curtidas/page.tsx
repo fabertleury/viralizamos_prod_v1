@@ -253,7 +253,7 @@ export default function CurtidasPage() {
                                       : 'hover:bg-purple-100'
                                   }`}
                                 >
-                                  {variation.quantidade} un
+                                  {variation.quantidade}
                                 </Button>
                               ))}
                             </div>
