@@ -225,21 +225,26 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
     }
   };
 
-  const checkOrderStatus = async (orderId: string) => {
-    if (!orderId) {
+  const checkOrderStatus = async (order: Order) => {
+    if (!order.id) {
+      toast.error('ID do pedido não encontrado');
+      return;
+    }
+    
+    if (!order.external_order_id) {
       toast.error('Este pedido não possui um ID externo para verificação');
       return;
     }
     
     try {
-      setCheckingStatus(prev => ({ ...prev, [orderId]: true }));
+      setCheckingStatus(prev => ({ ...prev, [order.id]: true }));
       
       const response = await fetch('/api/orders/check-status', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ orderId }),
+        body: JSON.stringify({ order_id: order.id }),
       });
       
       const result = await response.json();
@@ -251,14 +256,11 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
       toast.success('Status do pedido atualizado com sucesso');
       
       // Atualizar o pedido na lista
-      setLocalOrders(localOrders.map(order => 
-        order.external_order_id === orderId ? result.data : order
-      ));
+      setLocalOrders(localOrders.map(o => o.id === order.id ? result.data : o));
 
-      // Verificar e corrigir o link do Instagram antes de exibir o modal
-      if (result.data && result.data.metadata && result.data.metadata.link) {
-        const link = result.data.metadata.link;
-        const displayLink = formatInstagramLink(link);
+      // Verificar e corrigir o link do Instagram se existir
+      if (result.data?.metadata?.link) {
+        const displayLink = formatInstagramLink(result.data.metadata.link);
         if (displayLink) {
           result.data.metadata.link = displayLink;
         }
@@ -274,7 +276,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
       console.error('Erro ao verificar status do pedido:', error);
       toast.error(error.message || 'Erro ao verificar status do pedido');
     } finally {
-      setCheckingStatus(prev => ({ ...prev, [orderId]: false }));
+      setCheckingStatus(prev => ({ ...prev, [order.id]: false }));
     }
   };
 
@@ -611,7 +613,11 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                       <div className="col-span-1">
                         <div className="font-medium text-gray-900">{providerName}</div>
                         <div className="text-xs text-gray-500">
-                          {order.external_order_id ? `#${order.external_order_id}` : 'N/A'}
+                          {order.external_order_id ? (
+                            <span className="flex items-center">
+                              <span className="font-medium">ID Externo:</span> {order.external_order_id}
+                            </span>
+                          ) : 'N/A'}
                         </div>
                       </div>
                       
@@ -697,7 +703,11 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                         <div>
                           <div className="text-xs text-gray-500">ID Externo</div>
                           <div className="font-medium text-gray-900">
-                            {order.external_order_id ? `#${order.external_order_id}` : 'N/A'}
+                            {order.external_order_id ? (
+                              <span className="flex items-center">
+                                <span className="font-medium">ID Externo:</span> {order.external_order_id}
+                              </span>
+                            ) : 'N/A'}
                           </div>
                         </div>
                       </div>
@@ -844,7 +854,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                         <a 
                           href={formatInstagramLink(selectedOrderStatus.order.metadata.link)} 
                           target="_blank" 
-                          rel="noopener noreferrer" 
+                          rel="noopener noreferrer"
                           className="text-blue-600 hover:underline text-sm break-all"
                         >
                           {formatInstagramLink(selectedOrderStatus.order.metadata.link)}
@@ -938,10 +948,10 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                 <button
                   type="button"
                   className="inline-flex justify-center rounded-md border border-transparent bg-indigo-100 px-4 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
-                  onClick={() => checkOrderStatus(selectedOrderStatus.order.external_order_id)}
-                  disabled={!selectedOrderStatus.order.external_order_id || checkingStatus[selectedOrderStatus.order.external_order_id]}
+                  onClick={() => checkOrderStatus(selectedOrderStatus.order)}
+                  disabled={!selectedOrderStatus.order.external_order_id || checkingStatus[selectedOrderStatus.order.id]}
                 >
-                  {checkingStatus[selectedOrderStatus.order.external_order_id] ? (
+                  {checkingStatus[selectedOrderStatus.order.id] ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                       Atualizando...

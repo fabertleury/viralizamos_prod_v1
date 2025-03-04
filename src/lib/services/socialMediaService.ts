@@ -301,16 +301,43 @@ export class SocialMediaService {
         throw new Error(`Provedor com ID ${providerId} não encontrado ou não configurado`);
       }
       
-      const payload = {
-        key: provider.api_key,
-        action: 'status',
-        order: orderId
-      };
+      // Criar os parâmetros da requisição usando URLSearchParams para garantir o formato correto
+      const requestParams = new URLSearchParams();
+      requestParams.append('key', provider.api_key);
+      requestParams.append('action', 'status');
+      requestParams.append('order', orderId.toString());
 
       console.log(`🔍 Verificando status do pedido ${orderId} no provedor ${provider.name}`);
+      console.log('Parâmetros da requisição:', {
+        url: provider.api_url,
+        key: '[REDACTED]',
+        action: 'status',
+        order: orderId
+      });
       
-      const response = await axios.post(provider.api_url, payload);
-      return response.data;
+      // Fazer a requisição para a API do provedor com o formato correto
+      const response = await axios.post(provider.api_url, requestParams, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+      
+      console.log('Resposta do provedor para status do pedido:', response.data);
+      
+      // Verificar se a resposta contém um erro
+      if (response.data.error) {
+        throw new Error(`Erro do provedor: ${response.data.error}`);
+      }
+      
+      // Normalizar a resposta para um formato padrão
+      return {
+        status: response.data.status?.toLowerCase() || 'unknown',
+        start_count: response.data.start_count || '0',
+        remains: response.data.remains || '0',
+        charge: response.data.charge || '0',
+        currency: response.data.currency || 'USD',
+        updated_at: new Date().toISOString()
+      };
     } catch (error) {
       console.error('Erro ao verificar status do pedido:', error);
       throw error;

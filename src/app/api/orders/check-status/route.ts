@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { checkOrderStatus, updateOrderStatus } from '@/lib/transactions/transactionProcessor';
 
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     // Buscar o pedido
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('*')
+      .select('*, service:service_id(*)')
       .eq('id', order_id)
       .single();
     
@@ -42,15 +42,45 @@ export async function POST(request: NextRequest) {
       // Atualizar o status do pedido no banco de dados
       if (statusResponse && statusResponse.status && statusResponse.status !== order.status) {
         await updateOrderStatus(order_id, statusResponse.status);
+        
+        // Atualizar os metadados do pedido com as informações de status
+        const { error: updateMetadataError } = await supabase
+          .from('orders')
+          .update({
+            metadata: {
+              ...order.metadata,
+              provider_status: statusResponse
+            }
+          })
+          .eq('id', order_id);
+        
+        if (updateMetadataError) {
+          console.error('Erro ao atualizar metadados do pedido:', updateMetadataError);
+        }
+      }
+      
+      // Atualizar o pedido com as informações mais recentes
+      const { data: updatedOrder, error: updatedOrderError } = await supabase
+        .from('orders')
+        .select('*, service:service_id(*)')
+        .eq('id', order_id)
+        .single();
+      
+      if (updatedOrderError) {
+        console.error('Erro ao buscar pedido atualizado:', updatedOrderError);
       }
       
       return NextResponse.json({
         success: true,
         order_id: order_id,
+        external_order_id: order.external_order_id,
         status: statusResponse.status,
         remains: statusResponse.remains,
         start_count: statusResponse.start_count,
-        metadata: statusResponse
+        charge: statusResponse.charge,
+        currency: statusResponse.currency,
+        data: updatedOrder || order,
+        provider_response: statusResponse
       });
     } catch (error) {
       console.error('Erro ao verificar status do pedido:', error);
