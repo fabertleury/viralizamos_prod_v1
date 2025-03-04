@@ -28,6 +28,18 @@ interface Service {
   name: string;
   preco: number;
   quantidade: number;
+  metadata?: {
+    service_details?: {
+      global_reach?: boolean;
+      fast_delivery?: boolean;
+      guaranteed_security?: boolean;
+      [key: string]: any;
+    };
+  };
+  service_details?: {
+    icon: string;
+    title: string;
+  }[];
 }
 
 export default function Step2Page() {
@@ -181,7 +193,9 @@ export default function Step2Page() {
             id: data.id,
             name: data.name,
             quantidade: selectedVariation.quantidade,
-            preco: selectedVariation.preco
+            preco: selectedVariation.preco,
+            metadata: data.metadata,
+            service_details: data.metadata?.service_details
           });
           return;
         }
@@ -192,7 +206,9 @@ export default function Step2Page() {
         id: data.id,
         name: data.name,
         quantidade: data.quantidade,
-        preco: data.preco
+        preco: data.preco,
+        metadata: data.metadata,
+        service_details: data.metadata?.service_details
       });
     } catch (error) {
       console.error('Erro ao buscar dados do serviço:', error);
@@ -360,20 +376,27 @@ export default function Step2Page() {
                   </div>
                 </div>
                 
-                <div className="space-y-3">
-                  <div className="flex items-center text-sm">
-                    <span className="text-green-500 mr-2">✓</span>
-                    <span className="text-gray-600">Entrega Gradual</span>
+                {service.metadata?.service_details?.service_details && (
+                  <div className="space-y-3 mt-4">
+                    {service.metadata.service_details.service_details.map((detail: any, index: number) => (
+                      <div key={index} className="flex items-center text-sm">
+                        <span className="text-green-500 mr-2">{detail.icon || '✓'}</span>
+                        <span className="text-gray-600">{detail.title}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center text-sm">
-                    <span className="text-green-500 mr-2">✓</span>
-                    <span className="text-gray-600">Seguidores de Qualidade</span>
+                )}
+                
+                {service.service_details && (
+                  <div className="space-y-3">
+                    {service.service_details.map((detail, index) => (
+                      <div key={index} className="flex items-center text-sm">
+                        <span className="text-green-500 mr-2">✓</span>
+                        <span className="text-gray-600">{detail.title}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center text-sm">
-                    <span className="text-green-500 mr-2">✓</span>
-                    <span className="text-gray-600">Suporte 24/7</span>
-                  </div>
-                </div>
+                )}
               </Card>
               
               <Card className="p-6 bg-white shadow-md rounded-xl">

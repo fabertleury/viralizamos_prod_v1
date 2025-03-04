@@ -63,7 +63,12 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
     max_order: '',
     global_reach: false,
     fast_delivery: false,
-    guaranteed_security: false
+    guaranteed_security: false,
+    service_details: [
+      { icon: '⚡', title: 'Entrega Gradual' },
+      { icon: '👥', title: 'Seguidores de Qualidade' },
+      { icon: '🔒', title: 'Suporte 24/7' }
+    ]
   });
 
   const supabase = createClient();
@@ -85,7 +90,8 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
         max_order: service.max_order?.toString() || '10000',
         global_reach: service.metadata?.service_details?.global_reach || false,
         fast_delivery: service.metadata?.service_details?.fast_delivery || false,
-        guaranteed_security: service.metadata?.service_details?.guaranteed_security || false
+        guaranteed_security: service.metadata?.service_details?.guaranteed_security || false,
+        service_details: service.metadata?.service_details || []
       });
     }
   }, [service]);
@@ -164,7 +170,8 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
           service_details: {
             global_reach: formData.global_reach,
             fast_delivery: formData.fast_delivery,
-            guaranteed_security: formData.guaranteed_security
+            guaranteed_security: formData.guaranteed_security,
+            service_details: formData.service_details
           }
         }
       };
@@ -470,6 +477,58 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
             <label htmlFor="status" className="text-sm font-medium">
               Ativo
             </label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Detalhes do Serviço</label>
+            {formData.service_details.map((detail, index) => (
+              <div key={index} className="flex items-center gap-2 mb-2">
+                <Input
+                  type="text"
+                  value={detail.icon}
+                  onChange={(e) => {
+                    const newServiceDetails = [...formData.service_details];
+                    newServiceDetails[index].icon = e.target.value;
+                    setFormData({ ...formData, service_details: newServiceDetails });
+                  }}
+                  className="w-16"
+                  placeholder="Emoji"
+                />
+                <Input
+                  type="text"
+                  value={detail.title}
+                  onChange={(e) => {
+                    const newServiceDetails = [...formData.service_details];
+                    newServiceDetails[index].title = e.target.value;
+                    setFormData({ ...formData, service_details: newServiceDetails });
+                  }}
+                  placeholder="Título do detalhe"
+                />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => {
+                    const newServiceDetails = [...formData.service_details];
+                    newServiceDetails.splice(index, 1);
+                    setFormData({ ...formData, service_details: newServiceDetails });
+                  }}
+                  className="px-2 py-1"
+                >
+                  X
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                const newServiceDetails = [...formData.service_details, { icon: '✅', title: 'Novo detalhe' }];
+                setFormData({ ...formData, service_details: newServiceDetails });
+              }}
+              className="mt-2"
+            >
+              Adicionar Detalhe
+            </Button>
           </div>
 
           <div className="flex justify-end space-x-2">
