@@ -54,13 +54,67 @@ export default function Step2Page() {
     // Obter parâmetros da URL
     const params = new URLSearchParams(window.location.search);
     const username = params.get('username');
-    const whatsapp = params.get('whatsapp');
-    const email = params.get('email');
     const serviceId = params.get('service_id');
-    const quantity = params.get('quantity');
     
-    console.log('Parâmetros recebidos:', { username, whatsapp, email, serviceId, quantity });
+    console.log('Parâmetros recebidos da URL:', { username, serviceId });
 
+    // Tentar obter dados do localStorage
+    try {
+      const storedData = localStorage.getItem('checkoutProfileData');
+      console.log('Dados encontrados no localStorage:', storedData ? 'Sim' : 'Não');
+      
+      if (storedData) {
+        const parsedData = JSON.parse(storedData);
+        console.log('Dados do localStorage:', parsedData);
+        
+        // Verificar se os dados são válidos e recentes (menos de 30 minutos)
+        const isDataValid = parsedData.timestamp && 
+                           (new Date().getTime() - parsedData.timestamp < 30 * 60 * 1000);
+        
+        if (isDataValid) {
+          // Usar os dados do localStorage
+          const storedProfileData = parsedData.profileData;
+          const storedServiceId = parsedData.serviceId;
+          const storedQuantity = parsedData.quantity;
+          
+          console.log('Usando dados do localStorage:', { 
+            username: storedProfileData?.username,
+            serviceId: storedServiceId,
+            quantity: storedQuantity
+          });
+          
+          // Atualizar o estado com os dados do formulário
+          setFormData({
+            name: storedProfileData?.username || username || '',
+            email: storedProfileData?.email || '',
+            phone: storedProfileData?.whatsapp || ''
+          });
+          
+          // Buscar dados do perfil do Instagram
+          if (storedProfileData?.username) {
+            fetchProfileData(storedProfileData.username);
+          } else if (username) {
+            fetchProfileData(username);
+          }
+          
+          // Buscar dados do serviço
+          if (storedServiceId) {
+            fetchServiceData(storedServiceId, storedQuantity);
+          } else if (serviceId) {
+            fetchServiceData(serviceId);
+          }
+          
+          return;
+        } else {
+          console.log('Dados do localStorage expirados ou inválidos');
+          localStorage.removeItem('checkoutProfileData');
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao ler dados do localStorage:', error);
+    }
+    
+    // Se não conseguiu usar dados do localStorage, verificar parâmetros da URL
     if (!username || !serviceId) {
       console.error('Parâmetros obrigatórios ausentes:', { username, serviceId });
       toast.error('Informações incompletas. Por favor, volte e tente novamente.');
@@ -71,79 +125,80 @@ export default function Step2Page() {
     // Atualizar o estado com os dados do formulário
     setFormData({
       name: username,
-      email: email || '',
-      phone: whatsapp || ''
+      email: '',
+      phone: ''
     });
 
-    // Buscar dados do perfil do Instagram
-    const fetchProfileData = async () => {
-      try {
-        console.log('Buscando dados do perfil:', username);
-        const response = await fetch(`/api/instagram/info/${username}`);
-        const data = await response.json();
+    // Buscar dados do perfil do Instagram e do serviço
+    fetchProfileData(username);
+    fetchServiceData(serviceId);
+  }, [router]);
 
-        if (data.error) {
-          console.error('Erro ao buscar perfil:', data.error);
-          toast.error(data.error);
+  // Função para buscar dados do perfil
+  const fetchProfileData = async (username: string) => {
+    try {
+      console.log('Buscando dados do perfil:', username);
+      const response = await fetch(`/api/instagram/info/${username}`);
+      const data = await response.json();
+
+      if (data.error) {
+        console.error('Erro ao buscar perfil:', data.error);
+        toast.error(data.error);
+        return;
+      }
+
+      console.log('Dados do perfil recebidos:', data.data);
+      setProfileData(data.data);
+    } catch (error) {
+      console.error('Erro ao buscar dados do perfil:', error);
+      toast.error('Erro ao buscar dados do perfil');
+    }
+  };
+
+  // Função para buscar dados do serviço
+  const fetchServiceData = async (serviceId: string, quantity?: string) => {
+    try {
+      console.log('Buscando dados do serviço:', serviceId);
+      const { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .eq('id', serviceId)
+        .single();
+
+      if (error) throw error;
+      if (!data) throw new Error('Serviço não encontrado');
+
+      console.log('Dados do serviço recebidos:', data);
+      
+      // Se tiver quantidade especificada, buscar a variação correspondente
+      if (quantity && data.service_variations && data.service_variations.length > 0) {
+        const selectedVariation = data.service_variations.find(
+          (v: any) => v.quantidade === parseInt(quantity)
+        );
+        
+        if (selectedVariation) {
+          setService({
+            id: data.id,
+            name: data.name,
+            quantidade: selectedVariation.quantidade,
+            preco: selectedVariation.preco
+          });
           return;
         }
-
-        console.log('Dados do perfil recebidos:', data.data);
-        setProfileData(data.data);
-      } catch (error) {
-        console.error('Erro ao buscar dados do perfil:', error);
-        toast.error('Erro ao buscar dados do perfil');
       }
-    };
-
-    // Buscar dados do serviço
-    const fetchServiceData = async () => {
-      try {
-        console.log('Buscando dados do serviço:', serviceId);
-        const { data, error } = await supabase
-          .from('services')
-          .select('*')
-          .eq('id', serviceId)
-          .single();
-
-        if (error) throw error;
-        if (!data) throw new Error('Serviço não encontrado');
-
-        console.log('Dados do serviço recebidos:', data);
-        
-        // Se tiver quantidade especificada na URL, buscar a variação correspondente
-        if (quantity && data.service_variations && data.service_variations.length > 0) {
-          const selectedVariation = data.service_variations.find(
-            (v: any) => v.quantidade === parseInt(quantity)
-          );
-          
-          if (selectedVariation) {
-            setService({
-              id: data.id,
-              name: data.name,
-              quantidade: selectedVariation.quantidade,
-              preco: selectedVariation.preco
-            });
-            return;
-          }
-        }
-        
-        // Caso não tenha variação ou quantidade, usar os valores padrão
-        setService({
-          id: data.id,
-          name: data.name,
-          quantidade: data.quantidade,
-          preco: data.preco
-        });
-      } catch (error) {
-        console.error('Erro ao buscar dados do serviço:', error);
-        toast.error('Erro ao carregar dados do serviço');
-      }
-    };
-
-    fetchProfileData();
-    fetchServiceData();
-  }, [router, supabase]);
+      
+      // Caso não tenha variação ou quantidade, usar os valores padrão
+      setService({
+        id: data.id,
+        name: data.name,
+        quantidade: data.quantidade,
+        preco: data.preco
+      });
+    } catch (error) {
+      console.error('Erro ao buscar dados do serviço:', error);
+      toast.error('Erro ao carregar dados do serviço');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

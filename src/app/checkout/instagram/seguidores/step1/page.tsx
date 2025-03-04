@@ -167,29 +167,32 @@ export default function Step1Page() {
       return;
     }
 
-    // Redirecionar para o step2 com os dados
-    const params = new URLSearchParams();
-    
-    // Adicionar parâmetros obrigatórios
-    params.append('username', profileData.username);
-    params.append('service_id', serviceId);
-    
-    // Adicionar parâmetros opcionais com verificação
-    if (profileData.whatsapp) {
-      params.append('whatsapp', profileData.whatsapp);
-    }
-    
-    if (profileData.email) {
-      params.append('email', profileData.email);
-    }
-    
-    // Adicionar quantidade se disponível
-    if (quantity) {
-      params.append('quantity', quantity);
-    }
+    try {
+      // Salvar dados no localStorage para garantir que estejam disponíveis no step2
+      localStorage.setItem('checkoutProfileData', JSON.stringify({
+        profileData: {
+          ...profileData,
+          username: profileData.username,
+          email: profileData.email,
+          whatsapp: profileData.whatsapp
+        },
+        serviceId: serviceId,
+        quantity: quantity || undefined,
+        timestamp: new Date().getTime()
+      }));
 
-    // Redirecionar para o step2
-    window.location.href = `/checkout/instagram/seguidores/step2?${params.toString()}`;
+      console.log('Dados salvos no localStorage:', {
+        profileData,
+        serviceId,
+        quantity
+      });
+
+      // Redirecionar para o step2 com os parâmetros mínimos necessários
+      window.location.href = `/checkout/instagram/seguidores/step2?username=${encodeURIComponent(profileData.username)}&service_id=${encodeURIComponent(serviceId)}`;
+    } catch (error) {
+      console.error('Erro ao salvar dados:', error);
+      toast.error('Erro ao processar dados. Tente novamente.');
+    }
   };
 
   return (
