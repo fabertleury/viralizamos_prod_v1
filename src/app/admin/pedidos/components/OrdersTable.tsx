@@ -10,7 +10,8 @@ import {
   Info,
   AlertCircle,
   CheckCircle,
-  Code
+  Code,
+  Send
 } from 'lucide-react';
 import {
   Dialog,
