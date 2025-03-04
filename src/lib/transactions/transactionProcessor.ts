@@ -647,13 +647,7 @@ export async function updateOrderStatus(orderId: string, status: string) {
   }
 }
 
-export default {
-  processTransaction,
-  checkOrderStatus,
-  updateOrderStatus
-};
-
-// Exportar também como funções nomeadas para compatibilidade
+// Exportar como funções nomeadas
 export {
   processTransaction,
   checkOrderStatus,
