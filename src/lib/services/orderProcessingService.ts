@@ -90,6 +90,29 @@ export async function sendOrderToProvider(params: {
   const { transaction, service, provider, post, customer, formattedLink, quantity } = params;
   const supabase = createClient();
   
+  // Verificar se temos um customer_id válido, caso contrário, buscar ou criar
+  let customerId = customer?.id;
+  
+  if (!customerId && transaction.customer_id) {
+    customerId = transaction.customer_id;
+    console.log('Usando customer_id da transação:', customerId);
+  } else if (!customerId && (customer?.email || transaction.customer_email)) {
+    // Buscar o cliente pelo email
+    const email = customer?.email || transaction.customer_email;
+    console.log('Buscando cliente pelo email:', email);
+    
+    const { data: existingCustomer } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('email', email)
+      .single();
+      
+    if (existingCustomer) {
+      customerId = existingCustomer.id;
+      console.log('Cliente encontrado pelo email:', customerId);
+    }
+  }
+  
   // Preparar os dados para enviar para o provedor
   const providerRequestData = {
     key: provider.api_key,
@@ -139,35 +162,112 @@ export async function sendOrderToProvider(params: {
     const responseData = await orderRequest.json();
     console.log('Resposta do provedor:', responseData);
     
-    // Verificar a resposta do provedor
+    // Verificar se a resposta contém um erro
     if (responseData.error) {
+      console.error('Erro ao enviar pedido para o provedor:', responseData.error);
+      
       // Mapear erros conhecidos para mensagens amigáveis
-      const errorMessages = {
+      const errorMessages: { [key: string]: string } = {
         'neworder.error.not_enough_funds': 'Saldo insuficiente na conta do provedor. Por favor, entre em contato com o suporte.',
-        'neworder.error.invalid_link': 'Link do Instagram inválido. Verifique se o link está correto.',
-        'neworder.error.invalid_quantity': 'Quantidade inválida. Verifique se a quantidade está dentro dos limites permitidos.',
-        'neworder.error.invalid_service': 'Serviço inválido. Verifique se o serviço está ativo.'
+        'requested path is invalid': 'O link do Instagram fornecido é inválido. Verifique o formato e tente novamente.',
+        'error.not_enough_funds': 'Saldo insuficiente na conta do provedor. Por favor, entre em contato com o suporte.',
+        'not enough funds': 'Saldo insuficiente na conta do provedor. Por favor, entre em contato com o suporte.',
+        'insufficient balance': 'Saldo insuficiente na conta do provedor. Por favor, entre em contato com o suporte.',
+        'saldo insuficiente': 'Saldo insuficiente na conta do provedor. Por favor, entre em contato com o suporte.',
       };
       
-      const errorMessage = errorMessages[responseData.error] || `Erro do provedor: ${responseData.error}`;
-      console.error(`Erro na resposta do provedor: ${errorMessage}`);
+      // Verificar se algum dos padrões de erro conhecidos está presente na mensagem de erro
+      let errorMessage = responseData.error;
+      for (const [errorPattern, friendlyMessage] of Object.entries(errorMessages)) {
+        if (responseData.error.toLowerCase().includes(errorPattern.toLowerCase())) {
+          errorMessage = friendlyMessage;
+          break;
+        }
+      }
       
-      // Calcular o valor do pedido (quantidade * preço unitário)
-      const unitPrice = service.preco || (service.service_variations && service.service_variations.length > 0 ? 
-                      service.service_variations[0].preco : 0);
-      const amount = parseFloat(quantity) * unitPrice;
+      // Verificar se é um erro de saldo insuficiente
+      const errorMessageLower = errorMessage.toLowerCase();
+      if (
+        errorMessageLower.includes('insufficient') || 
+        errorMessageLower.includes('saldo insuficiente') || 
+        errorMessageLower.includes('balance') ||
+        errorMessageLower.includes('not enough') ||
+        errorMessageLower.includes('não possui saldo')
+      ) {
+        // Calcular o valor do pedido
+        const { amount, unitPrice: finalUnitPrice, isVariationPrice } = calculateOrderAmount(service, parseInt(quantity.toString()));
+        
+        // Cadastrar o pedido na tabela orders mesmo com erro
+        const { data: orderData, error: orderError } = await supabase
+          .from('orders')
+          .insert({
+            transaction_id: transaction.id,
+            service_id: service.id,
+            customer_id: customerId,
+            user_id: transaction.user_id,
+            target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
+            quantity: quantity,
+            amount: amount || 0, // Garantir que amount não seja null
+            status: 'cancelled', // Alterado de 'failed' para 'cancelled' para compatibilidade com o enum
+            payment_status: 'approved',
+            payment_method: transaction.payment_method || 'pix',
+            payment_id: transaction.payment_external_reference,
+            metadata: {
+              post,
+              providerResponse: responseData,
+              providerRequestData,
+              formattedLink,
+              error: `Saldo insuficiente no provedor: ${responseData.error}`,
+              unitPrice: finalUnitPrice,
+              calculatedAmount: amount,
+              provider: {
+                id: provider.id,
+                name: provider.name
+              }
+            }
+          })
+          .select()
+          .single();
+        
+        if (orderError) {
+          console.error('Erro ao cadastrar pedido com erro:', orderError);
+        } else {
+          console.log('Pedido com erro cadastrado com sucesso:', orderData);
+        }
+        
+        return {
+          success: false,
+          error: `Saldo insuficiente no provedor: ${responseData.error}`,
+          post,
+          providerResponse: responseData,
+          orderData
+        };
+      }
       
-      // Cadastrar o pedido na tabela orders mesmo com erro
+      // Usar o mapeamento de erros definido anteriormente
+      let friendlyErrorMessage = errorMessage;
+      for (const [errorPattern, friendlyMessage] of Object.entries(errorMessages)) {
+        if (responseData.error.toLowerCase().includes(errorPattern.toLowerCase())) {
+          friendlyErrorMessage = friendlyMessage;
+          break;
+        }
+      }
+      
+      // Calcular o valor do pedido
+      const { amount, unitPrice: finalUnitPrice, isVariationPrice } = calculateOrderAmount(service, parseInt(quantity.toString()));
+      
+      // Cadastrar o pedido bem-sucedido na tabela orders
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
           transaction_id: transaction.id,
           service_id: service.id,
-          customer_id: customer.id,
+          customer_id: customerId,
+          user_id: transaction.user_id,
           target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
           quantity: quantity,
           amount: amount || 0, // Garantir que amount não seja null
-          status: 'failed', // Alterado de 'error' para 'failed' para compatibilidade com o enum
+          status: 'cancelled', // Alterado de 'failed' para 'cancelled' para compatibilidade com o enum
           payment_status: 'approved',
           payment_method: transaction.payment_method || 'pix',
           payment_id: transaction.payment_external_reference,
@@ -176,7 +276,13 @@ export async function sendOrderToProvider(params: {
             providerResponse: responseData,
             providerRequestData,
             formattedLink,
-            error: errorMessage // Adicionando a mensagem de erro nos metadados
+            error: friendlyErrorMessage, // Adicionando a mensagem de erro nos metadados
+            unitPrice: finalUnitPrice,
+            calculatedAmount: amount,
+            provider: {
+              id: provider.id,
+              name: provider.name
+            }
           }
         })
         .select()
@@ -190,7 +296,7 @@ export async function sendOrderToProvider(params: {
       
       return {
         success: false,
-        error: errorMessage,
+        error: friendlyErrorMessage,
         post,
         providerResponse: responseData,
         orderData
@@ -199,10 +305,8 @@ export async function sendOrderToProvider(params: {
       // Se não houver erro, considerar como sucesso
       console.log('Pedido enviado com sucesso para o provedor:', responseData);
       
-      // Calcular o valor do pedido (quantidade * preço unitário)
-      const unitPrice = service.preco || (service.service_variations && service.service_variations.length > 0 ? 
-                      service.service_variations[0].preco : 0);
-      const amount = parseFloat(quantity) * unitPrice;
+      // Calcular o valor do pedido
+      const { amount, unitPrice: finalUnitPrice, isVariationPrice } = calculateOrderAmount(service, parseInt(quantity.toString()));
       
       // Cadastrar o pedido bem-sucedido na tabela orders
       const { data: orderData, error: orderError } = await supabase
@@ -210,7 +314,8 @@ export async function sendOrderToProvider(params: {
         .insert({
           transaction_id: transaction.id,
           service_id: service.id,
-          customer_id: customer.id,
+          customer_id: customerId,
+          user_id: transaction.user_id,
           target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
           quantity: quantity,
           amount: amount || 0, // Garantir que amount não seja null
@@ -218,12 +323,18 @@ export async function sendOrderToProvider(params: {
           payment_status: 'approved',
           payment_method: transaction.payment_method || 'pix',
           payment_id: transaction.payment_external_reference,
-          external_order_id: responseData.order || null,
+          external_order_id: responseData.order || responseData.id || responseData.order_id || null,
           metadata: {
             post,
             providerResponse: responseData,
             providerRequestData,
-            formattedLink
+            formattedLink,
+            unitPrice: finalUnitPrice,
+            calculatedAmount: amount,
+            provider: {
+              id: provider.id,
+              name: provider.name
+            }
           }
         })
         .select()
@@ -245,23 +356,23 @@ export async function sendOrderToProvider(params: {
   } catch (orderError) {
     console.error('Erro ao processar pedido:', orderError);
     
-    // Calcular o valor do pedido (quantidade * preço unitário)
-    const unitPrice = service.preco || (service.service_variations && service.service_variations.length > 0 ? 
-                    service.service_variations[0].preco : 0);
-    const amount = parseFloat(quantity) * unitPrice;
+    // Calcular o valor do pedido
+    const { amount, unitPrice: finalUnitPrice, isVariationPrice } = calculateOrderAmount(service, parseInt(quantity.toString()));
     
     // Cadastrar o pedido com erro na tabela orders
     const errorMessage = String(orderError);
-    const { data: orderData, error: orderError2 } = await supabase
+    
+    const { data: orderData, error: insertError } = await supabase
       .from('orders')
       .insert({
         transaction_id: transaction.id,
         service_id: service.id,
-        customer_id: customer.id,
+        customer_id: customerId,
+        user_id: transaction.user_id,
         target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
         quantity: quantity,
         amount: amount || 0, // Garantir que amount não seja null
-        status: 'failed', // Alterado de 'error' para 'failed' para compatibilidade com o enum
+        status: 'cancelled', // Alterado de 'failed' para 'cancelled' para compatibilidade com o enum
         payment_status: 'approved',
         payment_method: transaction.payment_method || 'pix',
         payment_id: transaction.payment_external_reference,
@@ -269,14 +380,20 @@ export async function sendOrderToProvider(params: {
           post,
           error: errorMessage,
           providerRequestData,
-          formattedLink
+          formattedLink,
+          unitPrice: finalUnitPrice,
+          calculatedAmount: amount,
+          provider: {
+            id: provider.id,
+            name: provider.name
+          }
         }
       })
       .select()
       .single();
     
-    if (orderError2) {
-      console.error('Erro ao cadastrar pedido com erro de requisição:', orderError2);
+    if (insertError) {
+      console.error('Erro ao cadastrar pedido com erro de requisição:', insertError);
     } else {
       console.log('Pedido com erro de requisição cadastrado com sucesso:', orderData);
     }
@@ -289,3 +406,34 @@ export async function sendOrderToProvider(params: {
     };
   }
 }
+
+// Função auxiliar para calcular o valor do pedido com base na quantidade e no serviço
+const calculateOrderAmount = (service: any, quantity: number): { amount: number, unitPrice: number, isVariationPrice: boolean } => {
+  // Obter o preço base do serviço
+  const baseUnitPrice = service.preco || (service.service_variations && service.service_variations.length > 0 ? 
+                      service.service_variations[0].preco : 0);
+  
+  let finalUnitPrice = baseUnitPrice;
+  let isVariationPrice = false;
+  
+  // Verificar se existe uma variação para a quantidade solicitada
+  if (service.service_variations && service.service_variations.length > 0) {
+    const matchingVariation = service.service_variations.find(
+      (variation: any) => variation.quantidade === parseInt(quantity.toString())
+    );
+    
+    if (matchingVariation) {
+      finalUnitPrice = matchingVariation.preco;
+      isVariationPrice = true;
+      console.log(`Usando preço da variação para quantidade ${quantity}: ${finalUnitPrice}`);
+    }
+  }
+  
+  // Calcular o valor total
+  // Se for um preço de variação, o valor já é o preço total para aquela quantidade
+  // Caso contrário, multiplicamos a quantidade pelo preço unitário
+  const amount = isVariationPrice ? finalUnitPrice : parseFloat(quantity.toString()) * finalUnitPrice;
+  console.log(`Calculando valor: ${isVariationPrice ? 'Preço fixo da variação' : `${quantity} x ${finalUnitPrice}`} = ${amount}`);
+  
+  return { amount, unitPrice: finalUnitPrice, isVariationPrice };
+};

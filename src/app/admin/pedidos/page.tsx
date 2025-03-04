@@ -193,9 +193,30 @@ export default function OrdersPage() {
   };
 
   // Extrair lista única de provedores para o filtro
-  const providers = ['all', ...new Set(orders
-    .filter(order => order.metadata?.provider)
-    .map(order => order.metadata.provider))];
+  const getProviderName = (provider: any): string => {
+    if (!provider) return 'unknown';
+    
+    if (typeof provider === 'string') {
+      return provider;
+    }
+    
+    if (typeof provider === 'object') {
+      if (provider.name && typeof provider.name === 'string') {
+        return provider.name;
+      }
+      if (provider.id && typeof provider.id === 'string') {
+        return provider.id;
+      }
+    }
+    
+    return 'unknown';
+  };
+  
+  const providers = ['all', ...Array.from(new Set(
+    orders
+      .filter(order => order.metadata?.provider)
+      .map(order => getProviderName(order.metadata.provider))
+  ))];
 
   const resetFilters = () => {
     setSearchTerm('');
@@ -375,7 +396,8 @@ export default function OrdersPage() {
                 <option value="all">Todos os Provedores</option>
                 {providers.filter(p => p !== 'all').map((provider) => (
                   <option key={provider} value={provider}>
-                    {provider.charAt(0).toUpperCase() + provider.slice(1)}
+                    {provider === 'unknown' ? 'Desconhecido' : 
+                     provider.charAt(0).toUpperCase() + provider.slice(1)}
                   </option>
                 ))}
               </select>

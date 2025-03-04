@@ -66,13 +66,22 @@ async function processTransaction(transactionId: string) {
       if (!existingCustomer) {
         console.log('[ProcessTransaction] Criando cliente para usuário:', transaction.customer_email || transaction.metadata?.email || transaction.metadata?.contact?.email || transaction.metadata?.profile?.email || transaction.user?.email);
         
+        // Obter o nome de usuário do Instagram do perfil alvo
+        const instagramUsername = transaction.target_username || 
+                                  transaction.metadata?.profile?.username || 
+                                  transaction.metadata?.target_username || 
+                                  (transaction.metadata?.posts && transaction.metadata?.posts.length > 0 ? 
+                                    transaction.metadata?.posts[0].username : '');
+        
+        console.log('[ProcessTransaction] Instagram username detectado:', instagramUsername);
+        
         const { data: newCustomer, error: createError } = await supabase
           .from('customers')
           .insert({
             email: transaction.customer_email || transaction.metadata?.email || transaction.metadata?.contact?.email || transaction.metadata?.profile?.email || transaction.user?.email,
             name: transaction.customer_name || transaction.metadata?.profile?.full_name || transaction.metadata?.profile?.username || transaction.metadata?.target_username || (transaction.customer_email || transaction.metadata?.email || transaction.metadata?.contact?.email || transaction.metadata?.profile?.email || transaction.user?.email).split('@')[0],
-            phone: '',
-            instagram_username: transaction.target_username || ''
+            phone: transaction.customer_phone || transaction.metadata?.phone || transaction.metadata?.contact?.phone || '',
+            instagram_username: instagramUsername
           })
           .select()
           .single();
@@ -436,6 +445,7 @@ async function processTransaction(transactionId: string) {
             .insert({
               transaction_id: transactionId,
               user_id: transaction.user_id,
+              customer_id: transaction.customer_id,
               service_id: transaction.service_id,
               provider_id: provider.id,
               external_order_id: orderResponse.orderId,
@@ -468,20 +478,21 @@ async function processTransaction(transactionId: string) {
             throw orderError;
           }
 
-          console.log('[ProcessTransaction] Atualizando status da transação...');
-          const { error: updateError } = await supabase
+          console.log('[ProcessTransaction] Atualizando transação com order_id:', order.id);
+          const { error: updateTransactionError } = await supabase
             .from('transactions')
             .update({
+              order_created: true,
+              order_id: order.id,
               status: 'processing',
-              processed_at: new Date().toISOString(),
-              user_id: order.user_id,
-              order_id: order.id
+              processed_at: new Date().toISOString()
             })
             .eq('id', transactionId);
-
-          if (updateError) {
-            console.error('[ProcessTransaction] Erro ao atualizar status da transação:', updateError);
-            throw updateError;
+          
+          if (updateTransactionError) {
+            console.error('[ProcessTransaction] Erro ao atualizar transação com order_id:', updateTransactionError);
+          } else {
+            console.log('[ProcessTransaction] Transação atualizada com order_id:', order.id);
           }
 
           const endTime = new Date();
@@ -510,6 +521,7 @@ async function processTransaction(transactionId: string) {
             .insert({
               transaction_id: transactionId,
               user_id: transaction.user_id,
+              customer_id: transaction.customer_id,
               service_id: transaction.service_id,
               provider_id: provider.id,
               external_order_id: orderResponse.orderId,
@@ -542,20 +554,21 @@ async function processTransaction(transactionId: string) {
             throw orderError;
           }
 
-          console.log('[ProcessTransaction] Atualizando status da transação...');
-          const { error: updateError } = await supabase
+          console.log('[ProcessTransaction] Atualizando transação com order_id:', order.id);
+          const { error: updateTransactionError } = await supabase
             .from('transactions')
             .update({
+              order_created: true,
+              order_id: order.id,
               status: 'processing',
-              processed_at: new Date().toISOString(),
-              user_id: order.user_id,
-              order_id: order.id
+              processed_at: new Date().toISOString()
             })
             .eq('id', transactionId);
-
-          if (updateError) {
-            console.error('[ProcessTransaction] Erro ao atualizar status da transação:', updateError);
-            throw updateError;
+          
+          if (updateTransactionError) {
+            console.error('[ProcessTransaction] Erro ao atualizar transação com order_id:', updateTransactionError);
+          } else {
+            console.log('[ProcessTransaction] Transação atualizada com order_id:', order.id);
           }
 
           const endTime = new Date();
