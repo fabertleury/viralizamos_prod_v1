@@ -211,51 +211,68 @@ export async function processTransaction(transactionId: string) {
 
     console.log('[ProcessTransaction] Dados da transação:', JSON.stringify(transaction, null, 2));
 
-    // Salvar ou atualizar o perfil do usuário
-    const email = transaction.customer_email || 
-                 transaction.metadata?.email || 
-                 transaction.metadata?.contact?.email || 
-                 transaction.metadata?.profile?.email || 
-                 transaction.user?.email;
-    
-    if (email) {
-      // Verificar se o usuário já existe
-      const { data: existingUser, error: userError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email)
+    // Verificar se o usuário existe
+    if (transaction.customer_email || transaction.metadata?.email || transaction.metadata?.contact?.email || transaction.metadata?.profile?.email || transaction.user?.email) {
+      console.log('[ProcessTransaction] Verificando cliente:', transaction.customer_email || transaction.metadata?.email || transaction.metadata?.contact?.email || transaction.metadata?.profile?.email || transaction.user?.email);
+      
+      // Verificar se o cliente já existe
+      const { data: existingCustomer, error: customerError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('email', transaction.customer_email || transaction.metadata?.email || transaction.metadata?.contact?.email || transaction.metadata?.profile?.email || transaction.user?.email)
         .single();
       
-      if (userError && userError.code !== 'PGRST116') { // PGRST116 é o código para "não encontrado"
-        console.error('[ProcessTransaction] Erro ao verificar perfil do usuário:', userError);
+      if (customerError && customerError.code !== 'PGSQL_ERROR_NO_DATA_FOUND') {
+        console.error('[ProcessTransaction] Erro ao verificar cliente:', customerError);
       }
       
-      if (!existingUser) {
-        // Extrair nome do usuário
-        const userName = transaction.customer_name || 
-                        transaction.metadata?.profile?.full_name || 
-                        transaction.metadata?.profile?.username || 
-                        transaction.metadata?.target_username;
+      let customerId = existingCustomer?.id;
+      
+      // Se o cliente não existe, criar novo
+      if (!existingCustomer) {
+        console.log('[ProcessTransaction] Criando cliente para usuário:', transaction.customer_email || transaction.metadata?.email || transaction.metadata?.contact?.email || transaction.metadata?.profile?.email || transaction.user?.email);
         
-        console.log('[ProcessTransaction] Criando perfil para usuário:', email);
-        
-        // Usuário não existe, criar novo
-        const { error: createError } = await supabase
-          .from('profiles')
+        const { data: newCustomer, error: createError } = await supabase
+          .from('customers')
           .insert({
-            email: email,
-            name: userName || email.split('@')[0],
-            role: 'customer',
-            active: true
-          });
+            email: transaction.customer_email || transaction.metadata?.email || transaction.metadata?.contact?.email || transaction.metadata?.profile?.email || transaction.user?.email,
+            name: transaction.customer_name || transaction.metadata?.profile?.full_name || transaction.metadata?.profile?.username || transaction.metadata?.target_username || (transaction.customer_email || transaction.metadata?.email || transaction.metadata?.contact?.email || transaction.metadata?.profile?.email || transaction.user?.email).split('@')[0],
+            phone: '',
+            instagram_username: transaction.target_username || ''
+          })
+          .select()
+          .single();
         
         if (createError) {
-          console.error('[ProcessTransaction] Erro ao criar perfil do usuário:', createError);
+          console.error('[ProcessTransaction] Erro ao criar cliente:', createError);
         } else {
-          console.log('[ProcessTransaction] Perfil do usuário criado com sucesso');
+          console.log('[ProcessTransaction] Cliente criado com sucesso:', newCustomer);
+          customerId = newCustomer.id;
+          
+          // Atualizar a transação com o ID do cliente
+          const { error: updateError } = await supabase
+            .from('transactions')
+            .update({ customer_id: customerId })
+            .eq('id', transactionId);
+          
+          if (updateError) {
+            console.error('[ProcessTransaction] Erro ao atualizar transação com customer_id:', updateError);
+          }
         }
       } else {
-        console.log('[ProcessTransaction] Usuário já existe no sistema:', existingUser);
+        console.log('[ProcessTransaction] Cliente encontrado:', existingCustomer);
+        
+        // Garantir que a transação tenha o customer_id correto
+        if (!transaction.customer_id || transaction.customer_id !== customerId) {
+          const { error: updateError } = await supabase
+            .from('transactions')
+            .update({ customer_id: customerId })
+            .eq('id', transactionId);
+          
+          if (updateError) {
+            console.error('[ProcessTransaction] Erro ao atualizar transação com customer_id:', updateError);
+          }
+        }
       }
     }
 
@@ -267,12 +284,33 @@ export async function processTransaction(transactionId: string) {
 
     if (existingOrders && existingOrders.length > 0) {
       console.log('[ProcessTransaction] Pedidos já existem:', existingOrders);
+      
+      // Garantir que a transação esteja marcada como tendo pedidos criados
+      const { error: updateError } = await supabase
+        .from('transactions')
+        .update({
+          order_created: true,
+          order_id: existingOrders[0].id
+        })
+        .eq('id', transactionId);
+        
+      if (updateError) {
+        console.error('[ProcessTransaction] Erro ao atualizar flag order_created:', updateError);
+      } else {
+        console.log('[ProcessTransaction] Flag order_created atualizado com sucesso');
+      }
+      
       return existingOrders;
     }
 
     // Verificar se o serviço tem um provedor específico
     let provider = null;
-    if (transaction.service.provider_id) {
+    if (transaction.service && transaction.service.metadata && transaction.service.metadata.provider) {
+      // Primeiro, tentar obter o provedor do metadata do serviço
+      provider = transaction.service.metadata.provider;
+      console.log('[ProcessTransaction] Provedor encontrado no metadata do serviço:', provider.name);
+    } else if (transaction.service && transaction.service.provider_id) {
+      // Se não encontrar no metadata, buscar no banco de dados
       const { data: providerData, error: providerError } = await supabase
         .from('providers')
         .select('*')
@@ -281,15 +319,17 @@ export async function processTransaction(transactionId: string) {
       
       if (providerError) {
         console.error('[ProcessTransaction] Erro ao buscar provedor:', providerError);
+        throw new Error(`Erro ao buscar provedor: ${providerError.message}`);
       } else {
         provider = providerData;
-        console.log('[ProcessTransaction] Provedor encontrado:', provider);
+        console.log('[ProcessTransaction] Provedor encontrado no banco de dados:', provider.name);
       }
     }
 
-    // Se não encontrou um provedor específico, usar o provedor padrão (Fama)
+    // Se não encontrou um provedor específico, lançar erro
     if (!provider) {
-      console.log('[ProcessTransaction] Usando provedor padrão (Fama)');
+      console.error('[ProcessTransaction] Provedor não encontrado para o serviço:', transaction.service);
+      throw new Error('Provedor não encontrado para o serviço. Verifique a configuração do serviço.');
     }
 
     console.log('[ProcessTransaction] Tipo de serviço:', transaction.service.type);
@@ -307,59 +347,40 @@ export async function processTransaction(transactionId: string) {
 
       for (const post of posts) {
         console.log('[ProcessTransaction] Processando post:', post);
-        const postCode = post.code || post.shortcode || post.id;
+        const postCode = post.code || post.id || post.shortcode;
         const postLink = `https://instagram.com/p/${postCode}`;
         
         try {
           let orderResponse;
           
-          if (provider) {
-            // Usar a API genérica de provedores
-            console.log('[ProcessTransaction] Criando pedido no provedor:', provider.name);
-            
-            // Preparar o corpo da requisição
-            const requestBody = {
-              provider: provider,
-              service: {
-                id: transaction.service.id,
-                service: transaction.service.external_id
-              },
-              quantity: quantityPerPost,
-              link: postLink
-            };
-            
-            // Fazer a requisição para a API de provedores
-            const response = await fetch('/api/providers/add-order', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(requestBody)
-            });
-            
-            if (!response.ok) {
-              throw new Error(`Erro ao criar pedido no provedor: ${response.statusText}`);
-            }
-            
-            orderResponse = await response.json();
-            console.log('[ProcessTransaction] Resposta da API do provedor:', orderResponse);
-          } else {
-            // Usar a API do Fama (legado)
-            console.log('[ProcessTransaction] Criando pedido na API Fama:', {
-              serviceId: transaction.service.external_id,
-              quantity: quantityPerPost,
-              link: postLink
-            });
-            
-            orderResponse = await famaRedesOrderService.createOrder(
-              transaction.service.external_id,
-              quantityPerPost,
-              postLink
-            );
-            
-            console.log('[ProcessTransaction] Resposta da API Fama:', orderResponse);
+          // Inicializar o serviço de mídia social com o provedor correto
+          console.log('[ProcessTransaction] Criando pedido no provedor para o post:', postLink);
+          console.log('[ProcessTransaction] Usando provedor:', provider.name);
+          
+          const socialMediaService = new SocialMediaService(provider);
+          
+          // Criar o pedido no provedor usando o external_id do serviço
+          const serviceExternalId = transaction.service.external_id || 
+                                   (transaction.service.metadata && transaction.service.metadata.service);
+          
+          if (!serviceExternalId) {
+            throw new Error(`ID externo do serviço não encontrado para o serviço ${transaction.service.id}`);
           }
-
+          
+          console.log('[ProcessTransaction] ID externo do serviço:', serviceExternalId);
+          
+          // Criar o pedido no provedor
+          orderResponse = await socialMediaService.createOrder({
+            service: serviceExternalId,
+            provider_id: provider.id,
+            link: postLink,
+            quantity: quantityPerPost,
+            username: transaction.target_username,
+            transaction_id: transaction.id
+          });
+          
+          console.log('[ProcessTransaction] Resposta do provedor:', orderResponse);
+          
           console.log('[ProcessTransaction] Criando pedido no banco...');
           const { data: order, error: orderError } = await supabase
             .from('orders')
@@ -367,19 +388,28 @@ export async function processTransaction(transactionId: string) {
               transaction_id: transactionId,
               user_id: transaction.user_id,
               service_id: transaction.service_id,
-              provider_id: provider?.id || null,
-              external_order_id: provider ? orderResponse.orderId : orderResponse.data.order_id,
-              status: provider ? orderResponse.status : orderResponse.data.status,
+              provider_id: provider.id,
+              external_order_id: orderResponse.orderId,
+              status: orderResponse.status || 'processing',
               amount: amountPerPost,
               quantity: quantityPerPost,
-              target_username: post.username || transaction.metadata?.username,
+              target_username: post.username || transaction.metadata?.username || transaction.target_username,
+              payment_status: transaction.status || 'pending',
+              payment_method: transaction.payment_method || 'pix',
+              payment_id: transaction.payment_id || transaction.external_id,
               metadata: {
                 post: post,
                 link: postLink,
-                provider: provider?.slug || 'fama',
-                provider_service_id: transaction.service.external_id,
-                provider_order_id: provider ? orderResponse.orderId : orderResponse.data.order_id,
-                provider_response: orderResponse
+                provider: provider.slug,
+                provider_name: provider.name,
+                provider_service_id: serviceExternalId,
+                provider_order_id: orderResponse.orderId,
+                provider_response: orderResponse,
+                customer: {
+                  name: transaction.customer_name || transaction.metadata?.customer?.name,
+                  email: transaction.customer_email || transaction.metadata?.customer?.email,
+                  phone: transaction.customer_phone || transaction.metadata?.customer?.phone
+                }
               }
             })
             .select()
@@ -430,53 +460,34 @@ export async function processTransaction(transactionId: string) {
       try {
         let orderResponse;
         
-        if (provider) {
-          // Usar a API genérica de provedores
-          console.log('[ProcessTransaction] Criando pedido no provedor:', provider.name);
-          
-          // Preparar o corpo da requisição
-          const requestBody = {
-            provider: provider,
-            service: {
-              id: transaction.service.id,
-              service: transaction.service.external_id
-            },
-            quantity: transaction.service.quantidade,
-            link: profileLink
-          };
-          
-          // Fazer a requisição para a API de provedores
-          const response = await fetch('/api/providers/add-order', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestBody)
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Erro ao criar pedido no provedor: ${response.statusText}`);
-          }
-          
-          orderResponse = await response.json();
-          console.log('[ProcessTransaction] Resposta da API do provedor:', orderResponse);
-        } else {
-          // Usar a API do Fama (legado)
-          console.log('[ProcessTransaction] Criando pedido na API Fama:', {
-            serviceId: transaction.service.external_id,
-            quantity: transaction.service.quantidade,
-            link: profileLink
-          });
-          
-          orderResponse = await famaRedesOrderService.createOrder(
-            transaction.service.external_id,
-            transaction.service.quantidade,
-            profileLink
-          );
-          
-          console.log('[ProcessTransaction] Resposta da API Fama:', orderResponse);
+        // Inicializar o serviço de mídia social com o provedor correto
+        console.log('[ProcessTransaction] Criando pedido no provedor para o perfil:', profileLink);
+        console.log('[ProcessTransaction] Usando provedor:', provider.name);
+        
+        const socialMediaService = new SocialMediaService(provider);
+        
+        // Criar o pedido no provedor usando o external_id do serviço
+        const serviceExternalId = transaction.service.external_id || 
+                                 (transaction.service.metadata && transaction.service.metadata.service);
+        
+        if (!serviceExternalId) {
+          throw new Error(`ID externo do serviço não encontrado para o serviço ${transaction.service.id}`);
         }
-
+        
+        console.log('[ProcessTransaction] ID externo do serviço:', serviceExternalId);
+        
+        // Criar o pedido no provedor
+        orderResponse = await socialMediaService.createOrder({
+          service: serviceExternalId,
+          provider_id: provider.id,
+          link: profileLink,
+          quantity: transaction.service.quantidade,
+          username: transaction.target_username,
+          transaction_id: transaction.id
+        });
+        
+        console.log('[ProcessTransaction] Resposta do provedor:', orderResponse);
+        
         console.log('[ProcessTransaction] Criando pedido no banco...');
         const { data: order, error: orderError } = await supabase
           .from('orders')
@@ -484,18 +495,27 @@ export async function processTransaction(transactionId: string) {
             transaction_id: transactionId,
             user_id: transaction.user_id,
             service_id: transaction.service_id,
-            provider_id: provider?.id || null,
-            external_order_id: provider ? orderResponse.orderId : orderResponse.data.order_id,
-            status: provider ? orderResponse.status : orderResponse.data.status,
+            provider_id: provider.id,
+            external_order_id: orderResponse.orderId,
+            status: orderResponse.status || 'processing',
             amount: transaction.amount,
             quantity: transaction.service.quantidade,
             target_username: username,
+            payment_status: transaction.status || 'pending',
+            payment_method: transaction.payment_method || 'pix',
+            payment_id: transaction.payment_id || transaction.external_id,
             metadata: {
               link: profileLink,
-              provider: provider?.slug || 'fama',
-              provider_service_id: transaction.service.external_id,
-              provider_order_id: provider ? orderResponse.orderId : orderResponse.data.order_id,
-              provider_response: orderResponse
+              provider: provider.slug,
+              provider_name: provider.name,
+              provider_service_id: serviceExternalId,
+              provider_order_id: orderResponse.orderId,
+              provider_response: orderResponse,
+              customer: {
+                name: transaction.customer_name || transaction.metadata?.customer?.name,
+                email: transaction.customer_email || transaction.metadata?.customer?.email,
+                phone: transaction.customer_phone || transaction.metadata?.customer?.phone
+              }
             }
           })
           .select()

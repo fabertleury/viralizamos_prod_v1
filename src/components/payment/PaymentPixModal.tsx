@@ -49,7 +49,17 @@ export function PaymentPixModal({
       paymentId, 
       initialQrCodeBase64 
     });
-  }, [qrCode, qrCodeText, paymentId, initialQrCodeBase64]);
+    
+    // Rastrear início do checkout com Facebook Pixel
+    if (typeof window !== 'undefined' && (window as any).fbq) {
+      (window as any).fbq('track', 'InitiateCheckout', {
+        value: amount,
+        currency: 'BRL',
+        content_name: serviceName,
+        content_ids: [serviceId]
+      });
+    }
+  }, [qrCode, qrCodeText, paymentId, initialQrCodeBase64, amount, serviceName, serviceId]);
 
   // Função para garantir que o QR Code seja renderizável
   const getQRCodeSrc = useCallback(() => {
@@ -152,6 +162,17 @@ export function PaymentPixModal({
           case 'approved':
             setPaymentStatus('success');
             console.log('Pagamento APROVADO');
+            
+            // Rastrear conversão com Facebook Pixel
+            if (typeof window !== 'undefined' && (window as any).fbq) {
+              (window as any).fbq('track', 'Purchase', {
+                value: amount,
+                currency: 'BRL',
+                content_name: serviceName,
+                content_ids: [serviceId],
+                content_type: 'product'
+              });
+            }
             
             // Redirecionar para a página de agradecimento
             if (data.transaction_id) {

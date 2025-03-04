@@ -158,7 +158,7 @@ export default function PaymentPage() {
             return {
               id: post.id,
               code: post.code,
-              link: `https://www.instagram.com/p/${post.code}/`,
+              link: `https://instagram.com/p/${post.code}`,
               caption: post.caption || '',
               image_url: post.image_url || null
             };

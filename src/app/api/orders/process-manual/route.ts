@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { processTransaction } from '@/lib/famaapi';
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,7 +7,7 @@ export async function POST(request: NextRequest) {
     
     if (!transactionId) {
       return NextResponse.json(
-        { error: 'Transaction ID is required' },
+        { error: 'ID da transação é obrigatório' },
         { status: 400 }
       );
     }
@@ -32,17 +31,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Importar a função processTransaction do famaapi.ts
+    const { processTransaction } = await import('@/lib/famaapi');
+
     // Processar a transação
     console.log('[ProcessManual] Iniciando processamento...');
     const result = await processTransaction(transactionId);
     console.log('[ProcessManual] Processamento concluído:', result);
 
     return NextResponse.json({
-      status: 'success',
-      data: result
+      success: true,
+      orders: result
     });
   } catch (error: any) {
-    console.error('[ProcessManual] Erro no processamento:', error);
+    console.error('[ProcessManual] Erro:', error);
     return NextResponse.json(
       { 
         error: error.message || 'Internal server error',

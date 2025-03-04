@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { formatDateToBrasilia } from '@/lib/utils/date';
 import { RefreshCw } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 
 interface Order {
   id: string;
@@ -28,11 +29,16 @@ interface Order {
       remains: string;
       updated_at: string;
     };
+    email?: string;
   };
   created_at: string;
   service?: {
     name: string;
     type: string;
+  };
+  provider?: {
+    name: string;
+    id: string;
   };
   refills?: {
     id: string;
@@ -49,6 +55,16 @@ export default function AcompanharPedidoPage() {
   const [processingRefill, setProcessingRefill] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState<{ [key: string]: boolean }>({});
   const [userProfile, setUserProfile] = useState<{ email: string; name: string } | null>(null);
+
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const emailFromQuery = searchParams.get('email');
+    if (emailFromQuery) {
+      setEmail(emailFromQuery);
+      handleSearchOrders(emailFromQuery);
+    }
+  }, [searchParams]);
 
   // Verificar se o usuário está logado ao carregar a página
   useEffect(() => {
@@ -113,13 +129,54 @@ export default function AcompanharPedidoPage() {
           // Buscar em orders pelo email nos metadados
           const { data: ordersByEmail, error: ordersError } = await supabase
             .from('orders')
-            .select('id, user_id')
+            .select('id, user_id, customer_id')
             .filter('metadata->email', 'eq', emailToSearch)
             .order('created_at', { ascending: false });
             
           if (ordersError || !ordersByEmail || ordersByEmail.length === 0) {
-            toast.error('Email não encontrado');
-            setOrders([]);
+            // Buscar em customers pelo email
+            const { data: customer, error: customerError } = await supabase
+              .from('customers')
+              .select('id')
+              .eq('email', emailToSearch)
+              .single();
+              
+            if (customerError || !customer) {
+              toast.error('Email não encontrado');
+              setOrders([]);
+              return;
+            }
+            
+            // Buscar pedidos pelo customer_id
+            const { data: customerOrders, error: customerOrdersError } = await supabase
+              .from('orders')
+              .select(`
+                *,
+                service:service_id (
+                  name,
+                  type
+                ),
+                provider:provider_id (
+                  id,
+                  name
+                ),
+                refills (
+                  id,
+                  status,
+                  created_at
+                )
+              `)
+              .eq('customer_id', customer.id)
+              .order('created_at', { ascending: false });
+              
+            if (customerOrdersError) throw customerOrdersError;
+            setOrders(customerOrders || []);
+            
+            if (customerOrders?.length === 0) {
+              toast.info('Nenhum pedido encontrado para este email');
+            }
+            
+            setLoading(false);
             return;
           }
           
@@ -131,6 +188,10 @@ export default function AcompanharPedidoPage() {
               service:service_id (
                 name,
                 type
+              ),
+              provider:provider_id (
+                id,
+                name
               ),
               refills (
                 id,
@@ -148,6 +209,7 @@ export default function AcompanharPedidoPage() {
             toast.info('Nenhum pedido encontrado para este email');
           }
           
+          setLoading(false);
           return;
         }
         
@@ -164,6 +226,10 @@ export default function AcompanharPedidoPage() {
               service:service_id (
                 name,
                 type
+              ),
+              provider:provider_id (
+                id,
+                name
               ),
               refills (
                 id,
@@ -187,6 +253,10 @@ export default function AcompanharPedidoPage() {
                   name,
                   type
                 ),
+                provider:provider_id (
+                  id,
+                  name
+                ),
                 refills (
                   id,
                   status,
@@ -204,6 +274,7 @@ export default function AcompanharPedidoPage() {
             }
           }
           
+          setLoading(false);
           return;
         }
       }
@@ -216,6 +287,10 @@ export default function AcompanharPedidoPage() {
           service:service_id (
             name,
             type
+          ),
+          provider:provider_id (
+            id,
+            name
           ),
           refills (
             id,
@@ -314,7 +389,10 @@ export default function AcompanharPedidoPage() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ orderId })
+        body: JSON.stringify({ 
+          orderId,
+          email: email // Incluir o email para usuários não autenticados
+        })
       });
 
       if (!response.ok) {
@@ -413,6 +491,9 @@ export default function AcompanharPedidoPage() {
                           Quantidade
                         </th>
                         <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                          Provedor
+                        </th>
+                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
                           Status
                         </th>
                         <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
@@ -441,6 +522,9 @@ export default function AcompanharPedidoPage() {
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                             {order.quantity}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                            {order.provider?.name || 'Fama nas Redes'}
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-sm">
                             <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset ${getStatusColor(order.status)}`}>

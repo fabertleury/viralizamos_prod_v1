@@ -50,6 +50,7 @@ export interface InstagramAPIStatus {
 
 export interface ContentData {
   id: string;
+  code: string;
   type: 'image' | 'video' | 'carousel';
   caption: string;
   likes: number;
@@ -195,6 +196,7 @@ export const useInstagramAPI = () => {
 
         return {
           id: post.pk || post.id || post.code,
+          code: post.code || post.shortcode || post.pk || post.id,
           type: isVideo ? 'video' : 
                 isCarousel ? 'carousel' : 
                 'image',
@@ -265,6 +267,7 @@ export const useInstagramAPI = () => {
 
       return reelsList.map((reel: any) => ({
         id: reel.pk || reel.id || reel.code,
+        code: reel.code || reel.shortcode || reel.pk || reel.id,
         type: 'video',
         caption: reel.caption?.text || reel.caption || '',
         likes_count: reel.like_count || reel.likes_count || 0,
@@ -362,6 +365,7 @@ export const useInstagramAPI = () => {
       const combinedContent: ContentData[] = [
         ...postsData.map(post => ({
           id: post.id,
+          code: post.code,
           type: post.type,
           caption: post.caption || '',
           likes: post.likes_count,
@@ -372,6 +376,7 @@ export const useInstagramAPI = () => {
         })),
         ...reelsData.map(reel => ({
           id: reel.id,
+          code: reel.code,
           type: 'video',
           caption: reel.caption || '',
           likes: reel.likes_count,

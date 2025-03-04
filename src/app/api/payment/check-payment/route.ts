@@ -185,7 +185,7 @@ export async function POST(request: Request) {
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                  service: service.fama_id,
+                  service: service.provider_id,
                   link: post.link,
                   quantity: service.quantity,
                   transaction_id: transaction.id,

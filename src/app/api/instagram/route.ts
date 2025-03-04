@@ -29,14 +29,15 @@ export async function GET(request: NextRequest) {
 
   try {
     console.log('Fazendo requisição para a API do Instagram'); // Log de depuração
-    const response = await axios.post(
-      'https://rocketapi-for-instagram.p.rapidapi.com/instagram/user/get_info',
-      { username },
+    const response = await axios.get(
+      'https://instagram-scraper-api2.p.rapidapi.com/v1/info',
       {
+        params: {
+          username_or_id_or_url: username
+        },
         headers: {
           'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-          'x-rapidapi-host': 'rocketapi-for-instagram.p.rapidapi.com',
-          'Content-Type': 'application/json'
+          'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
         },
         timeout: 5000
       }
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
 
     console.log('Resposta da API recebida:', response.data); // Log de depuração
 
-    const userData = response.data.response.body.data.user;
+    const userData = response.data.data;
 
     console.log('Dados do usuário:', userData); // Log de depuração
 
@@ -57,12 +58,12 @@ export async function GET(request: NextRequest) {
       username: userData.username,
       isPrivate: userData.is_private,
       fullName: userData.full_name,
-      biography: userData.biography,
-      followerCount: userData.edge_followed_by.count,
-      followingCount: userData.edge_follow.count,
+      biography: userData.biography || '',
+      followerCount: userData.follower_count,
+      followingCount: userData.following_count,
       profilePicUrl: userData.profile_pic_url,
-      isVerified: userData.is_verified,
-      externalUrl: userData.external_url
+      isVerified: userData.is_verified || false,
+      externalUrl: userData.external_url || ''
     };
 
     console.log('Resposta final:', userResponse); // Log de depuração
@@ -107,20 +108,21 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const response = await axios.post(
-      'https://rocketapi-for-instagram.p.rapidapi.com/instagram/user/get_info',
-      { username },
+    const response = await axios.get(
+      'https://instagram-scraper-api2.p.rapidapi.com/v1/info',
       {
+        params: {
+          username_or_id_or_url: username
+        },
         headers: {
           'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-          'x-rapidapi-host': 'rocketapi-for-instagram.p.rapidapi.com',
-          'Content-Type': 'application/json'
+          'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
         },
         timeout: 5000
       }
     );
 
-    const userData = response.data.response.body.data.user;
+    const userData = response.data.data;
 
     if (!userData) {
       return NextResponse.json({ error: 'Perfil não encontrado' }, { status: 404 });
@@ -130,12 +132,12 @@ export async function POST(request: NextRequest) {
       username: userData.username,
       isPrivate: userData.is_private,
       fullName: userData.full_name,
-      biography: userData.biography,
-      followerCount: userData.edge_followed_by.count,
-      followingCount: userData.edge_follow.count,
+      biography: userData.biography || '',
+      followerCount: userData.follower_count,
+      followingCount: userData.following_count,
       profilePicUrl: userData.profile_pic_url,
-      isVerified: userData.is_verified,
-      externalUrl: userData.external_url
+      isVerified: userData.is_verified || false,
+      externalUrl: userData.external_url || ''
     });
   } catch (error) {
     console.error('Instagram API Error:', error);

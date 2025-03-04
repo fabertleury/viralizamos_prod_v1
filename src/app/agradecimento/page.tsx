@@ -6,23 +6,29 @@ import { createClient } from '@/lib/supabase/client';
 import { Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import type { CustomerData } from '@/types/customer';
 
 export default function AgradecimentoPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [transaction, setTransaction] = useState<any>(null);
+  const [customer, setCustomer] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchTransaction = async () => {
+    const fetchTransactionAndCustomer = async () => {
       try {
         setLoading(true);
         const supabase = createClient();
         
         // Obter ID da transação da URL
         let transactionId = searchParams.get('id');
-        let email = searchParams.get('email');
+        let emailParam = searchParams.get('email');
+        
+        // Armazenar o email para uso posterior
+        setEmail(emailParam);
         
         if (!transactionId) {
           setError('ID da transação não encontrado');
@@ -30,67 +36,263 @@ export default function AgradecimentoPage() {
           return;
         }
         
-        // Buscar detalhes da transação
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('id', transactionId)
-          .single();
+        // Verificar se o ID é um UUID ou um número
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(transactionId);
         
-        if (error) {
-          console.error('Erro ao buscar transação:', error);
-          setError('Erro ao buscar detalhes da transação');
-          setLoading(false);
-          return;
-        }
-        
-        if (!data) {
+        let query;
+        if (isUuid) {
+          // Se for UUID, buscar diretamente pelo ID
+          query = supabase
+            .from('transactions')
+            .select('*, customers(*)')
+            .eq('id', transactionId);
+        } else {
+          // Se for um número (como o ID do gateway de pagamento), tentar várias estratégias de busca
+          const searchStrategies = [
+            () => supabase
+              .from('transactions')
+              .select('*, customers(*)')
+              .eq('payment_id', transactionId)
+              .single(),
+            
+            () => supabase
+              .from('transactions')
+              .select('*, customers(*)')
+              .eq('payment_external_reference', transactionId)
+              .single(),
+            
+            () => supabase
+              .from('transactions')
+              .select('*, customers(*)')
+              .eq('external_id', transactionId)
+              .single()
+          ];
+          
+          // Tentar cada estratégia de busca
+          for (const strategy of searchStrategies) {
+            try {
+              const { data: foundData, error: strategyError } = await strategy();
+              
+              if (foundData) {
+                setTransaction(foundData);
+                
+                // Se a transação tem um cliente associado, definir o cliente
+                if (foundData.customers) {
+                  setCustomer(foundData.customers);
+                }
+                
+                // Rastrear evento de conclusão de compra com Facebook Pixel
+                if (typeof window !== 'undefined' && (window as any).fbq) {
+                  (window as any).fbq('track', 'CompleteRegistration', {
+                    content_name: 'Compra finalizada',
+                    status: 'success',
+                    transaction_id: transactionId,
+                    value: foundData.amount,
+                    currency: 'BRL'
+                  });
+                }
+                
+                // Se o email não estiver na URL, mas estiver na transação ou no cliente, atualizar a URL
+                if (!emailParam) {
+                  let transactionEmail = null;
+                  
+                  // Verificar em todas as possíveis localizações do email
+                  if (foundData.customers && foundData.customers.email) {
+                    transactionEmail = foundData.customers.email;
+                  } else if (foundData.customer_email) {
+                    transactionEmail = foundData.customer_email;
+                  } else if (foundData.metadata) {
+                    // Verificar em diferentes estruturas do metadata
+                    if (typeof foundData.metadata === 'string') {
+                      try {
+                        const parsedMetadata = JSON.parse(foundData.metadata);
+                        transactionEmail = parsedMetadata.customer?.email || 
+                                          parsedMetadata.email || 
+                                          parsedMetadata.customer_email;
+                      } catch (e) {
+                        console.warn('Erro ao fazer parse do metadata:', e);
+                      }
+                    } else if (typeof foundData.metadata === 'object') {
+                      transactionEmail = foundData.metadata.customer?.email || 
+                                        foundData.metadata.email || 
+                                        foundData.metadata.customer_email;
+                    }
+                  }
+                  
+                  console.log('Email encontrado na transação:', transactionEmail);
+                  
+                  if (transactionEmail) {
+                    // Atualizar a URL sem recarregar a página
+                    const newUrl = `${window.location.pathname}?id=${transactionId}&email=${encodeURIComponent(transactionEmail)}`;
+                    window.history.pushState({ path: newUrl }, '', newUrl);
+                    emailParam = transactionEmail;
+                  }
+                }
+                
+                setLoading(false);
+                return;
+              }
+            } catch (strategyError) {
+              console.warn('Erro em estratégia de busca:', strategyError);
+              // Continuar tentando outras estratégias
+            }
+          }
+          
+          // Se chegou aqui, nenhuma estratégia funcionou
           setError('Transação não encontrada');
           setLoading(false);
           return;
         }
         
-        setTransaction(data);
-        
-        // Se o email não estiver na URL, mas estiver na transação, atualizar a URL
-        if (!email && (data.customer_email || data.metadata?.customer?.email || data.metadata?.email)) {
-          const transactionEmail = data.customer_email || data.metadata?.customer?.email || data.metadata?.email;
-          if (transactionEmail) {
-            // Atualizar a URL sem recarregar a página
-            const newUrl = `${window.location.pathname}?id=${transactionId}&email=${encodeURIComponent(transactionEmail)}`;
-            window.history.pushState({ path: newUrl }, '', newUrl);
-            email = transactionEmail;
+        // Executar a consulta principal (apenas para o caso UUID)
+        if (isUuid) {
+          const { data, error: fetchError } = await query.single();
+          
+          if (fetchError) {
+            console.error('Erro ao buscar transação:', fetchError);
+            setError('Erro ao buscar detalhes da transação');
+            setLoading(false);
+            return;
+          }
+          
+          if (!data) {
+            setError('Transação não encontrada');
+            setLoading(false);
+            return;
+          }
+          
+          setTransaction(data);
+          
+          // Se a transação tem um cliente associado, definir o cliente
+          if (data.customers) {
+            setCustomer(data.customers);
+          }
+          
+          // Rastrear evento de conclusão de compra com Facebook Pixel
+          if (typeof window !== 'undefined' && (window as any).fbq) {
+            (window as any).fbq('track', 'CompleteRegistration', {
+              content_name: 'Compra finalizada',
+              status: 'success',
+              transaction_id: transactionId,
+              value: data.amount,
+              currency: 'BRL'
+            });
+          }
+          
+          // Se o email não estiver na URL, mas estiver na transação ou no cliente, atualizar a URL
+          if (!emailParam) {
+            let transactionEmail = null;
+            
+            if (data.customers && data.customers.email) {
+              transactionEmail = data.customers.email;
+            } else if (data.customer_email || data.metadata?.customer?.email || data.metadata?.email) {
+              transactionEmail = data.customer_email || data.metadata?.customer?.email || data.metadata?.email;
+            }
+            
+            if (transactionEmail) {
+              // Atualizar a URL sem recarregar a página
+              const newUrl = `${window.location.pathname}?id=${transactionId}&email=${encodeURIComponent(transactionEmail)}`;
+              window.history.pushState({ path: newUrl }, '', newUrl);
+              emailParam = transactionEmail;
+            }
           }
         }
         
-        // Se temos um email, criar ou atualizar o perfil
-        if (email) {
-          // Verificar se o usuário já existe
+        // Se temos um email, criar ou atualizar o perfil e o customer
+        if (emailParam) {
+          // Extrair nome do usuário
+          const userName = data.customer_name || 
+                          data.metadata?.customer?.name || 
+                          data.metadata?.profile?.full_name || 
+                          data.metadata?.profile?.username || 
+                          (data.customers ? data.customers.name : null) || 
+                          emailParam.split('@')[0];
+          
+          // Verificar se o usuário já existe na tabela profiles
           const { data: existingUser } = await supabase
             .from('profiles')
             .select('id')
-            .eq('email', email)
+            .eq('email', emailParam)
             .single();
           
           if (!existingUser) {
-            // Extrair nome do usuário
-            const userName = data.customer_name || 
-                            data.metadata?.customer?.name || 
-                            data.metadata?.profile?.full_name || 
-                            data.metadata?.profile?.username || 
-                            email.split('@')[0];
-            
             // Usuário não existe, criar novo
             await supabase
               .from('profiles')
               .insert({
-                email: email,
+                email: emailParam,
                 name: userName,
                 role: 'customer',
                 active: true
               });
             
             console.log('Perfil do usuário criado com sucesso');
+          }
+          
+          // Se a transação não tem cliente associado, verificar se o cliente existe e associar
+          if (!data.customers) {
+            // Verificar se o cliente já existe na tabela customers
+            const { data: existingCustomer } = await supabase
+              .from('customers')
+              .select('id')
+              .eq('email', emailParam)
+              .single();
+            
+            // Preparar dados do cliente
+            const customerData: CustomerData = {
+              email: emailParam,
+              name: userName,
+              metadata: {
+                ...data.metadata,
+                last_transaction_id: data.id,
+                last_transaction_date: data.created_at
+              }
+            };
+            
+            // Adicionar telefone se disponível
+            if (data.customer_phone || data.metadata?.customer?.phone || data.metadata?.phone) {
+              customerData.phone = data.customer_phone || data.metadata?.customer?.phone || data.metadata?.phone;
+            }
+            
+            // Adicionar username do Instagram se disponível
+            if (data.metadata?.instagram_username || data.metadata?.customer?.instagram_username) {
+              customerData.instagram_username = data.metadata?.instagram_username || data.metadata?.customer?.instagram_username;
+            }
+            
+            let customerId;
+            
+            if (!existingCustomer) {
+              // Cliente não existe, criar novo
+              const { data: newCustomer } = await supabase
+                .from('customers')
+                .insert(customerData)
+                .select('id')
+                .single();
+              
+              if (newCustomer) {
+                customerId = newCustomer.id;
+                console.log('Cliente criado com sucesso');
+              }
+            } else {
+              // Cliente existe, atualizar
+              await supabase
+                .from('customers')
+                .update(customerData)
+                .eq('id', existingCustomer.id);
+              
+              customerId = existingCustomer.id;
+              console.log('Cliente atualizado com sucesso');
+            }
+            
+            // Atualizar a transação com o customer_id
+            if (customerId) {
+              await supabase
+                .from('transactions')
+                .update({ customer_id: customerId })
+                .eq('id', data.id);
+              
+              console.log('Transação atualizada com customer_id');
+            }
           }
         }
       } catch (err) {
@@ -101,99 +303,110 @@ export default function AgradecimentoPage() {
       }
     };
 
-    fetchTransaction();
+    fetchTransactionAndCustomer();
   }, [searchParams, router]);
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="mt-4 text-lg">Carregando informações do seu pedido...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <h1 className="text-2xl font-bold text-center">Carregando...</h1>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md">
-          <h1 className="text-2xl font-bold text-center mb-6">Oops!</h1>
-          <p className="text-center mb-6">{error}</p>
-          <div className="flex justify-center">
-            <Link href="/" className="bg-primary text-white px-6 py-2 rounded-md hover:bg-primary/90">
-              Voltar para a página inicial
-            </Link>
-          </div>
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+          <strong className="font-bold">Erro! </strong>
+          <span className="block sm:inline">{error}</span>
         </div>
+        <Link href="/" className="text-primary hover:underline">
+          Voltar para a página inicial
+        </Link>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
-      <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md">
-        <div className="flex justify-center mb-6">
-          <Image 
-            src="/images/check-circle.svg" 
-            alt="Sucesso" 
-            width={80} 
-            height={80} 
-          />
-        </div>
-        
-        <h1 className="text-2xl font-bold text-center mb-2">Obrigado!</h1>
-        <p className="text-center mb-6">
-          Seu pedido foi recebido e está sendo processado.
-        </p>
-        
-        {transaction && (
-          <div className="mb-6">
-            <div className="bg-gray-50 p-4 rounded-md mb-4">
-              <h2 className="font-semibold mb-2">Detalhes do Pedido:</h2>
-              <p><span className="font-medium">Serviço:</span> {transaction.metadata?.service?.name || 'Serviço'}</p>
-              <p><span className="font-medium">Perfil:</span> @{transaction.target_username}</p>
-              <p><span className="font-medium">Status:</span> {
-                transaction.status === 'pending' ? 'Aguardando pagamento' :
-                transaction.status === 'processing' ? 'Em processamento' :
-                transaction.status === 'completed' ? 'Concluído' :
-                transaction.status === 'failed' ? 'Falhou' :
-                transaction.status
-              }</p>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-white to-gray-100">
+      <div className="max-w-md w-full bg-white rounded-lg shadow-xl overflow-hidden">
+        <div className="p-6 sm:p-8">
+          <div className="flex justify-center mb-6">
+            <div className="bg-green-100 p-3 rounded-full">
+              <svg className="h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
             </div>
-            
-            {transaction.status === 'pending' && transaction.payment_method === 'pix' && (
-              <div className="bg-gray-50 p-4 rounded-md mb-4 text-center">
-                <h2 className="font-semibold mb-2">Finalize seu pagamento:</h2>
-                <p className="mb-4">Escaneie o QR Code abaixo com seu aplicativo bancário</p>
-                
-                {transaction.metadata?.payment?.qr_code_base64 && (
-                  <div className="flex justify-center mb-4">
-                    <Image 
-                      src={transaction.metadata.payment.qr_code_base64} 
-                      alt="QR Code PIX" 
-                      width={200} 
-                      height={200} 
-                    />
-                  </div>
-                )}
-                
-                {transaction.metadata?.payment?.qr_code && (
-                  <div className="mb-4">
-                    <p className="mb-2 text-sm">Ou copie o código PIX:</p>
-                    <div className="bg-white p-2 rounded border text-xs overflow-auto max-h-24">
-                      {transaction.metadata.payment.qr_code}
-                    </div>
+          </div>
+          
+          <h1 className="text-2xl font-bold text-center text-gray-900 mb-2">
+            Pagamento Aprovado!
+          </h1>
+          
+          <p className="text-center text-gray-600 mb-6">
+            Seu pedido foi confirmado e está sendo processado.
+          </p>
+          
+          {transaction && (
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">Detalhes do Pedido</h2>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">ID da Transação:</span>
+                  <span className="font-medium">{transaction.external_id || transaction.id.substring(0, 8)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Valor:</span>
+                  <span className="font-medium">
+                    {new Intl.NumberFormat('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL'
+                    }).format(transaction.amount)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Data:</span>
+                  <span className="font-medium">
+                    {new Date(transaction.created_at).toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Status:</span>
+                  <span className="font-medium text-green-600">Aprovado</span>
+                </div>
+                {customer && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Cliente:</span>
+                    <span className="font-medium">{customer.name || customer.email}</span>
                   </div>
                 )}
               </div>
-            )}
+            </div>
+          )}
+          
+          <div className="text-center space-y-4">
+            <p className="text-gray-600">
+              Você receberá atualizações sobre seu pedido por email.
+            </p>
+            
+            <div className="pt-4 space-y-3">
+              <Link 
+                href={`/acompanhar-pedido?email=${encodeURIComponent(email || (customer?.email || ''))}`}
+                className="inline-block w-full bg-primary hover:bg-primary-dark text-white font-bold py-2 px-6 rounded-lg transition-colors duration-200"
+              >
+                Acompanhar meu pedido
+              </Link>
+              
+              <Link 
+                href="/" 
+                className="inline-block w-full border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2 px-6 rounded-lg transition-colors duration-200"
+              >
+                Voltar para a página inicial
+              </Link>
+            </div>
           </div>
-        )}
-        
-        <div className="flex justify-center">
-          <Link href="/" className="bg-primary text-white px-6 py-2 rounded-md hover:bg-primary/90">
-            Voltar para a página inicial
-          </Link>
         </div>
       </div>
     </div>

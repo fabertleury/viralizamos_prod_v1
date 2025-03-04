@@ -353,7 +353,7 @@ export default function Step2Page() {
           }
           
           // Definir o ID do provedor padrão
-          data.provider_id = '1'; // Usar provider_id em vez de fama_id
+          data.provider_id = '1'; // Usar provider_id do serviço
           setService(data);
           return data;
         }
@@ -580,7 +580,7 @@ export default function Step2Page() {
             id: service.id,
             name: service.name,
             quantity: service.quantidade,
-            provider_id: service.provider_id || service.fama_id // Usar provider_id com fallback para fama_id
+            provider_id: service.provider_id // Usar apenas provider_id
           },
           user_id: null,
           profile: {

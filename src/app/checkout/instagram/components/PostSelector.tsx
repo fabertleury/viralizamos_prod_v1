@@ -65,7 +65,7 @@ export default function PostSelector({ orderId, onSelectPosts }: PostSelectorPro
         const postData = {
           id: post.id,
           code: post.code,
-          link: `https://www.instagram.com/p/${post.code}/`,
+          link: `https://instagram.com/p/${post.code}`,
           caption: typeof post.caption === 'string' ? post.caption : post.caption?.text || null,
           image_url: post.image_versions?.items?.[0]?.url || null,
           like_count: post.like_count,

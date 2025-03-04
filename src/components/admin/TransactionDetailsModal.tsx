@@ -159,7 +159,7 @@ export function TransactionDetailsModal({ isOpen, onClose, transaction }: Transa
                     <span className="font-medium">Quantidade:</span> {transaction.metadata?.service?.quantity || 'N/A'}
                   </p>
                   <p className="text-sm">
-                    <span className="font-medium">ID na FAMA:</span> {transaction.metadata?.service?.fama_id || 'N/A'}
+                    <span className="font-medium">ID do Provedor:</span> {transaction.metadata?.service?.provider_id || transaction.metadata?.service?.fama_id || 'N/A'}
                   </p>
                 </div>
               </div>
@@ -170,8 +170,9 @@ export function TransactionDetailsModal({ isOpen, onClose, transaction }: Transa
                   {transaction.metadata?.posts?.map((post: any) => {
                     console.log('Post data:', JSON.stringify(post, null, 2));
                     
-                    // Usar o link que já vem do post
-                    const postUrl = post.link;
+                    // Construir a URL do post corretamente usando o código do post
+                    const postCode = post.code || post.id || post.shortcode;
+                    const postUrl = postCode ? `https://instagram.com/p/${postCode}` : post.link;
                     console.log('Post URL:', postUrl);
                     
                     const postKey = post.id || Math.random().toString(36).substring(7);
