@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import mercadopago from 'mercadopago';
 import QRCode from 'qrcode';
+import { processTransaction } from '@/lib/transactions/transactionProcessor';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,8 +19,45 @@ export async function POST(request: NextRequest) {
 
     const { service, profile, customer, posts = [], amount } = body;
     
+    // Buscar o serviço completo do banco de dados para garantir que temos o provider_id correto
+    console.log(`Buscando serviço completo com ID: ${service.id}`);
+    const supabase = createClient();
+    const { data: serviceData, error: serviceError } = await supabase
+      .from('services')
+      .select('*')
+      .eq('id', service.id)
+      .single();
+      
+    if (serviceError) {
+      console.error('Erro ao buscar serviço completo:', serviceError);
+      return NextResponse.json(
+        { error: `Erro ao buscar serviço: ${serviceError.message}` },
+        { status: 500 }
+      );
+    }
+    
+    if (!serviceData) {
+      console.error(`Serviço com ID ${service.id} não encontrado no banco de dados`);
+      return NextResponse.json(
+        { error: 'Serviço não encontrado' },
+        { status: 404 }
+      );
+    }
+    
+    // Usar o serviço completo do banco de dados
+    const completeService = {
+      ...service,
+      provider_id: serviceData.provider_id // Garantir que estamos usando o provider_id correto do banco de dados
+    };
+    
+    console.log('Serviço completo do banco de dados:', {
+      id: completeService.id,
+      name: completeService.name,
+      provider_id: completeService.provider_id
+    });
+    
     // Usar o amount do body ou calcular a partir do service.price
-    const paymentAmount = amount || service.price || service.preco || 0;
+    const paymentAmount = amount || completeService.price || completeService.preco || 0;
 
     // Não forçar mais um valor mínimo, usar o valor real do serviço
     const finalAmount = paymentAmount;
@@ -93,7 +131,7 @@ export async function POST(request: NextRequest) {
     console.log('Criando pagamento PIX no Mercado Pago...');
     const result = await mercadopago.payment.create({
       transaction_amount: Number(finalAmount),
-      description: `${service.name} para @${profile.username}`,
+      description: `${completeService.name} para @${profile.username}`,
       payment_method_id: 'pix',
       payer: {
         email: customer.email,
@@ -101,8 +139,8 @@ export async function POST(request: NextRequest) {
         last_name: customer.name?.split(' ').slice(1).join(' ') || 'Anônimo'
       },
       metadata: {
-        service_id: service.id,
-        service_name: service.name,
+        service_id: completeService.id,
+        service_name: completeService.name,
         profile_username: profile.username,
         customer_email: customer.email,
         customer_name: customer.name,
@@ -128,7 +166,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Obter o usuário atual (se autenticado)
-    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     const user_id = user?.id || null;
 
@@ -147,7 +184,7 @@ export async function POST(request: NextRequest) {
         external_id: result.body.id.toString(),
         payment_qr_code: result.body.point_of_interaction.transaction_data.qr_code,
         payment_qr_code_base64: qrCodeBase64,
-        service_id: service.id,
+        service_id: completeService.id,
         order_created: false,
         customer_name: customer.name || 'N/A',
         customer_email: customer.email || 'N/A',
@@ -157,10 +194,10 @@ export async function POST(request: NextRequest) {
         target_profile_link: profile.link || `https://instagram.com/${profile.username}`,
         metadata: {
           service: {
-            id: service.id,
-            provider_id: service.fama_id || service.provider_id, // Usar provider_id em vez de fama_id
-            name: service.name,
-            quantity: service.quantity
+            id: completeService.id,
+            provider_id: completeService.provider_id || null, // Usar o provider_id do banco de dados
+            name: completeService.name,
+            quantity: completeService.quantity
           },
           profile: {
             username: profile.username,
@@ -190,7 +227,7 @@ export async function POST(request: NextRequest) {
         amount: Number(finalAmount),
         status: 'pending',
         payment_method: 'pix',
-        service_id: service.id,
+        service_id: completeService.id,
         customer_name: customer.name || 'N/A',
         customer_email: customer.email || 'N/A',
         customer_phone: customer.phone || 'N/A',
@@ -200,10 +237,10 @@ export async function POST(request: NextRequest) {
       },
       metadataData: {
         service: {
-          id: service.id,
-          provider_id: service.fama_id || service.provider_id, // Usar provider_id em vez de fama_id
-          name: service.name,
-          quantity: service.quantity
+          id: completeService.id,
+          provider_id: completeService.provider_id || null, // Usar o provider_id do banco de dados
+          name: completeService.name,
+          quantity: completeService.quantity
         },
         posts: processedPosts
       }
@@ -213,11 +250,53 @@ export async function POST(request: NextRequest) {
       throw transactionError;
     }
 
+    // Se o pagamento foi aprovado, processar a transação
+    if (result.body.status === 'approved') {
+      try {
+        // Processar a transação (criar pedidos)
+        const orders = await processTransaction(transaction[0].id);
+        
+        // Se temos pedidos, atualizar a transação com o ID do primeiro pedido
+        if (orders && orders.length > 0) {
+          const { error: updateOrderIdError } = await supabase
+            .from('transactions')
+            .update({
+              order_created: true,
+              order_id: orders[0].id
+            })
+            .eq('id', transaction[0].id);
+          
+          if (updateOrderIdError) {
+            console.error('Erro ao atualizar order_id na transação:', updateOrderIdError);
+          } else {
+            console.log('Transação atualizada com order_id:', orders[0].id);
+          }
+        } else {
+          // Atualizar apenas a flag order_created
+          const { error: updateOrderCreatedError } = await supabase
+            .from('transactions')
+            .update({
+              order_created: true
+            })
+            .eq('id', transaction[0].id);
+          
+          if (updateOrderCreatedError) {
+            console.error('Erro ao atualizar flag order_created:', updateOrderCreatedError);
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao processar transação:', error);
+        
+        // Mesmo com erro, continuamos para retornar o status do pagamento
+        // O erro será registrado no log e na transação
+      }
+    }
+
     return NextResponse.json({
       id: result.body.id,
       qr_code: result.body.point_of_interaction.transaction_data.qr_code,
       qr_code_base64: qrCodeBase64,
-      status: 'pending',
+      status: result.body.status,
       amount: Number(finalAmount),
       transaction_id: transaction?.[0]?.id || null
     }, { status: 200 });

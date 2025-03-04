@@ -8,6 +8,7 @@ interface OrderParams {
   username?: string;
   transaction_id?: string;
   provider_id?: string; // ID do provedor no banco de dados
+  service_id?: string; // ID do serviço no banco de dados
 }
 
 interface Provider {
@@ -18,16 +19,103 @@ interface Provider {
   status: boolean;
 }
 
+interface Service {
+  id: string;
+  name: string;
+  provider_id: string;
+  external_id: string;
+}
+
 export class SocialMediaService {
   private supabase = createClient();
+  private defaultProvider: Provider | null = null;
 
-  constructor() {}
+  constructor(provider: Provider | null = null) {
+    this.defaultProvider = provider;
+  }
+
+  /**
+   * Extrai o código de um post do Instagram a partir de uma URL
+   * @param url URL do post
+   * @returns Código do post
+   */
+  extractPostCode(url: string): string {
+    console.log('[SocialMediaService] Extraindo código do post de:', url);
+    
+    // Se a URL já é um código curto, retorná-lo diretamente
+    if (!url.includes('/') && !url.includes('.')) {
+      console.log('[SocialMediaService] URL já é um código:', url);
+      return url;
+    }
+    
+    try {
+      // Tentar extrair o código da URL
+      const regex = /instagram\.com\/(?:p|reel)\/([^\/\?]+)/i;
+      const match = url.match(regex);
+      
+      if (match && match[1]) {
+        const code = match[1];
+        console.log('[SocialMediaService] Código extraído:', code);
+        return code;
+      }
+      
+      // Se não conseguiu extrair, tentar outro formato
+      const altRegex = /\/([^\/\?]+)\/?$/;
+      const altMatch = url.match(altRegex);
+      
+      if (altMatch && altMatch[1]) {
+        const code = altMatch[1];
+        console.log('[SocialMediaService] Código extraído (formato alternativo):', code);
+        return code;
+      }
+      
+      // Se não conseguiu extrair, retornar a URL original
+      console.log('[SocialMediaService] Não foi possível extrair o código, retornando URL original');
+      return url;
+    } catch (error) {
+      console.error('[SocialMediaService] Erro ao extrair código do post:', error);
+      return url;
+    }
+  }
+
+  /**
+   * Formata uma URL de post do Instagram para o formato padrão
+   * @param url URL ou código do post
+   * @returns URL formatada
+   */
+  formatInstagramPostUrl(url: string): string {
+    // Se a URL já está no formato correto, retorná-la
+    if (url.match(/^https:\/\/instagram\.com\/p\/[^\/]+$/i)) {
+      return url;
+    }
+    
+    // Extrair o código do post
+    const code = this.extractPostCode(url);
+    
+    // Formatar a URL
+    return `https://instagram.com/p/${code}`;
+  }
 
   // Buscar provedor no Supabase
   private async getProvider(providerId: string): Promise<Provider | null> {
+    // Se já temos um provedor padrão e o ID corresponde, retornar ele diretamente
+    if (this.defaultProvider && this.defaultProvider.id === providerId) {
+      console.log(`✅ Usando provedor: ${this.defaultProvider.name}`);
+      return this.defaultProvider;
+    }
+    
     try {
       console.log(`🔍 Buscando provedor com ID: ${providerId}`);
       
+      // Verificar se o provider_id é um UUID válido
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(providerId);
+      
+      if (!isUUID) {
+        console.error(`❌ Provider_id "${providerId}" não é um UUID válido.`);
+        return null;
+      }
+      
+      // Buscar o provedor pelo ID
       const { data: provider, error } = await this.supabase
         .from('providers')
         .select('*')
@@ -57,92 +145,150 @@ export class SocialMediaService {
     }
   }
 
-  async createOrder(params: OrderParams): Promise<{ order: number }> {
+  async createOrder(params: OrderParams): Promise<{ order: number, orderId?: string, status?: string }> {
     try {
-      // Garantir que o link do Instagram esteja no formato correto
-      let finalLink = params.link || '';
-      if (finalLink.includes('instagram.com/p/')) {
-        // Extrair o código do post da URL
-        let postCode = finalLink.split('/p/')[1]?.split('/')[0];
-        if (postCode) {
-          // Garantir que estamos usando o código correto do post
-          console.log('Código do post extraído:', postCode);
-          finalLink = `https://instagram.com/p/${postCode}`;
+      // Formatar a URL do Instagram corretamente
+      const formattedLink = this.formatInstagramPostUrl(params.link);
+      console.log('[SocialMediaService] Link formatado:', formattedLink);
+      
+      // Primeiro, verificar se temos um service_id e buscar o serviço completo do banco de dados
+      let provider = null;
+      let serviceData = null;
+      
+      if (params.service_id) {
+        console.log('[SocialMediaService] Buscando serviço completo do banco de dados com ID:', params.service_id);
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('services')
+          .select('*')
+          .eq('id', params.service_id)
+          .single();
+          
+        if (error) {
+          console.error('[SocialMediaService] Erro ao buscar serviço:', error);
+        } else if (data) {
+          serviceData = data;
+          console.log('[SocialMediaService] Serviço encontrado no banco de dados:', {
+            id: serviceData.id,
+            name: serviceData.name,
+            provider_id: serviceData.provider_id,
+            external_id: serviceData.external_id
+          });
+          
+          // Se o serviço tem provider_id, buscar o provedor
+          if (serviceData.provider_id) {
+            provider = await this.getProvider(serviceData.provider_id);
+            if (provider) {
+              console.log('[SocialMediaService] Provedor encontrado pelo ID do serviço:', provider.name);
+            }
+          }
         }
       }
       
-      // Buscar o serviço para obter o provider_id
-      const { data: serviceData, error: serviceError } = await this.supabase
-        .from('services')
-        .select('*, provider:providers(*)')
-        .eq('id', params.service)
-        .single();
-      
-      if (serviceError || !serviceData) {
-        console.error('❌ Serviço não encontrado:', {
-          serviceId: params.service,
-          error: serviceError
-        });
-        throw new Error(`Serviço com ID ${params.service} não encontrado`);
+      // Se não conseguimos obter o provedor pelo service_id, tentar pelo provider_id dos parâmetros
+      if (!provider && params.provider_id) {
+        provider = await this.getProvider(params.provider_id);
+        if (provider) {
+          console.log('[SocialMediaService] Provedor encontrado pelo provider_id dos parâmetros:', provider.name);
+        }
       }
       
-      // Obter o provider_id do serviço ou usar o fornecido nos parâmetros
-      const providerId = params.provider_id || serviceData.provider_id;
-      
-      if (!providerId) {
-        console.error('❌ Provider ID não encontrado para o serviço:', serviceData);
-        throw new Error(`Provider ID não encontrado para o serviço ${params.service}`);
+      // Se ainda não temos um provedor, usar o provedor padrão (se disponível)
+      if (!provider && this.defaultProvider) {
+        provider = this.defaultProvider;
+        console.log('[SocialMediaService] Usando provedor padrão:', provider.name);
       }
-      
-      // Buscar o provedor
-      const provider = await this.getProvider(providerId);
       
       if (!provider) {
-        throw new Error(`Provedor com ID ${providerId} não encontrado ou não configurado`);
+        throw new Error('Provedor não encontrado. Verifique o cadastro do serviço ou configure um provedor padrão.');
       }
       
-      console.log(`📡 Enviando pedido para provedor: ${provider.name}`);
+      console.log('[SocialMediaService] Usando provedor:', provider.name);
       
-      // Montar payload para a API do provedor
-      const payload = {
-        key: provider.api_key,
-        action: 'add',
-        service: serviceData.external_id || params.service, // ID do serviço no provedor
-        link: finalLink,
-        quantity: params.quantity
-      };
-
-      console.log('Enviando pedido para API de serviços:', {
-        ...payload,
-        key: '***', // Ocultar a chave API nos logs
-        providerName: provider.name,
-        providerUrl: provider.api_url
-      });
-
-      try {
-        // Fazer a requisição para a API do provedor
-        const response = await axios.post(provider.api_url, payload);
-        
-        console.log('Resposta da API:', response.data);
-        
-        if (!response.data || !response.data.order) {
-          console.error('❌ Resposta inválida da API:', response.data);
-          throw new Error('Resposta inválida da API: ' + JSON.stringify(response.data));
+      // Determinar o ID do serviço a ser usado
+      let serviceId = params.service;
+      
+      // Se temos o serviço do banco de dados e ele tem external_id, usar esse ID
+      if (serviceData && serviceData.external_id) {
+        serviceId = serviceData.external_id;
+        console.log('[SocialMediaService] Usando external_id do serviço do banco de dados:', serviceId);
+      }
+      
+      // Verificar se o serviço existe no provedor
+      if (provider.services && Array.isArray(provider.services)) {
+        const serviceExists = provider.services.some(s => s.id === serviceId);
+        if (!serviceExists) {
+          console.warn(`Serviço ${serviceId} não encontrado no provedor ${provider.name}. Verificando mapeamento...`);
+          
+          // Verificar se temos um mapeamento para este serviço
+          if (provider.service_mapping && provider.service_mapping[serviceId]) {
+            const mappedServiceId = provider.service_mapping[serviceId];
+            console.log(`Usando serviço mapeado: ${serviceId} -> ${mappedServiceId}`);
+            serviceId = mappedServiceId;
+          } else {
+            console.warn(`Nenhum mapeamento encontrado para o serviço ${serviceId} no provedor ${provider.name}`);
+          }
         }
-        
-        return response.data;
-      } catch (apiError: any) {
-        console.error('❌ Erro na chamada da API:', {
-          message: apiError.message,
-          response: apiError.response?.data,
-          status: apiError.response?.status,
-          providerName: provider.name
-        });
-        throw apiError;
       }
-    } catch (error) {
+      
+      // Criar os parâmetros da requisição
+      const requestParams = new URLSearchParams();
+      requestParams.append('key', provider.api_key);
+      requestParams.append('action', 'add');
+      requestParams.append('service', serviceId);
+      requestParams.append('link', formattedLink);
+      
+      if (params.quantity) {
+        requestParams.append('quantity', params.quantity.toString());
+      }
+      
+      if (params.username) {
+        requestParams.append('username', params.username);
+      }
+      
+      console.log('Enviando pedido para o provedor:', {
+        url: provider.api_url,
+        service: serviceId,
+        link: formattedLink,
+        quantity: params.quantity
+      });
+      
+      // Fazer a requisição para a API do provedor
+      const response = await axios.post(provider.api_url, requestParams, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+      
+      console.log('Resposta do provedor:', response.data);
+      
+      // Verificar se a resposta foi bem-sucedida
+      if (response.data.error) {
+        throw new Error(`Erro do provedor: ${response.data.error}`);
+      }
+      
+      // Normalizar a resposta
+      let orderId = '';
+      let status = 'processing';
+      
+      if (response.data.order) {
+        orderId = response.data.order.toString();
+      } else if (response.data.id) {
+        orderId = response.data.id.toString();
+      }
+      
+      if (response.data.status) {
+        status = response.data.status.toLowerCase();
+      }
+      
+      return {
+        order: parseInt(orderId) || 0,
+        orderId,
+        status
+      };
+    } catch (error: any) {
       console.error('Erro ao criar pedido:', error);
-      throw error;
+      throw new Error(`Erro ao criar pedido: ${error.message}`);
     }
   }
 
