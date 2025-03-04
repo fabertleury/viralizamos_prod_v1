@@ -70,8 +70,8 @@ function formatInstagramLink(link: string | undefined): string | null {
   
   console.log('Código do post extraído:', postCode);
   
-  // Formatar o link no padrão correto - sem https:// conforme exemplo do PHP
-  // O provedor pode estar esperando apenas instagram.com/p/CODE sem o https://
+  // Formatar o link sem https:// conforme exemplo do PHP
+  // O provedor espera apenas instagram.com/p/CODE sem o https://
   const formattedLink = `instagram.com/p/${postCode}`;
   console.log('Link formatado:', formattedLink);
   
