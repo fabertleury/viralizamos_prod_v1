@@ -167,7 +167,7 @@ export async function sendOrderToProvider(params: {
           target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
           quantity: quantity,
           amount: amount || 0, // Garantir que amount não seja null
-          status: 'error',
+          status: 'failed', // Alterado de 'error' para 'failed' para compatibilidade com o enum
           payment_status: 'approved',
           payment_method: transaction.payment_method || 'pix',
           payment_id: transaction.payment_external_reference,
@@ -175,7 +175,8 @@ export async function sendOrderToProvider(params: {
             post,
             providerResponse: responseData,
             providerRequestData,
-            formattedLink
+            formattedLink,
+            error: errorMessage // Adicionando a mensagem de erro nos metadados
           }
         })
         .select()
@@ -260,7 +261,7 @@ export async function sendOrderToProvider(params: {
         target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
         quantity: quantity,
         amount: amount || 0, // Garantir que amount não seja null
-        status: 'error',
+        status: 'failed', // Alterado de 'error' para 'failed' para compatibilidade com o enum
         payment_status: 'approved',
         payment_method: transaction.payment_method || 'pix',
         payment_id: transaction.payment_external_reference,
