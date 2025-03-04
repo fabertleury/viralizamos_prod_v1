@@ -61,7 +61,25 @@ const groupSubcategoriesByCategory = (subcategories: Subcategory[]) => {
   const categories = new Map<string, Subcategory[]>();
   
   subcategories.forEach(sub => {
-    const mainCategory = serviceCategoryMap[sub.slug] || 'outros';
+    let mainCategory = serviceCategoryMap[sub.slug];
+    
+    // Se não estiver no mapeamento, tente determinar a categoria pelo nome
+    if (!mainCategory) {
+      const name = sub.name.toLowerCase();
+      if (name.includes('curtida')) {
+        mainCategory = 'curtidas';
+      } else if (name.includes('seguidor')) {
+        mainCategory = 'seguidores';
+      } else if (name.includes('visualiza')) {
+        mainCategory = 'visualizacoes';
+      } else if (name.includes('comentario') || name.includes('comentário')) {
+        mainCategory = 'comentarios';
+      } else {
+        // Caso não se encaixe em nenhuma categoria, use a primeira parte do slug
+        mainCategory = sub.slug.split('-')[0];
+      }
+    }
+    
     if (!categories.has(mainCategory)) {
       categories.set(mainCategory, []);
     }
