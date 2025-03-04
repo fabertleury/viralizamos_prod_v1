@@ -159,17 +159,17 @@ export async function sendOrderToProvider(params: {
           transaction_id: transaction.id,
           service_id: service.id,
           customer_id: customer.id,
-          link: formattedLink,
+          target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
           quantity: quantity,
           status: 'error',
-          status_description: errorMessage,
-          provider_id: provider.id,
-          provider_order_id: responseData.order || null,
-          needs_review: true,
+          payment_status: 'approved',
+          payment_method: transaction.payment_method || 'pix',
+          payment_id: transaction.payment_external_reference,
           metadata: {
             post,
             providerResponse: responseData,
-            providerRequestData
+            providerRequestData,
+            formattedLink
           }
         })
         .select()
@@ -199,15 +199,18 @@ export async function sendOrderToProvider(params: {
           transaction_id: transaction.id,
           service_id: service.id,
           customer_id: customer.id,
-          link: formattedLink,
+          target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
           quantity: quantity,
           status: 'pending',
-          provider_id: provider.id,
-          provider_order_id: responseData.order || null,
+          payment_status: 'approved',
+          payment_method: transaction.payment_method || 'pix',
+          payment_id: transaction.payment_external_reference,
+          external_order_id: responseData.order || null,
           metadata: {
             post,
             providerResponse: responseData,
-            providerRequestData
+            providerRequestData,
+            formattedLink
           }
         })
         .select()
@@ -237,16 +240,17 @@ export async function sendOrderToProvider(params: {
         transaction_id: transaction.id,
         service_id: service.id,
         customer_id: customer.id,
-        link: formattedLink,
+        target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
         quantity: quantity,
         status: 'error',
-        status_description: errorMessage,
-        provider_id: provider.id,
-        needs_review: true,
+        payment_status: 'approved',
+        payment_method: transaction.payment_method || 'pix',
+        payment_id: transaction.payment_external_reference,
         metadata: {
           post,
           error: errorMessage,
-          providerRequestData
+          providerRequestData,
+          formattedLink
         }
       })
       .select()
