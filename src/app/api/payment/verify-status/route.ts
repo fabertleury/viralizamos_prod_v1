@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import mercadopago from 'mercadopago';
 import { createClient } from '@/lib/supabase/server';
 import { createOrUpdateCustomer } from '@/services/customerService';
-import { SocialMediaService } from '@/lib/services/socialMediaService';
+import { formatInstagramLink, sendOrderToProvider } from '@/lib/services/orderProcessingService';
 
 // Configuração do Mercado Pago
 mercadopago.configurations.setAccessToken(process.env.MERCADO_PAGO_ACCESS_TOKEN || '');
@@ -140,28 +140,37 @@ export async function POST(request: NextRequest) {
                            transaction.metadata?.profile?.email;
               const customerName = transaction.customer_name || 
                                   transaction.metadata?.customer?.name || 
-                                  transaction.metadata?.name;
-              const target_username = transaction.target_username || 
-                                     transaction.metadata?.target_username || 
-                                     profile?.username || 
-                                     transaction.metadata?.username;
+                                  transaction.metadata?.name || 
+                                  transaction.metadata?.contact?.name || 
+                                  transaction.metadata?.profile?.full_name;
               const phone = transaction.metadata?.customer?.phone || 
                            transaction.metadata?.phone || 
                            transaction.metadata?.contact?.phone;
-                           
-              console.log('Dados para criação de pedidos:', {
-                serviceMetadata,
-                posts: posts?.length,
-                profile,
-                customer,
-                email,
-                customerName,
-                target_username,
-                phone
-              });
+                                  
+              // Se não tiver cliente, criar um novo
+              if (!customer) {
+                console.log('Cliente não encontrado, criando um novo...');
+                
+                if (!email) {
+                  console.error('Email não encontrado nos metadados da transação');
+                  throw new Error('Email não encontrado para criar cliente');
+                }
+                
+                const { data: newCustomer, error: customerError } = await createOrUpdateCustomer({
+                  email,
+                  name: customerName || email.split('@')[0],
+                  phone
+                });
+                
+                if (customerError) {
+                  console.error('Erro ao criar cliente:', customerError);
+                  throw new Error(`Erro ao criar cliente: ${customerError.message}`);
+                }
+                
+                console.log('Novo cliente criado:', newCustomer);
+              }
               
               // Buscar o serviço diretamente do banco de dados usando o service_id da transação
-              // Isso garante que usamos sempre o provider_id correto e atualizado
               console.log(`Buscando serviço com ID: ${transaction.service_id}`);
               const { data: serviceData, error: serviceError } = await supabase
                 .from('services')
@@ -179,35 +188,20 @@ export async function POST(request: NextRequest) {
                 throw new Error(`Serviço não encontrado. Verifique o ID do serviço na transação.`);
               }
               
-              const service = serviceData;
-              console.log('Serviço encontrado no banco de dados:', {
-                id: service.id,
-                name: service.name,
-                provider_id: service.provider_id
-              });
+              // Combinar os dados do serviço do banco com os metadados da transação
+              const service = {
+                ...serviceData,
+                ...serviceMetadata // Sobrescrever com os dados da transação, se existirem
+              };
               
-              // Criar ou atualizar cliente
-              let customerId = null;
-              if (email) {
-                try {
-                  const customerData = await createOrUpdateCustomer({
-                    email,
-                    name: customerName,
-                    phone,
-                    instagram_username: target_username,
-                    metadata: {
-                      transaction_id: transaction.id,
-                      last_purchase: new Date().toISOString()
-                    }
-                  });
-                  
-                  if (customerData) {
-                    customerId = customerData.id;
-                    console.log('Cliente criado/atualizado com sucesso:', customerData);
-                  }
-                } catch (customerError) {
-                  console.error('Erro ao criar/atualizar cliente:', customerError);
-                }
+              console.log('Serviço completo:', service);
+              console.log('Dados do perfil:', profile);
+              console.log('Posts recebidos:', posts);
+              
+              // Verificar se o serviço tem todas as propriedades necessárias
+              if (!service || !service.id || !service.provider_id) {
+                console.error('Serviço inválido:', service);
+                throw new Error('Serviço inválido ou incompleto');
               }
               
               // Buscar o provedor associado ao serviço
@@ -242,169 +236,145 @@ export async function POST(request: NextRequest) {
                 }
                 
                 provider = providerData;
-                console.log('Provedor encontrado:', provider.name);
+                console.log('Provedor encontrado:', {
+                  id: provider.id,
+                  name: provider.name
+                });
               } else {
-                console.error('Serviço não tem provider_id configurado');
-                throw new Error('Serviço não tem provider_id configurado. Verifique o cadastro do serviço.');
+                console.error('Serviço não tem provider_id:', service);
+                throw new Error('Serviço não tem provider_id configurado');
               }
               
-              if (service && posts && posts.length > 0 && profile) {
-                // Atualizar a transação com o email para rastreabilidade
-                if (email && (!transaction.metadata?.email)) {
-                  await supabase
-                    .from('transactions')
-                    .update({
-                      metadata: {
-                        ...transaction.metadata,
-                        email
-                      }
-                    })
-                    .eq('id', transaction.id);
+              // Array para armazenar os resultados dos pedidos
+              const orderResults = [];
+              
+              // Se não há posts, criar um post padrão com o link do perfil
+              if (!posts || posts.length === 0) {
+                console.log('Nenhum post encontrado, criando post padrão com o link do perfil');
+                
+                if (!profile || !profile.link) {
+                  console.error('Perfil ou link do perfil não encontrado');
+                  throw new Error('Não foi possível criar post padrão: perfil não encontrado');
                 }
                 
-                // Verificar se o usuário já existe e criar se não existir
-                if (email) {
-                  // Remover tentativa de criar perfil na tabela profiles
-                  // Vamos trabalhar apenas com a tabela customers
-                  console.log('Usando apenas a tabela customers para gerenciar usuários');
-                }
+                // Criar post padrão com o link do perfil
+                const defaultPost = {
+                  link: profile.link,
+                  caption: profile.username || profile.full_name || 'Perfil',
+                  username: profile.username || profile.full_name || 'N/A'
+                };
                 
-                // Para cada post, criar um pedido separado
-                const orderResults = [];
+                console.log('Post padrão criado:', defaultPost);
+                
+                // Processar o post padrão
+                try {
+                  // Formatar o link do Instagram
+                  const formattedLink = formatInstagramLink(defaultPost.link);
+                  if (!formattedLink) {
+                    throw new Error(`Link do Instagram inválido: ${defaultPost.link}`);
+                  }
+                  
+                  // Garantir que quantity seja um número ou string
+                  const quantity = service.quantity || 0;
+                  
+                  // Enviar pedido para o provedor
+                  const result = await sendOrderToProvider({
+                    transaction,
+                    service,
+                    provider,
+                    post: defaultPost,
+                    customer,
+                    formattedLink,
+                    quantity
+                  });
+                  
+                  orderResults.push(result);
+                } catch (orderError) {
+                  console.error('Erro ao processar pedido para o post padrão:', defaultPost.link, orderError);
+                  orderResults.push({ success: false, error: String(orderError), post: defaultPost });
+                }
+              } else {
+                // Processar cada post recebido
                 for (const post of posts) {
                   try {
-                    // Verificar se o post tem um link válido
-                    if (!post.link) {
-                      // Construir o link do post a partir do código
-                      const postCode = post.code || post.shortcode || post.id;
-                      if (postCode) {
-                        post.link = `https://instagram.com/p/${postCode}`;
-                        console.log('Link do post construído:', post.link);
+                    console.log('Processando post:', post);
+                    
+                    // Verificar se o post tem um link válido (pode estar em post.link ou post.url)
+                    let postLink = post.link || post.url;
+                    
+                    // Se tiver o código do post, mas não tiver o link completo
+                    if (post.code && (!postLink || !postLink.includes('instagram.com'))) {
+                      console.log('Post tem código mas não tem link completo, construindo link:', post.code);
+                      postLink = `https://instagram.com/p/${post.code}`;
+                      console.log('Link construído a partir do código:', postLink);
+                    }
+                    
+                    if (!postLink) {
+                      console.log('Post sem link, tentando usar o link do perfil:', profile?.link);
+                      
+                      // Se não tiver link no post, usar o link do perfil
+                      if (profile && profile.link) {
+                        postLink = profile.link;
+                        console.log('Usando link do perfil como fallback:', postLink);
                       } else {
-                        console.error('Post sem código para construir link:', post);
-                        orderResults.push({ success: false, error: 'Post sem código para construir link', post });
+                        console.error('Não foi possível determinar um link válido para o post');
+                        orderResults.push({ success: false, error: 'Link do Instagram não encontrado', post });
                         continue; // Pular este post
                       }
                     }
                     
-                    let orderResponse;
-                    
-                    if (provider) {
-                      // Verificar se o provedor tem uma API configurada
-                      if (provider && provider.api_url && provider.api_key) {
-                        console.log('Usando endpoint dinâmico de provedores');
-                        
-                        const orderRequest = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/providers/${provider.slug}/add-order`, {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                          },
-                          body: JSON.stringify({
-                            service: service.external_id || service.id,
-                            link: post.link,
-                            quantity: service.quantity,
-                            transaction_id: transaction.id,
-                            target_username: target_username,
-                            user_id: transaction.user_id,
-                            customer_id: customerId
-                          }),
-                        });
-                        
-                        try {
-                          if (!orderRequest.ok) {
-                            const errorText = await orderRequest.text();
-                            console.error(`Erro na resposta do provedor (${orderRequest.status}): ${errorText}`);
-                            
-                            let errorData;
-                            try {
-                              // Tentar analisar o erro como JSON
-                              errorData = JSON.parse(errorText);
-                              console.error('Detalhes do erro:', errorData);
-                            } catch (parseError) {
-                              // Se não for JSON, usar o texto bruto
-                              errorData = { error: errorText };
-                            }
-                            
-                            throw new Error(`Erro ao enviar pedido para o provedor: ${JSON.stringify(errorData)}`);
-                          }
-                          
-                          orderResponse = await orderRequest.json();
-                        } catch (responseError) {
-                          console.error(`Erro ao processar resposta do provedor: ${responseError.message}`);
-                          throw new Error(`Erro ao processar pedido para o post: ${post.link} ${responseError.message}`);
-                        }
-                      } else {
-                        // Provedor não tem API configurada, usar o SocialMediaService diretamente
-                        console.log('Provedor não tem API configurada, usando SocialMediaService diretamente');
-                        
-                        const socialMediaService = new SocialMediaService(provider);
-                        const orderResult = await socialMediaService.createOrder({
-                          service: service.external_id || service.id,
-                          link: post.link,
-                          quantity: service.quantity,
-                          provider_id: provider.id
-                        });
-                        
-                        // Processar a resposta manualmente
-                        orderResponse = {
-                          order: {
-                            id: orderResult.orderId,
-                            status: orderResult.status,
-                            provider_id: provider.id,
-                            service_id: service.id
-                          },
-                          status: 'success'
-                        };
-                      }
-                    } else {
-                      // Não encontrou um provedor, retornar erro
-                      console.error('Provedor não encontrado');
-                      throw new Error('Provedor não encontrado para o serviço. Verifique o cadastro do serviço.');
+                    // Formatar o link do Instagram
+                    const formattedLink = formatInstagramLink(postLink);
+                    if (!formattedLink) {
+                      throw new Error(`Link do Instagram inválido: ${postLink}`);
                     }
                     
-                    console.log('Pedido enviado com sucesso para o provedor:', orderResponse);
-                    orderResults.push({ success: true, data: orderResponse, post });
+                    // Garantir que quantity seja um número ou string
+                    const quantity = service.quantity || 0;
+                    
+                    // Enviar pedido para o provedor
+                    const result = await sendOrderToProvider({
+                      transaction,
+                      service,
+                      provider,
+                      post,
+                      customer,
+                      formattedLink,
+                      quantity
+                    });
+                    
+                    orderResults.push(result);
                   } catch (orderError) {
                     console.error('Erro ao processar pedido para o post:', post.link, orderError);
                     orderResults.push({ success: false, error: String(orderError), post });
                   }
                 }
-                
-                // Atualizar a transação com os resultados dos pedidos
-                await supabase
-                  .from('transactions')
-                  .update({
-                    metadata: {
-                      ...transaction.metadata,
-                      order_results: orderResults
-                    }
-                  })
-                  .eq('id', transaction.id);
-              } else {
-                console.error('Dados insuficientes para criar pedido:', {
-                  service,
-                  posts,
-                  profile
-                });
               }
+              
+              // Retornar os resultados dos pedidos
+              return NextResponse.json({
+                success: true,
+                orders: orderResults,
+                status: currentStatus
+              });
             } catch (providerError) {
-              console.error('Erro ao enviar pedido para o provedor:', providerError);
+              console.error('Erro ao processar pedido para o provedor:', providerError);
+              return NextResponse.json({
+                success: false,
+                error: String(providerError),
+                status: currentStatus
+              });
             }
           }
         }
-      } else {
-        console.log('Status não mudou, continua como:', currentStatus);
       }
       
+      // Retornar o status atual
       return NextResponse.json({
         status: currentStatus,
         statusDetail: paymentData.status_detail,
-        transaction: {
-          id: transaction.id,
-          status: currentStatus,
-          amount: transaction.amount,
-          created_at: transaction.created_at
-        }
+        payment: paymentData,
+        source: 'mercadopago'
       });
     } catch (mpError) {
       console.error('Erro ao verificar status no Mercado Pago:', mpError);
