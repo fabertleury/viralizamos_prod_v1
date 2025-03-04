@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { getProxiedImageUrl } from '../../utils/proxy-image';
 import { PaymentPixModal } from '@/components/payment/PaymentPixModal';
+import { maskPhone } from '@/lib/utils/mask';
 import axios from 'axios';
 
 interface ProfileData {
@@ -56,8 +57,12 @@ export default function Step2Page() {
     const whatsapp = params.get('whatsapp');
     const email = params.get('email');
     const serviceId = params.get('service_id');
+    const quantity = params.get('quantity');
+    
+    console.log('Parâmetros recebidos:', { username, whatsapp, email, serviceId, quantity });
 
     if (!username || !serviceId) {
+      console.error('Parâmetros obrigatórios ausentes:', { username, serviceId });
       toast.error('Informações incompletas. Por favor, volte e tente novamente.');
       router.push('/instagram/seguidores');
       return;
@@ -73,14 +78,17 @@ export default function Step2Page() {
     // Buscar dados do perfil do Instagram
     const fetchProfileData = async () => {
       try {
+        console.log('Buscando dados do perfil:', username);
         const response = await fetch(`/api/instagram/info/${username}`);
         const data = await response.json();
 
         if (data.error) {
+          console.error('Erro ao buscar perfil:', data.error);
           toast.error(data.error);
           return;
         }
 
+        console.log('Dados do perfil recebidos:', data.data);
         setProfileData(data.data);
       } catch (error) {
         console.error('Erro ao buscar dados do perfil:', error);
@@ -91,6 +99,7 @@ export default function Step2Page() {
     // Buscar dados do serviço
     const fetchServiceData = async () => {
       try {
+        console.log('Buscando dados do serviço:', serviceId);
         const { data, error } = await supabase
           .from('services')
           .select('*')
@@ -100,10 +109,35 @@ export default function Step2Page() {
         if (error) throw error;
         if (!data) throw new Error('Serviço não encontrado');
 
-        setService(data);
+        console.log('Dados do serviço recebidos:', data);
+        
+        // Se tiver quantidade especificada na URL, buscar a variação correspondente
+        if (quantity && data.service_variations && data.service_variations.length > 0) {
+          const selectedVariation = data.service_variations.find(
+            (v: any) => v.quantidade === parseInt(quantity)
+          );
+          
+          if (selectedVariation) {
+            setService({
+              id: data.id,
+              name: data.name,
+              quantidade: selectedVariation.quantidade,
+              preco: selectedVariation.preco
+            });
+            return;
+          }
+        }
+        
+        // Caso não tenha variação ou quantidade, usar os valores padrão
+        setService({
+          id: data.id,
+          name: data.name,
+          quantidade: data.quantidade,
+          preco: data.preco
+        });
       } catch (error) {
-        console.error('Erro ao carregar serviço:', error);
-        toast.error('Erro ao carregar serviço');
+        console.error('Erro ao buscar dados do serviço:', error);
+        toast.error('Erro ao carregar dados do serviço');
       }
     };
 
@@ -324,8 +358,8 @@ export default function Step2Page() {
                     </label>
                     <Input
                       id="phone"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                      value={maskPhone(formData.phone)}
+                      onChange={(e) => setFormData({...formData, phone: e.target.value.replace(/\D+/g, '')})}
                       required
                       className="w-full"
                     />

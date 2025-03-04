@@ -9,6 +9,7 @@ import { Header } from '@/components/layout/header';
 import { useForm } from 'react-hook-form';
 import { fetchInstagramProfile } from '@/lib/services/instagram-profile';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { maskPhone } from '@/lib/utils/mask';
 import { 
   faCoffee, faLemon, faCar, faHeart, faStar, faClock, faCheck, 
   faShield, faRocket, faGlobe, faUsers, faThumbsUp, faEye, faComment, 
@@ -69,7 +70,7 @@ export default function Step1Page() {
   const serviceId = searchParams.get('service_id');
   const quantity = searchParams.get('quantity');
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors }, setValue } = useForm<FormData>({
     defaultValues: {
       is_public_confirmed: false
     }
@@ -122,6 +123,12 @@ export default function Step1Page() {
       return;
     }
 
+    // Garantir que o WhatsApp esteja formatado corretamente
+    const formattedWhatsApp = maskPhone(formData.whatsapp);
+    if (formattedWhatsApp !== formData.whatsapp) {
+      setValue('whatsapp', formattedWhatsApp);
+    }
+
     setIsLoading(true);
     setIsModalOpen(true);
     setLoadingStage('searching');
@@ -137,7 +144,13 @@ export default function Step1Page() {
         return;
       }
 
-      setProfileData(result.profileData || null);
+      // Adicionar os dados do formulário ao profileData
+      setProfileData({
+        ...(result.profileData || {}),
+        username: formData.instagram_username,
+        email: formData.email,
+        whatsapp: formattedWhatsApp
+      });
       setLoadingStage('done');
     } catch {
       setLoadingStage('error');
@@ -148,14 +161,34 @@ export default function Step1Page() {
   };
 
   const handleConfirm = () => {
-    // Redirecionar para o step2 com os dados
-    const params = new URLSearchParams({
-      username: profileData?.username,
-      whatsapp: profileData?.whatsapp,
-      email: profileData?.email,
-      service_id: serviceId!,
-    });
+    // Verificar se temos todos os dados necessários
+    if (!profileData?.username || !serviceId) {
+      toast.error('Informações incompletas. Por favor, preencha todos os campos.');
+      return;
+    }
 
+    // Redirecionar para o step2 com os dados
+    const params = new URLSearchParams();
+    
+    // Adicionar parâmetros obrigatórios
+    params.append('username', profileData.username);
+    params.append('service_id', serviceId);
+    
+    // Adicionar parâmetros opcionais com verificação
+    if (profileData.whatsapp) {
+      params.append('whatsapp', profileData.whatsapp);
+    }
+    
+    if (profileData.email) {
+      params.append('email', profileData.email);
+    }
+    
+    // Adicionar quantidade se disponível
+    if (quantity) {
+      params.append('quantity', quantity);
+    }
+
+    // Redirecionar para o step2
     window.location.href = `/checkout/instagram/seguidores/step2?${params.toString()}`;
   };
 
@@ -312,6 +345,10 @@ export default function Step1Page() {
                       message: 'Formato de WhatsApp inválido'
                     }
                   })}
+                  onChange={(e) => {
+                    const maskedValue = maskPhone(e.target.value);
+                    e.target.value = maskedValue;
+                  }}
                 />
                 {errors.whatsapp && (
                   <p className="text-red-500 text-sm mt-2 flex items-center space-x-2">
