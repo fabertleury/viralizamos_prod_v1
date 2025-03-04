@@ -39,6 +39,18 @@ interface Order {
       updated_at: string;
       error?: string;
     };
+    grouped?: boolean;
+    totalPosts?: number;
+    posts?: {
+      id: string;
+      external_order_id: string;
+      post?: {
+        shortcode: string;
+        display_url: string;
+      };
+      link: string;
+      status: string;
+    }[];
   };
   created_at: string;
   updated_at: string;
@@ -102,10 +114,49 @@ export default function OrdersPage() {
         throw error;
       }
 
-      setOrders(data || []);
+      // Agrupar pedidos por transaction_id
+      const groupedOrders: { [key: string]: Order[] } = {};
+      data.forEach((order: Order) => {
+        if (!groupedOrders[order.transaction_id]) {
+          groupedOrders[order.transaction_id] = [];
+        }
+        groupedOrders[order.transaction_id].push(order);
+      });
+
+      // Criar pedidos agrupados
+      const processedOrders: Order[] = [];
+      
+      Object.entries(groupedOrders).forEach(([transactionId, orders]) => {
+        if (orders.length === 1) {
+          // Se há apenas um pedido para esta transação, adicione-o normalmente
+          processedOrders.push(orders[0]);
+        } else {
+          // Se há múltiplos pedidos para esta transação, crie um pedido "principal"
+          const mainOrder = { ...orders[0] };
+          
+          // Adicionar informações sobre os posts agrupados
+          mainOrder.metadata = {
+            ...mainOrder.metadata,
+            grouped: true,
+            totalPosts: orders.length,
+            posts: orders.map(order => ({
+              id: order.id,
+              external_order_id: order.external_order_id,
+              post: order.metadata?.post,
+              link: order.metadata?.link,
+              status: order.status
+            }))
+          };
+          
+          processedOrders.push(mainOrder);
+        }
+      });
+
+      setOrders(processedOrders);
+      setFilteredOrders(processedOrders);
     } catch (error) {
-      console.error('Error loading orders:', error);
-      toast.error('Failed to load orders');
+      console.error('Erro ao buscar pedidos:', error);
+      toast.error('Erro ao carregar pedidos');
     } finally {
       setLoading(false);
     }

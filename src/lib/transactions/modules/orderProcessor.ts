@@ -70,7 +70,7 @@ export class OrderProcessor {
         console.log('[OrderProcessor] Resposta do provedor para o post:', orderResponse);
         
         // Criar pedido no banco de dados
-        const order = await this.createOrderInDatabase(transaction, provider, orderResponse, postLinkForProvider, username, post, posts.length);
+        const order = await this.createOrderInDatabase(transaction, provider, orderResponse, postLinkForProvider, username, post, posts.length, providerRequestData);
         
         orders.push({
           success: true,
@@ -174,7 +174,7 @@ export class OrderProcessor {
         console.log('[OrderProcessor] Resposta do provedor:', orderResponse);
         
         // Criar pedido no banco de dados
-        return await this.createOrderInDatabase(transaction, provider, orderResponse, formattedTargetLink, username);
+        return await this.createOrderInDatabase(transaction, provider, orderResponse, formattedTargetLink, username, totalPosts, providerRequestData);
       } else {
         // Criar o serviço social media diretamente
         console.log('[OrderProcessor] Provedor não tem API configurada, usando SocialMediaService diretamente');
@@ -191,7 +191,20 @@ export class OrderProcessor {
         console.log('[OrderProcessor] Resposta do SocialMediaService:', orderResponse);
         
         // Criar pedido no banco de dados
-        return await this.createOrderInDatabase(transaction, provider, orderResponse, formattedTargetLink, username);
+        return await this.createOrderInDatabase(
+          transaction, 
+          provider, 
+          orderResponse, 
+          formattedTargetLink, 
+          username, 
+          1, // totalPosts
+          {
+            service: serviceId,
+            link: formattedTargetLink,
+            quantity: transaction.service?.quantity || transaction.metadata?.service?.quantity,
+            provider_id: provider.id
+          } // providerRequestData
+        );
       }
     } catch (error) {
       console.error('[OrderProcessor] Erro ao processar pedido:', error);
@@ -331,7 +344,8 @@ export class OrderProcessor {
     targetLink: string, 
     username: string,
     post?: Post,
-    totalPosts: number = 1
+    totalPosts: number = 1,
+    requestData?: ProviderRequestData
   ): Promise<any> {
     console.log('[OrderProcessor] Criando pedido no banco...');
     
@@ -364,6 +378,7 @@ export class OrderProcessor {
           provider_service_id: this.getServiceId(transaction),
           provider_order_id: orderResponse.orderId || orderResponse.order,
           provider_response: orderResponse,
+          providerRequestData: requestData, // Adicionando os dados enviados para o provedor
           post: post,
           customer: {
             name: transaction.customer_name || transaction.metadata?.customer?.name,

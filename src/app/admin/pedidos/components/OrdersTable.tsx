@@ -78,6 +78,23 @@ interface Order {
     resent?: boolean;
     resent_at?: string;
     resent_result?: any;
+    // Campos para agrupamento de pedidos
+    grouped?: boolean;
+    totalPosts?: number;
+    posts?: {
+      id: string;
+      external_order_id: string;
+      post?: {
+        shortcode: string;
+        display_url: string;
+        url?: string;
+        code?: string;
+        caption?: string;
+        username?: string;
+      };
+      link: string;
+      status: string;
+    }[];
   };
   created_at: string;
   updated_at: string;
@@ -112,6 +129,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [apiResponseModalOpen, setApiResponseModalOpen] = useState(false);
+  const [groupedPostsModalOpen, setGroupedPostsModalOpen] = useState(false);
 
   // Função para extrair o código do post do Instagram de forma padronizada
   const extractPostCode = (link: string | undefined): string | null => {
@@ -444,6 +462,12 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
     setSelectedOrder(null);
   };
 
+  // Função para abrir o modal de posts agrupados
+  const openGroupedPostsModal = (order: Order) => {
+    setSelectedOrder(order);
+    setGroupedPostsModalOpen(true);
+  };
+
   return (
     <div>
       <div className="py-6">
@@ -614,9 +638,13 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                       <div className="col-span-1">
                         <div className="font-medium text-gray-900">{providerName}</div>
                         <div className="text-xs text-gray-500">
-                          {order.external_order_id ? (
+                          {order.metadata?.grouped ? (
                             <span className="flex items-center">
-                              <span className="font-medium">ID Externo:</span> {order.external_order_id}
+                              <span className="font-medium">Posts:</span> {order.metadata.totalPosts}
+                            </span>
+                          ) : order.metadata?.provider_order_id || order.external_order_id ? (
+                            <span className="flex items-center">
+                              <span className="font-medium">ID Externo:</span> {order.metadata?.provider_order_id || order.external_order_id}
                             </span>
                           ) : 'N/A'}
                         </div>
@@ -624,7 +652,15 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                       
                       {/* Ações */}
                       <div className="col-span-1 flex flex-col gap-2">
-                        {order.metadata?.post?.display_url && (
+                        {order.metadata?.grouped ? (
+                          <button
+                            onClick={() => openGroupedPostsModal(order)}
+                            className="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                          >
+                            <Info className="h-3 w-3 mr-1" />
+                            Ver Posts
+                          </button>
+                        ) : order.metadata?.post?.display_url && (
                           <a
                             href={order.metadata.post.display_url}
                             target="_blank"
@@ -632,6 +668,16 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                             className="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                           >
                             Ver Post
+                          </a>
+                        )}
+                        {displayLink && (
+                          <a 
+                            href={displayLink} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100"
+                          >
+                            Ver Link
                           </a>
                         )}
                         {order.status === 'cancelled' && (
@@ -704,9 +750,9 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                         <div>
                           <div className="text-xs text-gray-500">ID Externo</div>
                           <div className="font-medium text-gray-900">
-                            {order.external_order_id ? (
+                            {order.metadata?.provider_order_id || order.external_order_id ? (
                               <span className="flex items-center">
-                                <span className="font-medium">ID Externo:</span> {order.external_order_id}
+                                <span className="font-medium">ID Externo:</span> {order.metadata?.provider_order_id || order.external_order_id}
                               </span>
                             ) : 'N/A'}
                           </div>
@@ -948,7 +994,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
               <div className="pt-4 flex justify-end space-x-2">
                 <button
                   type="button"
-                  className="inline-flex justify-center rounded-md border border-transparent bg-indigo-100 px-4 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                  className="inline-flex justify-center rounded-md border border-transparent bg-indigo-100 px-4 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                   onClick={() => checkOrderStatus(selectedOrderStatus.order)}
                   disabled={!selectedOrderStatus.order.external_order_id || checkingStatus[selectedOrderStatus.order.id]}
                 >
@@ -966,7 +1012,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                 </button>
                 <button
                   type="button"
-                  className="inline-flex justify-center rounded-md border border-transparent bg-gray-100 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
+                  className="inline-flex justify-center rounded-md border border-transparent bg-gray-100 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
                   onClick={() => setStatusModalOpen(false)}
                 >
                   Fechar
@@ -1010,7 +1056,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
           <DialogFooter className="flex justify-end space-x-2">
             <button
               type="button"
-              className="inline-flex justify-center rounded-md border border-transparent bg-gray-100 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
+              className="inline-flex justify-center rounded-md border border-transparent bg-gray-100 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
               onClick={() => setDeleteModalOpen(false)}
               disabled={deleting}
             >
@@ -1018,7 +1064,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
             </button>
             <button
               type="button"
-              className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+              className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
               onClick={handleDeleteOrder}
               disabled={deleting}
             >
@@ -1192,7 +1238,7 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
               <div className="mb-4">
                 <h4 className="text-sm font-medium text-gray-500 mb-1">Resposta do Provedor</h4>
                 <pre className="bg-gray-100 p-4 rounded-md text-xs overflow-auto max-h-40">
-                  {JSON.stringify(selectedOrder.metadata?.providerResponse || {}, null, 2)}
+                  {JSON.stringify(selectedOrder.metadata?.provider_response || {}, null, 2)}
                 </pre>
               </div>
               
@@ -1224,6 +1270,61 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
               <div className="mt-6 flex justify-end">
                 <button
                   onClick={closeApiResponseModal}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para visualizar posts agrupados */}
+      {groupedPostsModalOpen && selectedOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Posts Agrupados</h3>
+                <button
+                  onClick={() => setGroupedPostsModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-500"
+                >
+                  <span className="sr-only">Fechar</span>
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-500 mb-1">ID do Pedido</h4>
+                <p className="text-sm text-gray-900">{selectedOrder.id}</p>
+              </div>
+              
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-500 mb-1">Quantidade de Posts</h4>
+                <p className="text-sm text-gray-900">{selectedOrder.metadata?.totalPosts}</p>
+              </div>
+              
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-500 mb-1">Posts</h4>
+                <div className="space-y-2">
+                  {selectedOrder.metadata?.posts?.map((post, index) => (
+                    <div key={index} className="bg-gray-100 p-4 rounded-md">
+                      <h5 className="text-sm font-medium text-gray-900 mb-1">Post {index + 1}</h5>
+                      <p className="text-sm text-gray-500">ID: {post.id}</p>
+                      <p className="text-sm text-gray-500">Link: {post.link}</p>
+                      <p className="text-sm text-gray-500">Status: {post.status}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setGroupedPostsModalOpen(false)}
                   className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
                   Fechar
