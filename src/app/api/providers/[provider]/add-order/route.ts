@@ -42,7 +42,8 @@ function extractPostCode(link: string | undefined): string | null {
     }
     
     // Tentar extrair o código de qualquer formato de URL que tenha um padrão /CÓDIGO/
-    const matches = link.match(/\/([A-Za-z0-9_-]{11})(?:\/|\?|$)/);
+    // Removido a restrição de comprimento {11} para aceitar códigos de diferentes tamanhos
+    const matches = link.match(/\/([A-Za-z0-9_-]+)(?:\/|\?|$)/);
     if (matches && matches[1]) {
       return matches[1];
     }
@@ -153,27 +154,40 @@ export async function POST(
     // Preparar os dados para a requisição ao provedor
     const providerRequestData = {
       key: apiKey,
-      action: "add",
+      action: 'add',
       service: serviceData.external_id.toString(),
       link: formattedLink,
       quantity: quantity.toString()
     };
     
+    // Converter para formato x-www-form-urlencoded manualmente
+    const formData = Object.entries(providerRequestData)
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .join('&');
+    
     console.log('Dados para o provedor:', providerRequestData);
     console.log('API URL do provedor:', apiUrl);
-    console.log('API Key do provedor:', apiKey);
+    console.log('Dados formatados para envio:', formData);
     
-    // Enviar pedido para o provedor usando POST com JSON no corpo
+    // Log detalhado para depuração
+    console.log('Enviando para o provedor:');
+    console.log(`key: ${apiKey}`);
+    console.log(`action: add`);
+    console.log(`service: ${serviceData.external_id.toString()}`);
+    console.log(`link: ${formattedLink}`);
+    console.log(`quantity: ${quantity.toString()}`);
+    
+    // Enviar pedido para o provedor usando POST com x-www-form-urlencoded
     try {
       console.log('Iniciando requisição para o provedor...');
       
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         },
-        body: JSON.stringify(providerRequestData),
+        body: formData,
       });
       
       console.log('Status da resposta:', response.status);
@@ -183,7 +197,7 @@ export async function POST(
         const errorText = await response.text();
         console.error(`Erro na resposta do provedor (${response.status}): ${errorText}`);
         console.error('URL usada:', apiUrl);
-        console.error('Dados enviados:', providerRequestData);
+        console.error('Dados enviados:', formData);
         
         let errorMessage = `Erro ao enviar pedido para o provedor (${response.status})`;
         

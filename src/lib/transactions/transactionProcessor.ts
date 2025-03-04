@@ -137,7 +137,7 @@ async function processTransaction(transactionId: string) {
           user_id: existingOrders[0].user_id
         })
         .eq('id', transactionId);
-        
+
       if (updateError) {
         console.error('[ProcessTransaction] Erro ao atualizar flag order_created:', updateError);
       } else {
@@ -295,18 +295,20 @@ async function processTransaction(transactionId: string) {
             console.log('[ProcessTransaction] Provedor tem API configurada, usando endpoint dinâmico');
             
             // Usar o endpoint dinâmico do provedor
+            const params = new URLSearchParams({
+              service: serviceId,
+              link: post.url || post.link,
+              quantity: transaction.service?.quantity || transaction.metadata?.service?.quantity,
+              transaction_id: transaction.id,
+              target_username: transaction.metadata?.username || transaction.metadata?.profile?.username
+            });
+            
             const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/providers/${provider.slug}/add-order`, {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
               },
-              body: JSON.stringify({
-                service: serviceId,
-                link: post.url || post.link,
-                quantity: transaction.service?.quantity || transaction.metadata?.service?.quantity,
-                transaction_id: transaction.id,
-                target_username: transaction.metadata?.username || transaction.metadata?.profile?.username
-              }),
+              body: params.toString(),
             });
             
             if (!response.ok) {
@@ -382,13 +384,44 @@ async function processTransaction(transactionId: string) {
       return orders;
     } else {
       console.log('[ProcessTransaction] Processando pedido...');
-      const username = transaction.metadata?.username;
-      if (!username) {
-        console.error('[ProcessTransaction] Username não encontrado');
-        throw new Error('Username não encontrado');
+      
+      // Verificar se é um checkout de seguidores ou curtidas
+      const checkoutType = transaction.metadata?.checkout_type || 'likes';
+      console.log(`[ProcessTransaction] Tipo de checkout: ${checkoutType}`);
+      
+      // Para checkout de seguidores, usamos o perfil diretamente
+      // Para curtidas, usamos os posts
+      let targetLink = '';
+      let username = '';
+      
+      if (checkoutType === 'followers') {
+        username = transaction.target_username || transaction.metadata?.profile?.username;
+        targetLink = transaction.target_profile_link || `https://instagram.com/${username}`;
+        console.log(`[ProcessTransaction] Checkout de seguidores para: ${username}, link: ${targetLink}`);
+      } else {
+        // Para curtidas, verificamos se temos username nos posts ou no profile
+        username = transaction.metadata?.profile?.username || 
+                  (transaction.metadata?.posts && transaction.metadata?.posts.length > 0 ? 
+                    transaction.metadata?.posts[0].username : transaction.target_username);
+        
+        if (!username) {
+          console.error('[ProcessTransaction] Username não encontrado nos posts ou no profile');
+          throw new Error('Username não encontrado nos posts ou no profile');
+        }
+        
+        console.log(`[ProcessTransaction] Checkout de curtidas para: ${username}`);
+        
+        // Se temos posts, usamos o link do primeiro post
+        if (transaction.metadata?.posts && transaction.metadata?.posts.length > 0) {
+          const post = transaction.metadata.posts[0];
+          targetLink = post.url || post.link || `https://instagram.com/p/${post.code}`;
+        } else {
+          // Caso não tenha posts, usamos o perfil como fallback
+          targetLink = transaction.target_profile_link || `https://instagram.com/${username}`;
+        }
+        
+        console.log(`[ProcessTransaction] Link do alvo: ${targetLink}`);
       }
-
-      const profileLink = `https://instagram.com/${username}`;
       
       try {
         // Extrair o external_id do serviço se disponível
@@ -416,26 +449,47 @@ async function processTransaction(transactionId: string) {
         if (provider && provider.api_url && provider.api_key) {
           console.log('[ProcessTransaction] Provedor tem API configurada, usando endpoint dinâmico');
           
-          // Usar o endpoint dinâmico do provedor
+          // Formatar o link do Instagram se for um link para o Instagram
+          let formattedTargetLink = targetLink;
+          if (targetLink.includes('instagram.com')) {
+            // Extrair o código do post
+            const postCode = targetLink.split('/p/')[1]?.split('/')[0]?.split('?')[0];
+            if (postCode) {
+              formattedTargetLink = `https://instagram.com/p/${postCode}`;
+              console.log('[ProcessTransaction] Link formatado para o Instagram:', formattedTargetLink);
+            }
+          }
+          
+          // Preparar os dados para a requisição ao provedor
+          const providerRequestData = {
+            service: serviceId,
+            link: formattedTargetLink,
+            quantity: transaction.service?.quantity || transaction.metadata?.service?.quantity,
+            transaction_id: transaction.id,
+            target_username: transaction.metadata?.username || transaction.metadata?.profile?.username
+          };
+          
+          // Log detalhado para depuração
+          console.log('[ProcessTransaction] Enviando para o provedor:');
+          console.log(`service: ${serviceId}`);
+          console.log(`link: ${formattedTargetLink}`);
+          console.log(`quantity: ${transaction.service?.quantity || transaction.metadata?.service?.quantity}`);
+          console.log(`transaction_id: ${transaction.id}`);
+          console.log(`target_username: ${transaction.metadata?.username || transaction.metadata?.profile?.username}`);
+          
           const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/providers/${provider.slug}/add-order`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              service: serviceId,
-              link: profileLink,
-              quantity: transaction.service?.quantity || transaction.metadata?.service?.quantity,
-              transaction_id: transaction.id,
-              target_username: transaction.metadata?.username || transaction.metadata?.profile?.username
-            }),
+            body: JSON.stringify(providerRequestData),
           });
           
           if (!response.ok) {
             const errorData = await response.json();
             throw new Error(`Erro ao enviar pedido para o provedor: ${JSON.stringify(errorData)}`);
           }
-          
+
           const orderResponse = await response.json();
           console.log('[ProcessTransaction] Resposta do provedor:', orderResponse);
           
@@ -457,7 +511,7 @@ async function processTransaction(transactionId: string) {
               payment_method: transaction.payment_method || 'pix',
               payment_id: transaction.payment_id || transaction.external_id,
               metadata: {
-                link: profileLink,
+                link: formattedTargetLink,
                 provider: provider.slug,
                 provider_name: provider.name,
                 provider_service_id: serviceId,
@@ -508,7 +562,7 @@ async function processTransaction(transactionId: string) {
           // Criar o pedido
           const orderResponse = await socialMediaService.createOrder({
             service: serviceId,
-            link: profileLink,
+            link: targetLink,
             quantity: transaction.service?.quantity || transaction.metadata?.service?.quantity,
             provider_id: provider.id
           });
@@ -533,7 +587,7 @@ async function processTransaction(transactionId: string) {
               payment_method: transaction.payment_method || 'pix',
               payment_id: transaction.payment_id || transaction.external_id,
               metadata: {
-                link: profileLink,
+                link: targetLink,
                 provider: provider.slug,
                 provider_name: provider.name,
                 provider_service_id: serviceId,
