@@ -6,7 +6,7 @@ import { SocialMediaService } from '@/lib/services/socialMediaService';
  * @param transactionId ID da transação a ser processada
  * @returns Os pedidos criados
  */
-export async function processTransaction(transactionId: string) {
+async function processTransaction(transactionId: string) {
   console.log('[ProcessTransaction] Iniciando processamento:', transactionId);
   const startTime = new Date();
   const supabase = createClient();
@@ -593,7 +593,7 @@ export async function processTransaction(transactionId: string) {
  * @param providerId ID do provedor
  * @returns Status do pedido
  */
-export async function checkOrderStatus(orderId: string, providerId: string) {
+async function checkOrderStatus(orderId: string, providerId: string) {
   const supabase = createClient();
   
   try {
@@ -625,7 +625,7 @@ export async function checkOrderStatus(orderId: string, providerId: string) {
  * @param status Novo status
  * @returns Pedido atualizado
  */
-export async function updateOrderStatus(orderId: string, status: string) {
+async function updateOrderStatus(orderId: string, status: string) {
   const supabase = createClient();
   
   try {
@@ -647,9 +647,4 @@ export async function updateOrderStatus(orderId: string, status: string) {
   }
 }
 
-// Exportar como funções nomeadas
-export {
-  processTransaction,
-  checkOrderStatus,
-  updateOrderStatus
-};
+export { processTransaction, checkOrderStatus, updateOrderStatus };
