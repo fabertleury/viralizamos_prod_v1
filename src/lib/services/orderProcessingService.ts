@@ -152,6 +152,11 @@ export async function sendOrderToProvider(params: {
       const errorMessage = errorMessages[responseData.error] || `Erro do provedor: ${responseData.error}`;
       console.error(`Erro na resposta do provedor: ${errorMessage}`);
       
+      // Calcular o valor do pedido (quantidade * preço unitário)
+      const unitPrice = service.preco || (service.service_variations && service.service_variations.length > 0 ? 
+                      service.service_variations[0].preco : 0);
+      const amount = parseFloat(quantity) * unitPrice;
+      
       // Cadastrar o pedido na tabela orders mesmo com erro
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
@@ -161,6 +166,7 @@ export async function sendOrderToProvider(params: {
           customer_id: customer.id,
           target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
           quantity: quantity,
+          amount: amount || 0, // Garantir que amount não seja null
           status: 'error',
           payment_status: 'approved',
           payment_method: transaction.payment_method || 'pix',
@@ -192,6 +198,11 @@ export async function sendOrderToProvider(params: {
       // Se não houver erro, considerar como sucesso
       console.log('Pedido enviado com sucesso para o provedor:', responseData);
       
+      // Calcular o valor do pedido (quantidade * preço unitário)
+      const unitPrice = service.preco || (service.service_variations && service.service_variations.length > 0 ? 
+                      service.service_variations[0].preco : 0);
+      const amount = parseFloat(quantity) * unitPrice;
+      
       // Cadastrar o pedido bem-sucedido na tabela orders
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
@@ -201,6 +212,7 @@ export async function sendOrderToProvider(params: {
           customer_id: customer.id,
           target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
           quantity: quantity,
+          amount: amount || 0, // Garantir que amount não seja null
           status: 'pending',
           payment_status: 'approved',
           payment_method: transaction.payment_method || 'pix',
@@ -232,6 +244,11 @@ export async function sendOrderToProvider(params: {
   } catch (orderError) {
     console.error('Erro ao processar pedido:', orderError);
     
+    // Calcular o valor do pedido (quantidade * preço unitário)
+    const unitPrice = service.preco || (service.service_variations && service.service_variations.length > 0 ? 
+                    service.service_variations[0].preco : 0);
+    const amount = parseFloat(quantity) * unitPrice;
+    
     // Cadastrar o pedido com erro na tabela orders
     const errorMessage = String(orderError);
     const { data: orderData, error: orderError2 } = await supabase
@@ -242,6 +259,7 @@ export async function sendOrderToProvider(params: {
         customer_id: customer.id,
         target_username: post.username || (post.caption ? post.caption.substring(0, 50) : 'Unknown'),
         quantity: quantity,
+        amount: amount || 0, // Garantir que amount não seja null
         status: 'error',
         payment_status: 'approved',
         payment_method: transaction.payment_method || 'pix',

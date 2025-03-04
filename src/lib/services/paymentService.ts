@@ -1,7 +1,7 @@
 import mercadopago from 'mercadopago';
 import { createClient } from '@/lib/supabase/server';
 import { formatInstagramLink, sendOrderToProvider } from './orderProcessingService';
-import { createOrUpdateCustomer } from '@/services/customerService';
+import { createOrUpdateCustomer } from '../customerService';
 
 // Configuração do Mercado Pago
 mercadopago.configurations.setAccessToken(process.env.MERCADO_PAGO_ACCESS_TOKEN || '');
