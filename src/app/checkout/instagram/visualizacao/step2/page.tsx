@@ -139,7 +139,8 @@ export default function Step2Page() {
               name: formData.name,
               email: formData.email,
               phone: formData.whatsapp
-            }
+            },
+            checkout_type: 'Mostrar Posts'
           },
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()

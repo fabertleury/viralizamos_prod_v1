@@ -51,6 +51,7 @@ interface Order {
       link: string;
       status: string;
     }[];
+    checkout_type?: string;
   };
   created_at: string;
   updated_at: string;
@@ -66,6 +67,9 @@ interface Order {
   };
   transaction?: {
     id: string;
+    metadata?: {
+      checkout_type?: string;
+    };
   };
 }
 
@@ -127,11 +131,19 @@ export default function OrdersPage() {
       const processedOrders: Order[] = [];
       
       Object.entries(groupedOrders).forEach(([transactionId, orders]) => {
-        if (orders.length === 1) {
-          // Se há apenas um pedido para esta transação, adicione-o normalmente
-          processedOrders.push(orders[0]);
+        // Verificar se é um pedido de seguidores (checkout_type = 'Apenas Link do Usuário')
+        const isFollowersOrder = orders.some(order => 
+          order.metadata?.checkout_type === 'Apenas Link do Usuário' || 
+          order.transaction?.metadata?.checkout_type === 'Apenas Link do Usuário'
+        );
+
+        if (orders.length === 1 || isFollowersOrder) {
+          // Se há apenas um pedido para esta transação OU é um pedido de seguidores, adicione cada pedido individualmente
+          orders.forEach(order => {
+            processedOrders.push(order);
+          });
         } else {
-          // Se há múltiplos pedidos para esta transação, crie um pedido "principal"
+          // Se há múltiplos pedidos para esta transação e não é de seguidores, crie um pedido "principal"
           const mainOrder = { ...orders[0] };
           
           // Adicionar informações sobre os posts agrupados

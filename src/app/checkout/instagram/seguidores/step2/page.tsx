@@ -237,7 +237,7 @@ export default function Step2Page() {
         customer_name: formData.name,
         customer_email: formData.email,
         customer_phone: formData.phone,
-        checkout_type: 'followers'
+        checkout_type: 'Apenas Link do Usuário'
       };
 
       // Enviar para a API de pagamento

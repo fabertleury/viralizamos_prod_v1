@@ -696,6 +696,15 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                           <Code className="h-3 w-3 mr-1" />
                           API Response
                         </button>
+                        {(order.status === 'cancelled' || order.status === 'error') && (
+                          <button
+                            onClick={() => resendOrder(order)}
+                            className="inline-flex items-center rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100"
+                          >
+                            <Send className="h-3 w-3 mr-1" />
+                            Reenviar
+                          </button>
+                        )}
                         <button
                           onClick={() => openDeleteModal(order)}
                           disabled={order.status.toLowerCase() === 'canceled'}
@@ -817,7 +826,15 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                           <Code className="h-3 w-3 mr-1" />
                           API Response
                         </button>
-                        
+                        {(order.status === 'cancelled' || order.status === 'error') && (
+                          <button
+                            onClick={() => resendOrder(order)}
+                            className="inline-flex items-center rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100"
+                          >
+                            <Send className="h-3 w-3 mr-1" />
+                            Reenviar
+                          </button>
+                        )}
                         <button
                           onClick={() => openDeleteModal(order)}
                           disabled={order.status.toLowerCase() === 'canceled'}
@@ -1274,6 +1291,18 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                 >
                   Fechar
                 </button>
+                {(selectedOrder.status === 'cancelled' || selectedOrder.status === 'error') && (
+                  <button
+                    onClick={() => {
+                      closeApiResponseModal();
+                      resendOrder(selectedOrder);
+                    }}
+                    className="ml-3 inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    Reenviar Pedido
+                  </button>
+                )}
               </div>
             </div>
           </div>
