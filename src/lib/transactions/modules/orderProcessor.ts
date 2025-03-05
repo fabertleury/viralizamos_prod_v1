@@ -39,9 +39,9 @@ export class OrderProcessor {
         const formattedLink = this.linkFormatter.formatPostLink(post);
         console.log('[OrderProcessor] Link formatado para o Instagram (com https):', formattedLink);
         
-        // Formatar o link para o provedor (sem https://)
-        const postLinkForProvider = this.linkFormatter.formatInstagramLink(post.url, false);
-        console.log('[OrderProcessor] Link formatado para o provedor (sem https):', postLinkForProvider);
+        // Formatar o link para o provedor (agora também com https://)
+        const postLinkForProvider = this.linkFormatter.formatInstagramLink(post.url, true);
+        console.log('[OrderProcessor] Link formatado para o provedor (com https):', postLinkForProvider);
         
         // Extrair o external_id do serviço
         const serviceId = this.getServiceId(transaction);
@@ -130,9 +130,9 @@ export class OrderProcessor {
         const formattedLinkWithHttps = this.linkFormatter.formatInstagramLink(targetLink, true);
         console.log('[OrderProcessor] Link formatado para o Instagram (com https):', formattedLinkWithHttps);
         
-        // Formatar o link para o Instagram - SEM https:// para envio ao provedor
-        const formattedLinkForProvider = this.linkFormatter.formatInstagramLink(targetLink, false);
-        console.log('[OrderProcessor] Link formatado para o provedor (sem https):', formattedLinkForProvider);
+        // Formatar o link para o Instagram - AGORA TAMBÉM COM https:// para envio ao provedor
+        const formattedLinkForProvider = this.linkFormatter.formatInstagramLink(targetLink, true);
+        console.log('[OrderProcessor] Link formatado para o provedor (com https):', formattedLinkForProvider);
         
         if (formattedLinkForProvider) {
           formattedTargetLink = formattedLinkForProvider;
