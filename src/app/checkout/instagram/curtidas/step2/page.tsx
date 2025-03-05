@@ -597,12 +597,18 @@ export default function Step2Page() {
             // Garantir que temos um código válido para o link usando nossa função auxiliar
             const postCode = extractPostCode(post);
             
+            // Determinar se é um post ou reel
+            const isReel = post.type === 'reel' || (post.url && post.url.includes('/reel/'));
+            const postType = isReel ? 'reel' : 'p';
+            
             console.log('🔄 Processando post/reel para pagamento:', {
               id: post.id,
               code: post.code,
               shortcode: post.shortcode,
               extractedCode: postCode,
-              finalUrl: `https://instagram.com/p/${postCode}`
+              isReel: isReel,
+              postType: postType,
+              finalUrl: `https://instagram.com/${postType}/${postCode}`
             });
             
             return {
@@ -610,12 +616,13 @@ export default function Step2Page() {
               code: postCode,
               shortcode: postCode,
               image_url: post.image_url,
+              type: isReel ? 'reel' : 'post',
               caption: post.caption 
                 ? (typeof post.caption === 'object' 
                   ? post.caption.text || 'Sem legenda'
                   : String(post.caption)) 
                 : (post.text || 'Sem legenda'),
-              link: `https://instagram.com/p/${postCode}`
+              link: `https://instagram.com/${postType}/${postCode}`
             };
           })
         }),

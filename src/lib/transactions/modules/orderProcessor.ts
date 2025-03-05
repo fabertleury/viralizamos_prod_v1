@@ -18,9 +18,31 @@ export class OrderProcessor {
    * @param username Nome de usuário para o pedido
    * @returns Lista de pedidos criados
    */
-  async processLikesOrder(transaction: Transaction, provider: Provider, posts: Post[], username: string): Promise<any[]> {
+  async processLikesOrder(transaction: Transaction, provider: Provider, posts?: Post[], username?: string): Promise<any[]> {
     console.log('[OrderProcessor] Processando pedido de curtidas');
+    
+    // Se não tiver posts, tentar extrair dos metadados da transação
+    if (!posts || posts.length === 0) {
+      posts = transaction.metadata?.posts || [];
+      console.log('[OrderProcessor] Usando posts dos metadados da transação:', posts.length);
+    }
+    
+    // Se ainda não tiver posts, lançar erro
+    if (!posts || posts.length === 0) {
+      console.error('[OrderProcessor] Nenhum post encontrado para processar');
+      throw new Error('Nenhum post encontrado para processar');
+    }
+    
     console.log('[OrderProcessor] Processando', posts.length, 'posts');
+    
+    // Se não tiver username, tentar extrair dos metadados da transação
+    if (!username) {
+      username = transaction.target_username || 
+                transaction.metadata?.username || 
+                transaction.metadata?.profile?.username;
+      console.log('[OrderProcessor] Usando username dos metadados da transação:', username);
+    }
+    
     console.log('[OrderProcessor] Checkout de curtidas para:', username);
     
     const orders: any[] = [];
@@ -39,9 +61,39 @@ export class OrderProcessor {
         const formattedLink = this.linkFormatter.formatPostLink(post);
         console.log('[OrderProcessor] Link formatado para o Instagram (com https):', formattedLink);
         
-        // Formatar o link para o provedor (agora também com https://)
-        const postLinkForProvider = this.linkFormatter.formatInstagramLink(post.url, true);
-        console.log('[OrderProcessor] Link formatado para o provedor (com https):', postLinkForProvider);
+        // Verificar se é um reel ou post normal
+        const isReel = 
+          post.type === 'reel' || 
+          (post.url && post.url.includes('/reel/')) || 
+          (post.link && post.link.includes('/reel/'));
+        const postType = isReel ? 'reel' : 'p';
+        
+        console.log('[OrderProcessor] Tipo de post detectado:', isReel ? 'REEL' : 'POST', {
+          type: post.type,
+          url: post.url,
+          link: post.link,
+          indicators: {
+            typeIsReel: post.type === 'reel',
+            urlContainsReel: post.url && post.url.includes('/reel/'),
+            linkContainsReel: post.link && post.link.includes('/reel/')
+          }
+        });
+        
+        // Extrair o código do post
+        let postCode = post.code || post.shortcode;
+        if (!postCode && post.url) {
+          postCode = this.linkFormatter.extractPostCode(post.url);
+        }
+        
+        if (!postCode) {
+          console.error('[OrderProcessor] Código do post não encontrado:', post);
+          continue;
+        }
+        
+        // Formatar o link para o provedor (sem https://)
+        // Para o provedor enviamos apenas: instagram.com/p/{code} ou instagram.com/reel/{code}
+        const postLinkForProvider = `instagram.com/${postType}/${postCode}`;
+        console.log('[OrderProcessor] Link formatado para o provedor (sem https):', postLinkForProvider);
         
         // Extrair o external_id do serviço
         const serviceId = this.getServiceId(transaction);
@@ -120,24 +172,52 @@ export class OrderProcessor {
       
       console.log('[OrderProcessor] Usando external_id do serviço:', serviceId);
       
+      // Verificar se é um pedido de seguidores (checkout_type = 'Apenas Link do Usuário')
+      const isFollowersOrder = 
+        transaction.checkout_type === 'Apenas Link do Usuário' || 
+        transaction.service?.type === 'followers' ||
+        (transaction.service?.name && transaction.service.name.toLowerCase().includes('seguidor'));
+      
       // Se for um link do Instagram, formatar corretamente
       let formattedTargetLink = targetLink;
       
       if (targetLink.includes('instagram.com')) {
         console.log('[OrderProcessor] Detectado link do Instagram, formatando:', targetLink);
         
-        // Formatar o link para o Instagram - COM https:// para logs internos
-        const formattedLinkWithHttps = this.linkFormatter.formatInstagramLink(targetLink, true);
-        console.log('[OrderProcessor] Link formatado para o Instagram (com https):', formattedLinkWithHttps);
-        
-        // Formatar o link para o Instagram - AGORA TAMBÉM COM https:// para envio ao provedor
-        const formattedLinkForProvider = this.linkFormatter.formatInstagramLink(targetLink, true);
-        console.log('[OrderProcessor] Link formatado para o provedor (com https):', formattedLinkForProvider);
-        
-        if (formattedLinkForProvider) {
-          formattedTargetLink = formattedLinkForProvider;
+        if (isFollowersOrder) {
+          // Para seguidores, extrair apenas o username
+          const extractedUsername = this.linkFormatter.extractUsername(targetLink);
+          if (extractedUsername) {
+            console.log('[OrderProcessor] Username extraído para seguidores:', extractedUsername);
+            // Para seguidores, enviamos apenas o username para o provedor
+            formattedTargetLink = extractedUsername;
+          } else {
+            // Se não conseguir extrair o username, usar o que já temos
+            formattedTargetLink = username.replace('@', '');
+            console.log('[OrderProcessor] Usando username direto para seguidores:', formattedTargetLink);
+          }
         } else {
-          console.warn('[OrderProcessor] Não foi possível formatar o link do Instagram, usando o link original');
+          // Para outros tipos de pedidos (curtidas, visualizações, etc.)
+          // Formatar o link para o Instagram - COM https:// para logs internos
+          const formattedLinkWithHttps = this.linkFormatter.formatInstagramLink(targetLink, true);
+          console.log('[OrderProcessor] Link formatado para o Instagram (com https):', formattedLinkWithHttps);
+          
+          // Verificar se é um reel ou post normal
+          const isReel = formattedLinkWithHttps.includes('/reel/');
+          const postType = isReel ? 'reel' : 'p';
+          
+          console.log('[OrderProcessor] Tipo de link detectado:', isReel ? 'REEL' : 'POST');
+          
+          // Extrair o código do post
+          const postCode = this.linkFormatter.extractPostCode(targetLink);
+          
+          if (postCode) {
+            // Para o provedor enviamos apenas: instagram.com/p/{code} ou instagram.com/reel/{code}
+            formattedTargetLink = `instagram.com/${postType}/${postCode}`;
+            console.log('[OrderProcessor] Link formatado para o provedor (sem https):', formattedTargetLink);
+          } else {
+            console.warn('[OrderProcessor] Não foi possível extrair o código do post, usando o link original');
+          }
         }
       }
       

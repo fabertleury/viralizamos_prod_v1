@@ -61,7 +61,13 @@ export interface Post {
   url?: string;
   link?: string;
   code?: string;
+  shortcode?: string;
   username?: string;
+  type?: 'post' | 'reel'; // Tipo do post: post normal ou reel
+  image_url?: string;
+  caption?: string | { text?: string };
+  text?: string;
+  id?: string;
 }
 
 export interface Provider {

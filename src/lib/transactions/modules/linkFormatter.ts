@@ -28,9 +28,22 @@ export class LinkFormatter {
         match = url.match(/www\.instagram\.com\/p\/([A-Za-z0-9_-]+)(?:\/|\?|$)/);
       }
       
-      // Padrão 3: Tentar extrair qualquer código após /p/
+      // Padrão 3: instagram.com/reel/{code}
       if (!match || !match[1]) {
-        match = url.match(/\/p\/([A-Za-z0-9_-]+)(?:\/|\?|$)/);
+        match = url.match(/instagram\.com\/reel\/([A-Za-z0-9_-]+)(?:\/|\?|$)/);
+      }
+      
+      // Padrão 4: www.instagram.com/reel/{code}
+      if (!match || !match[1]) {
+        match = url.match(/www\.instagram\.com\/reel\/([A-Za-z0-9_-]+)(?:\/|\?|$)/);
+      }
+      
+      // Padrão 5: Tentar extrair qualquer código após /p/ ou /reel/
+      if (!match || !match[1]) {
+        match = url.match(/\/(p|reel)\/([A-Za-z0-9_-]+)(?:\/|\?|$)/);
+        if (match && match[2]) {
+          return match[2];
+        }
       }
       
       if (match && match[1]) {
@@ -44,6 +57,16 @@ export class LinkFormatter {
     }
     
     return null;
+  }
+
+  /**
+   * Verifica se a URL é de um reel
+   * @param url URL do post do Instagram
+   * @returns true se for um reel, false caso contrário
+   */
+  isReelUrl(url: string): boolean {
+    if (!url) return false;
+    return url.includes('/reel/');
   }
 
   /**
@@ -66,14 +89,71 @@ export class LinkFormatter {
     
     console.log('[LinkFormatter] Código extraído:', postCode);
     
+    // Verificar se é um reel ou post normal
+    const isReel = this.isReelUrl(url);
+    const postType = isReel ? 'reel' : 'p';
+    
     // Formatar o link com ou sem https:// conforme necessário
     const formattedLink = includeHttps
-      ? `https://instagram.com/p/${postCode}`
-      : `instagram.com/p/${postCode}`;
+      ? `https://instagram.com/${postType}/${postCode}`
+      : `instagram.com/${postType}/${postCode}`;
     
     console.log('[LinkFormatter] Link formatado:', formattedLink);
     
     return formattedLink;
+  }
+
+  /**
+   * Extrai o username do Instagram de uma URL
+   * @param url URL do perfil do Instagram
+   * @returns Username extraído ou null se não for possível extrair
+   */
+  extractUsername(url: string): string | null {
+    if (!url) return null;
+    
+    try {
+      console.log('[LinkFormatter] Extraindo username de:', url);
+      
+      // Remover http:// ou https:// e www.
+      let cleanUrl = url.replace(/^https?:\/\//, '').replace(/^www\./, '');
+      
+      // Padrão: instagram.com/username
+      const match = cleanUrl.match(/^instagram\.com\/([A-Za-z0-9._]+)(?:\/|\?|$)/);
+      
+      if (match && match[1]) {
+        // Verificar se não é um caminho especial como /p/ ou /reel/
+        if (['p', 'reel', 'explore', 'about', 'developer'].includes(match[1])) {
+          return null;
+        }
+        
+        console.log('[LinkFormatter] Username extraído:', match[1]);
+        return match[1];
+      }
+    } catch (error) {
+      console.error('[LinkFormatter] Erro ao extrair username:', error);
+    }
+    
+    return null;
+  }
+
+  /**
+   * Formata um link de perfil do Instagram para o formato padrão
+   * @param username Username do Instagram
+   * @param includeHttps Se deve incluir o protocolo https:// no link
+   * @returns Link formatado
+   */
+  formatProfileLink(username: string, includeHttps: boolean = true): string {
+    if (!username) return '';
+    
+    // Remover @ se existir
+    const cleanUsername = username.startsWith('@') ? username.substring(1) : username;
+    
+    // Remover https://instagram.com/ se existir
+    const finalUsername = cleanUsername.replace(/^https?:\/\/(www\.)?instagram\.com\//, '');
+    
+    return includeHttps
+      ? `https://instagram.com/${finalUsername}`
+      : `instagram.com/${finalUsername}`;
   }
 
   /**
@@ -86,25 +166,34 @@ export class LinkFormatter {
     try {
       console.log('[LinkFormatter] Formatando post:', post);
       
+      // Verificar se é um reel baseado em múltiplos indicadores
+      const isReel = 
+        post.type === 'reel' || 
+        (post.url && post.url.includes('/reel/')) || 
+        (post.link && post.link.includes('/reel/'));
+      
+      const postType = isReel ? 'reel' : 'p';
+      console.log('[LinkFormatter] Tipo de post detectado:', isReel ? 'REEL' : 'POST');
+      
       // Se o post não tiver código, tentar extrair de url ou link
       if (!post.code && (post.url || post.link)) {
         const url = post.url || post.link;
         const postCode = this.extractPostCode(url);
         
         if (postCode) {
-          console.log('[LinkFormatter] Link formatado a partir do código:', includeHttps ? `https://instagram.com/p/${postCode}` : `instagram.com/p/${postCode}`);
+          console.log('[LinkFormatter] Link formatado a partir do código:', includeHttps ? `https://instagram.com/${postType}/${postCode}` : `instagram.com/${postType}/${postCode}`);
           return includeHttps 
-            ? `https://instagram.com/p/${postCode}` 
-            : `instagram.com/p/${postCode}`;
+            ? `https://instagram.com/${postType}/${postCode}` 
+            : `instagram.com/${postType}/${postCode}`;
         }
       }
       
       // Se tiver código, usar diretamente
       if (post.code) {
-        console.log('[LinkFormatter] Link formatado a partir do código:', includeHttps ? `https://instagram.com/p/${post.code}` : `instagram.com/p/${post.code}`);
+        console.log('[LinkFormatter] Link formatado a partir do código:', includeHttps ? `https://instagram.com/${postType}/${post.code}` : `instagram.com/${postType}/${post.code}`);
         return includeHttps 
-          ? `https://instagram.com/p/${post.code}` 
-          : `instagram.com/p/${post.code}`;
+          ? `https://instagram.com/${postType}/${post.code}` 
+          : `instagram.com/${postType}/${post.code}`;
       }
       
       // Fallback para url ou link original
