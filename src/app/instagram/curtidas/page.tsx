@@ -20,7 +20,7 @@ interface Service {
   categoria: string;
   status: boolean;
   discount_price?: number;
-  quantidade_preco: { quantidade: number; preco: number }[];
+  quantidade_preco: { quantidade: number; preco: number; preco_original?: number }[];
   metadata?: {
     service_details?: {
       global_reach?: boolean;
@@ -139,6 +139,16 @@ export default function CurtidasPage() {
     const price = variation ? variation.preco : service.price;
 
     return price.toFixed(2);
+  };
+
+  const getOriginalPrice = (service: Service) => {
+    const quantity = selectedServices[service.id] || 0;
+    const variation = service.quantidade_preco.find(variation => variation.quantidade === quantity);
+    return variation?.preco_original ? variation.preco_original.toFixed(2) : null;
+  };
+
+  const hasDiscount = (service: Service) => {
+    return getOriginalPrice(service) !== null;
   };
 
   const isServiceSelected = (serviceId: string) => {
@@ -264,9 +274,23 @@ export default function CurtidasPage() {
 
                           {isServiceSelected(service.id) && (
                             <div className="text-center mb-4">
-                              <p className="text-2xl font-bold text-purple-600">
-                                Por: R$ {calculateTotalPrice(service)}
-                              </p>
+                              {hasDiscount(service) ? (
+                                <>
+                                  <p className="text-gray-500 line-through text-lg">
+                                    De: R$ {getOriginalPrice(service)}
+                                  </p>
+                                  <p className="text-2xl font-bold text-purple-600">
+                                    Por: R$ {calculateTotalPrice(service)}
+                                  </p>
+                                  <p className="text-xs text-green-600 font-medium mt-1 bg-green-50 py-1 px-2 rounded-md inline-block">
+                                    Promoção!
+                                  </p>
+                                </>
+                              ) : (
+                                <p className="text-2xl font-bold text-purple-600">
+                                  Por: R$ {calculateTotalPrice(service)}
+                                </p>
+                              )}
                             </div>
                           )}
 
