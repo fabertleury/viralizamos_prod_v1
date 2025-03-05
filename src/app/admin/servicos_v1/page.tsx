@@ -332,7 +332,8 @@ export default function ServicosV1Page() {
   const fetchServices = async () => {
     try {
       console.log('Buscando serviços...');
-      const { data, error } = await supabase
+      // Buscar todos os serviços com join explícito para provedores
+      const { data: servicesData, error: servicesError } = await supabase
         .from('services')
         .select(`
           *,
@@ -346,22 +347,20 @@ export default function ServicosV1Page() {
               icon
             )
           ),
-          provider:provider_id(
-            id,
-            name,
-            slug,
-            api_key,
-            api_url
-          )
+          provider:providers(id, name, slug)
         `)
         .order('name');
 
-      if (error) throw error;
+      if (servicesError) throw servicesError;
 
-      console.log('Serviços carregados:', data?.length);
-      console.log('Exemplo de serviço:', data?.[0]);
+      console.log('Serviços carregados:', servicesData?.length);
+      if (servicesData?.length > 0) {
+        console.log('Exemplo de serviço:', servicesData[0]);
+        console.log('Provider ID:', servicesData[0]?.provider_id);
+        console.log('Provider:', servicesData[0]?.provider);
+      }
       
-      setServices(data || []);
+      setServices(servicesData || []);
     } catch (error) {
       console.error('Erro ao buscar serviços:', error);
       toast.error('Erro ao carregar serviços');
@@ -397,12 +396,12 @@ export default function ServicosV1Page() {
   const handleDelete = async (id: string) => {
     const result = await Swal.fire({
       title: 'Tem certeza?',
-      text: "Esta ação não pode ser desfeita!",
+      text: "Esta ação irá desativar o serviço!",
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#3085d6',
       cancelButtonColor: '#d33',
-      confirmButtonText: 'Sim, deletar!',
+      confirmButtonText: 'Sim, desativar!',
       cancelButtonText: 'Cancelar'
     });
 
@@ -410,16 +409,16 @@ export default function ServicosV1Page() {
       try {
         const { error } = await supabase
           .from('services')
-          .delete()
+          .update({ status: false })
           .eq('id', id);
 
         if (error) throw error;
 
-        setServices(services.filter(s => s.id !== id));
-        toast.success('Serviço deletado com sucesso!');
+        setServices(services.map(s => s.id === id ? { ...s, status: false } : s));
+        toast.success('Serviço desativado com sucesso!');
       } catch (error) {
         console.error('Erro:', error);
-        toast.error('Erro ao deletar serviço');
+        toast.error('Erro ao desativar serviço');
       }
     }
   };
@@ -587,9 +586,19 @@ export default function ServicosV1Page() {
                           <div className="mt-2 bg-gray-50 p-2 rounded text-xs">
                             <div className="font-medium text-gray-600">Provedor</div>
                             <div className="font-semibold text-purple-700">
-                              {service.provider?.name || 'Sem provedor'}
+                              {service.provider?.name || (service.provider_id ? `ID: ${service.provider_id}` : 'Sem provedor')}
                             </div>
                           </div>
+
+                          {/* Informação do ID externo */}
+                          {service.external_id && (
+                            <div className="mt-2 bg-gray-50 p-2 rounded text-xs">
+                              <div className="font-medium text-gray-600">ID Externo</div>
+                              <div className="font-semibold text-blue-600 break-all">
+                                {service.external_id}
+                              </div>
+                            </div>
+                          )}
 
                           <div className="mt-4 border-t pt-2 flex justify-between items-center">
                             <div className="text-xs text-gray-500">
@@ -671,7 +680,7 @@ export default function ServicosV1Page() {
                                     </button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>Deletar Serviço</p>
+                                    <p>Desativar Serviço</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>

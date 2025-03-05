@@ -28,7 +28,8 @@ import {
   ChatBubbleBottomCenterTextIcon,
   NetworkIcon,
   ChartBarIcon,
-  ServerIcon
+  ServerIcon,
+  BanknotesIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -43,6 +44,7 @@ const navigation = [
   { name: 'APIs', href: '/admin/apis', icon: ServerIcon },
   { name: 'Pedidos', href: '/admin/pedidos', icon: ShoppingCartIcon },
   { name: 'Transações', href: '/admin/transacoes', icon: CurrencyDollarIcon },
+  { name: 'Financeiro', href: '/admin/financeiro', icon: BanknotesIcon },
   { name: 'Redes Sociais', href: '/admin/socials', icon: ShareIcon },
   { name: 'Categorias', href: '/admin/categories', icon: TagIcon },
   { name: 'Provedores', href: '/admin/provedores', icon: BuildingStorefrontIcon },

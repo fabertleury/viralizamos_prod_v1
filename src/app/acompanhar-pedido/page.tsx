@@ -119,18 +119,18 @@ export default function AcompanharPedidoPage() {
         console.log('Email não encontrado em profiles, buscando em transactions...');
         
         // Se não encontrar o usuário, buscar nas transações pelo email nos metadados
-        const { data: transactionsByEmail, error: transactionError } = await supabase
+        const { data: transactionsByEmail, error: transactionsError } = await supabase
           .from('transactions')
           .select('id, user_id')
-          .filter('metadata->email', 'eq', emailToSearch)
+          .eq('metadata->>email', emailToSearch)
           .order('created_at', { ascending: false });
           
-        if (transactionError || !transactionsByEmail || transactionsByEmail.length === 0) {
+        if (transactionsError || !transactionsByEmail || transactionsByEmail.length === 0) {
           // Buscar em orders pelo email nos metadados
           const { data: ordersByEmail, error: ordersError } = await supabase
             .from('orders')
             .select('id, user_id, customer_id')
-            .filter('metadata->email', 'eq', emailToSearch)
+            .eq('metadata->>email', emailToSearch)
             .order('created_at', { ascending: false });
             
           if (ordersError || !ordersByEmail || ordersByEmail.length === 0) {
@@ -156,7 +156,7 @@ export default function AcompanharPedidoPage() {
                   name,
                   type
                 ),
-                provider:provider_id (
+                providers:provider_id (
                   id,
                   name
                 ),
@@ -189,7 +189,7 @@ export default function AcompanharPedidoPage() {
                 name,
                 type
               ),
-              provider:provider_id (
+              providers:provider_id (
                 id,
                 name
               ),
@@ -199,7 +199,7 @@ export default function AcompanharPedidoPage() {
                 created_at
               )
             `)
-            .filter('metadata->email', 'eq', emailToSearch)
+            .eq('metadata->>email', emailToSearch)
             .order('created_at', { ascending: false });
 
           if (ordersError2) throw ordersError2;
@@ -227,7 +227,7 @@ export default function AcompanharPedidoPage() {
                 name,
                 type
               ),
-              provider:provider_id (
+              providers:provider_id (
                 id,
                 name
               ),
@@ -253,7 +253,7 @@ export default function AcompanharPedidoPage() {
                   name,
                   type
                 ),
-                provider:provider_id (
+                providers:provider_id (
                   id,
                   name
                 ),
@@ -288,7 +288,7 @@ export default function AcompanharPedidoPage() {
             name,
             type
           ),
-          provider:provider_id (
+          providers:provider_id (
             id,
             name
           ),
@@ -617,7 +617,7 @@ export default function AcompanharPedidoPage() {
             <p className="mt-4 text-sm text-gray-500 text-center">
               Digite o email que você utilizou durante a compra para visualizar o status dos seus pedidos.
               <br />
-              Você pode solicitar uma reposição gratuita em até 30 dias após a compra.
+              Você pode solicitar reposições gratuitas quantas vezes quiser durante os primeiros 30 dias após a compra.
             </p>
           </div>
         </div>
