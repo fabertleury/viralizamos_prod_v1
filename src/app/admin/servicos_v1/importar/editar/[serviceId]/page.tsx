@@ -23,6 +23,7 @@ import Link from 'next/link';
 interface ServiceQuantityPrice {
   quantidade: number;
   preco: number;
+  preco_original?: number;
 }
 
 interface ServiceDetail {
@@ -57,7 +58,7 @@ export default function EditarServicoImportadoPage() {
 
   // Estado para quantidades e preços
   const [quantityPrices, setQuantityPrices] = useState<ServiceQuantityPrice[]>([
-    { quantidade: 50, preco: 10.00 }
+    { quantidade: 50, preco: 10.00, preco_original: undefined }
   ]);
 
   // Interfaces para tipos de dados
@@ -117,7 +118,7 @@ export default function EditarServicoImportadoPage() {
           setSuccessRate(existingService.success_rate?.toString() || '0');
           setCheckoutTypeId(existingService.checkout_type_id || '');
           setStatus(existingService.status !== false);
-          setQuantityPrices(existingService.service_variations || existingService.metadata?.quantidade_preco || [{ quantidade: 50, preco: 10.00 }]);
+          setQuantityPrices(existingService.service_variations || existingService.metadata?.quantidade_preco || [{ quantidade: 50, preco: 10.00, preco_original: undefined }]);
           setServiceDetails(existingService.service_details || existingService.metadata?.serviceDetails || [{ title: '', emoji: '' }]);
           setRefill(existingService.metadata?.refill || false);
         } else {
@@ -169,7 +170,7 @@ export default function EditarServicoImportadoPage() {
   const addQuantityPriceRow = () => {
     setQuantityPrices([
       ...quantityPrices, 
-      { quantidade: 0, preco: 0 }
+      { quantidade: 0, preco: 0, preco_original: undefined }
     ]);
   };
 
@@ -185,7 +186,7 @@ export default function EditarServicoImportadoPage() {
   // Atualizar quantidade ou preço
   const updateQuantityPrice = (
     index: number, 
-    field: 'quantidade' | 'preco', 
+    field: 'quantidade' | 'preco' | 'preco_original', 
     value: string
   ) => {
     const newRows = [...quantityPrices];
@@ -539,7 +540,19 @@ export default function EditarServicoImportadoPage() {
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="block mb-1">Preço (R$)</label>
+                  <label className="block mb-1">Preço Original (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={qp.preco_original || ''}
+                    onChange={(e) => updateQuantityPrice(index, 'preco_original', e.target.value)}
+                    className="w-full p-2 border rounded"
+                    min="0.01"
+                    placeholder="Opcional"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block mb-1">Preço Final (R$)</label>
                   <input
                     type="number"
                     step="0.01"

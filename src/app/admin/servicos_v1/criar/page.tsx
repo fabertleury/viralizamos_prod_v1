@@ -20,6 +20,7 @@ import { EmojiSelector } from '@/components/emoji-picker';
 interface ServiceQuantityPrice {
   quantidade: number;
   preco: number;
+  preco_original?: number;
 }
 
 interface ServiceDetail {
@@ -108,7 +109,7 @@ export default function CriarServicoPage() {
   
   // Estado para quantidades e preços
   const [quantityPrices, setQuantityPrices] = useState<ServiceQuantityPrice[]>([
-    { quantidade: 50, preco: 10.00 }
+    { quantidade: 50, preco: 10.00, preco_original: undefined }
   ]);
   
   // Estado para detalhes do serviço
@@ -120,7 +121,7 @@ export default function CriarServicoPage() {
   const addQuantityPriceRow = () => {
     setQuantityPrices([
       ...quantityPrices, 
-      { quantidade: 0, preco: 0 }
+      { quantidade: 0, preco: 0, preco_original: undefined }
     ]);
   };
 
@@ -134,7 +135,7 @@ export default function CriarServicoPage() {
 
   const updateQuantityPrice = (
     index: number, 
-    field: 'quantidade' | 'preco', 
+    field: 'quantidade' | 'preco' | 'preco_original', 
     value: string
   ) => {
     const newRows = [...quantityPrices];
@@ -638,7 +639,19 @@ export default function CriarServicoPage() {
                     />
                   </div>
                   <div className="flex-1">
-                    <Label className="block mb-1">Preço (R$)</Label>
+                    <Label className="block mb-1">Preço Original (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={qp.preco_original || ''}
+                      onChange={(e) => updateQuantityPrice(index, 'preco_original', e.target.value)}
+                      className="bg-white"
+                      min="0.01"
+                      placeholder="Opcional"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Label className="block mb-1">Preço Final (R$)</Label>
                     <Input
                       type="number"
                       step="0.01"
