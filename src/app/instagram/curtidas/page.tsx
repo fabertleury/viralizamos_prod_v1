@@ -221,6 +221,9 @@ export default function CurtidasPage() {
                             <h3 className="text-2xl font-bold text-gray-900 break-words">
                               {service.name}
                             </h3>
+                            <p className="text-sm font-medium text-purple-600 mt-1 bg-purple-50 py-1 px-2 rounded-md mx-auto inline-block">
+                              Divida em até 5 posts diferentes!
+                            </p>
                           </div>
 
                           {/* Detalhes adicionais do serviço */}
