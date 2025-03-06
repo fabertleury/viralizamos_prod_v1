@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useSupabase } from '../../../../../../src/lib/hooks/useSupabase';
+import { createClient } from '@supabase/supabase-js';
 import { LoadingProfileModal } from '../../components/LoadingProfileModal';
 import { toast } from 'sonner';
 import { Header } from '@/components/layout/header';
@@ -15,6 +15,11 @@ import {
   faShield, faRocket, faGlobe, faUsers, faThumbsUp, faEye, faComment, 
   faBolt, faMedal, faTrophy, faGem, faCrown, faFire, faSmile, faLock, faUnlock 
 } from '@fortawesome/free-solid-svg-icons';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 interface ServiceDetail {
   title: string;
@@ -71,7 +76,6 @@ export default function Step1Page() {
   const [error, setError] = useState<string | undefined>(undefined);
   
   const searchParams = useSearchParams();
-  const supabase = useSupabase();
   const serviceId = searchParams.get('service_id');
   const quantity = searchParams.get('quantity');
 

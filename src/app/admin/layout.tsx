@@ -208,7 +208,7 @@ export default function AdminLayout({
                 <div className="flex grow flex-col gap-y-5 overflow-y-auto bg-white px-6 pb-4">
                   <div className="flex h-16 shrink-0 items-center">
                     <Image
-                      src="/images/logo.webp"
+                      src="/images/viralizamos-color.png"
                       alt="ViralizAI"
                       width={150}
                       height={40}
@@ -264,7 +264,7 @@ export default function AdminLayout({
         <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r border-gray-200 bg-white px-6 pb-4">
           <div className="flex h-16 shrink-0 items-center">
             <Image
-              src="/images/logo.webp"
+              src="/images/viralizamos-color.png"
               alt="ViralizAI"
               width={150}
               height={40}

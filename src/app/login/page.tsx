@@ -79,7 +79,7 @@ export default function LoginPage() {
           <div className="mb-8 flex flex-col items-center">
             <div className="w-32 h-32 relative mb-4">
               <Image
-                src="/images/logo.webp"
+                src="/images/viralizamos-color.png"
                 alt="Logo"
                 fill
                 className="object-contain"

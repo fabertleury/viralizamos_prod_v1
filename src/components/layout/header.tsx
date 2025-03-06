@@ -131,7 +131,7 @@ export function Header() {
           {/* Logo */}
           <Link href="/" className="flex items-center">
             <Image
-              src="/images/logo.webp"
+              src="/images/viralizamos-color.png"
               alt="Viralizai"
               width={150}
               height={50}

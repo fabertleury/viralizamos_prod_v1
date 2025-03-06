@@ -12,7 +12,7 @@ export function Header() {
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center">
               <Image
-                src="/images/logo.webp"
+                src="/images/viralizamos-color.png"
                 alt="Viralizai"
                 width={150}
                 height={40}

@@ -286,6 +286,14 @@ export default function ConfiguracoesPage() {
     console.log('handleLogoUpload: Fazendo upload da logo');
     const file = e.target.files?.[0];
     if (file) {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.error('Usuário não autenticado:', userError);
+        toast.error('Você precisa estar autenticado para fazer upload da logo.');
+        return;
+      }
+
       setLogoFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -297,6 +305,20 @@ export default function ConfiguracoesPage() {
         const fileExt = file.name.split('.').pop();
         const fileName = `logo.${fileExt}`;
         const filePath = `logos/${fileName}`;
+
+        const { data: bucketData, error: bucketError } = await supabase.storage.from('system_assets').list();
+
+        if (bucketError) {
+          console.error('Erro ao acessar o bucket:', bucketError);
+          toast.error('Erro ao acessar o bucket.');
+          return;
+        }
+
+        if (!bucketData) {
+          console.error('Bucket não encontrado.');
+          toast.error('Bucket não encontrado.');
+          return;
+        }
 
         const { error: uploadError } = await supabase.storage
           .from('system_assets')
@@ -316,10 +338,16 @@ export default function ConfiguracoesPage() {
 
         if (urlError) throw urlError;
 
-        await supabase
+        const { data, error } = await supabase
           .from('configurations')
           .update({ value: publicUrl })
           .eq('key', 'logo_url');
+
+        if (error) {
+          console.error('Erro ao fazer upload da logo:', error.message || error);
+          toast.error('Não foi possível fazer upload da logo. Tente novamente.');
+          return;
+        }
 
         console.log('Logo atualizada com sucesso!');
         toast.success('Logo atualizada com sucesso!');
@@ -479,13 +507,7 @@ export default function ConfiguracoesPage() {
               {configurations['logo_url']?.value && (
                 <div className="mt-4">
                   <Label>Logo Atual</Label>
-                  <Image 
-                    src={configurations['logo_url'].value} 
-                    alt="Logo Atual" 
-                    width={200} 
-                    height={100} 
-                    className="object-contain"
-                  />
+                  <img src="/images/viralizamos-color.png" alt="Logo" className="h-10" />
                 </div>
               )}
             </div>

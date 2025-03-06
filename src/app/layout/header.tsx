@@ -28,6 +28,7 @@ const Header = () => {
 
   return (
     <header className="bg-gray-800 text-white p-4">
+      <img src="/images/viralizamos-color.png" alt="Logo" className="h-10" />
       <h1>Bem-vindo, {user ? user.email : 'Visitante'}</h1>
     </header>
   );
