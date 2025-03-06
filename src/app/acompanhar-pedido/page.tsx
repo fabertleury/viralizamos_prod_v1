@@ -108,7 +108,52 @@ export default function AcompanharPedidoPage() {
     try {
       const supabase = createClientComponentClient();
 
-      // Buscar usuário pelo email
+      // Primeiro buscar na tabela customers pelo email
+      const { data: customer, error: customerError } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('email', emailToSearch)
+        .single();
+        
+      if (!customerError && customer) {
+        console.log('Cliente encontrado na tabela customers:', customer);
+        
+        // Buscar pedidos pelo customer_id
+        const { data: customerOrders, error: customerOrdersError } = await supabase
+          .from('orders')
+          .select(`
+            *,
+            service:service_id (
+              name,
+              type
+            ),
+            refills (
+              id,
+              status,
+              created_at
+            )
+          `)
+          .eq('customer_id', customer.id)
+          .order('created_at', { ascending: false });
+          
+        if (customerOrdersError) {
+          console.error('Erro ao buscar pedidos do cliente:', customerOrdersError);
+          throw customerOrdersError;
+        }
+        
+        setOrders(customerOrders || []);
+        
+        if (customerOrders?.length === 0) {
+          toast.info('Nenhum pedido encontrado para este email');
+        }
+        
+        setLoading(false);
+        return;
+      }
+      
+      console.log('Cliente não encontrado na tabela customers, buscando em outras tabelas...');
+      
+      // Buscar usuário pelo email em profiles (fallback)
       const { data: users, error: userError } = await supabase
         .from('profiles')
         .select('id')
@@ -130,52 +175,12 @@ export default function AcompanharPedidoPage() {
           const { data: ordersByEmail, error: ordersError } = await supabase
             .from('orders')
             .select('id, user_id, customer_id')
-            .eq('metadata->>email', emailToSearch)
+            .eq('metadata->customer->email', emailToSearch)
             .order('created_at', { ascending: false });
             
           if (ordersError || !ordersByEmail || ordersByEmail.length === 0) {
-            // Buscar em customers pelo email
-            const { data: customer, error: customerError } = await supabase
-              .from('customers')
-              .select('id')
-              .eq('email', emailToSearch)
-              .single();
-              
-            if (customerError || !customer) {
-              toast.error('Email não encontrado');
-              setOrders([]);
-              return;
-            }
-            
-            // Buscar pedidos pelo customer_id
-            const { data: customerOrders, error: customerOrdersError } = await supabase
-              .from('orders')
-              .select(`
-                *,
-                service:service_id (
-                  name,
-                  type
-                ),
-                providers:provider_id (
-                  id,
-                  name
-                ),
-                refills (
-                  id,
-                  status,
-                  created_at
-                )
-              `)
-              .eq('customer_id', customer.id)
-              .order('created_at', { ascending: false });
-              
-            if (customerOrdersError) throw customerOrdersError;
-            setOrders(customerOrders || []);
-            
-            if (customerOrders?.length === 0) {
-              toast.info('Nenhum pedido encontrado para este email');
-            }
-            
+            toast.error('Email não encontrado');
+            setOrders([]);
             setLoading(false);
             return;
           }
@@ -189,36 +194,25 @@ export default function AcompanharPedidoPage() {
                 name,
                 type
               ),
-              providers:provider_id (
-                id,
-                name
-              ),
               refills (
                 id,
                 status,
                 created_at
               )
             `)
-            .eq('metadata->>email', emailToSearch)
+            .eq('metadata->customer->email', emailToSearch)
             .order('created_at', { ascending: false });
-
+            
           if (ordersError2) throw ordersError2;
           setOrders(userOrders || []);
           
           if (userOrders?.length === 0) {
             toast.info('Nenhum pedido encontrado para este email');
           }
+        } else {
+          // Buscar pedidos pelo user_id da transação
+          const userId = transactionsByEmail[0].user_id;
           
-          setLoading(false);
-          return;
-        }
-        
-        // Se encontrou transações, buscar pedidos pelo user_id ou transaction_id
-        const userIds = [...new Set(transactionsByEmail.map(t => t.user_id).filter(Boolean))];
-        const transactionIds = transactionsByEmail.map(t => t.id);
-        
-        if (userIds.length > 0) {
-          // Buscar pedidos pelo user_id
           const { data: userOrders, error: ordersError } = await supabase
             .from('orders')
             .select(`
@@ -227,89 +221,52 @@ export default function AcompanharPedidoPage() {
                 name,
                 type
               ),
-              providers:provider_id (
-                id,
-                name
-              ),
               refills (
                 id,
                 status,
                 created_at
               )
             `)
-            .in('user_id', userIds)
+            .eq('user_id', userId)
             .order('created_at', { ascending: false });
-
+            
           if (ordersError) throw ordersError;
           setOrders(userOrders || []);
           
           if (userOrders?.length === 0) {
-            // Buscar pedidos pelo transaction_id
-            const { data: transactionOrders, error: transactionOrdersError } = await supabase
-              .from('orders')
-              .select(`
-                *,
-                service:service_id (
-                  name,
-                  type
-                ),
-                providers:provider_id (
-                  id,
-                  name
-                ),
-                refills (
-                  id,
-                  status,
-                  created_at
-                )
-              `)
-              .in('transaction_id', transactionIds)
-              .order('created_at', { ascending: false });
-              
-            if (transactionOrdersError) throw transactionOrdersError;
-            setOrders(transactionOrders || []);
-            
-            if (transactionOrders?.length === 0) {
-              toast.info('Nenhum pedido encontrado para este email');
-            }
+            toast.info('Nenhum pedido encontrado para este email');
           }
-          
-          setLoading(false);
-          return;
         }
-      }
-
-      // Buscar pedidos do usuário com reposições
-      const { data: userOrders, error: ordersError } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          service:service_id (
-            name,
-            type
-          ),
-          providers:provider_id (
-            id,
-            name
-          ),
-          refills (
-            id,
-            status,
-            created_at
-          )
-        `)
-        .eq('user_id', users.id)
-        .order('created_at', { ascending: false });
-
-      if (ordersError) throw ordersError;
-      setOrders(userOrders || []);
-
-      if (userOrders?.length === 0) {
-        toast.info('Nenhum pedido encontrado para este email');
+      } else {
+        // Buscar pedidos pelo user_id
+        const { data: userOrders, error: ordersError } = await supabase
+          .from('orders')
+          .select(`
+            *,
+            service:service_id (
+              name,
+              type
+            ),
+            refills (
+              id,
+              status,
+              created_at
+            )
+          `)
+          .eq('user_id', users.id)
+          .order('created_at', { ascending: false });
+          
+        if (ordersError) throw ordersError;
+        setOrders(userOrders || []);
+        
+        if (userOrders?.length === 0) {
+          toast.info('Nenhum pedido encontrado para este email');
+        }
       }
     } catch (error) {
       console.error('Erro ao buscar pedido:', error);
-      toast.error('Erro ao buscar pedido');
+      toast.error('Erro ao buscar pedidos');
+      setOrders([]);
     } finally {
       setLoading(false);
     }
@@ -477,133 +434,125 @@ export default function AcompanharPedidoPage() {
             {searched && orders.length > 0 && (
               <div className="mt-8">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Seus Pedidos</h2>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                          Serviço
-                        </th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                          Link
-                        </th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                          Quantidade
-                        </th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                          Provedor
-                        </th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                          Status
-                        </th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                          Data
-                        </th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                          Ações
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
-                      {orders.map((order) => (
-                        <tr key={order.id}>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            {order.service?.name}
-                          </td>
-                          <td className="px-3 py-4 text-sm text-gray-500">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {orders.map((order) => (
+                    <div key={order.id} className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-100 hover:shadow-lg transition-shadow duration-300">
+                      <div className="p-5">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900">{order.service?.name}</h3>
+                            <p className="text-sm text-gray-500">{formatDateToBrasilia(order.created_at)}</p>
+                          </div>
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${getStatusColor(order.status)}`}>
+                            {order.status}
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Tipo de Serviço</p>
+                            <p className="text-sm font-medium">{order.service?.type || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Quantidade</p>
+                            <p className="text-sm font-medium">{order.quantity}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Provedor</p>
+                            <p className="text-sm font-medium">{order.provider?.name || 'Fama nas Redes'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Link</p>
                             <a 
                               href={order.metadata.link} 
                               target="_blank" 
                               rel="noopener noreferrer"
-                              className="text-indigo-600 hover:text-indigo-900"
+                              className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
                             >
                               {order.metadata.post ? 'Ver Post' : 'Ver Perfil'}
                             </a>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            {order.quantity}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            {order.provider?.name || 'Fama nas Redes'}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm">
-                            <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset ${getStatusColor(order.status)}`}>
-                              {order.status}
-                            </span>
-                            {order.metadata.provider_status && (
-                              <div className="mt-1 text-xs text-gray-500">
-                                Progresso: {order.metadata.provider_status.remains} restantes
-                                <div className="text-xs text-gray-400">
-                                  Atualizado: {new Date(order.metadata.provider_status.updated_at).toLocaleString('pt-BR')}
+                          </div>
+                        </div>
+                        
+                        {order.metadata.provider_status && (
+                          <div className="mb-4 p-3 bg-gray-50 rounded-md">
+                            <div className="flex justify-between mb-1">
+                              <span className="text-xs text-gray-500">Progresso:</span>
+                              <span className="text-xs font-medium">{order.metadata.provider_status.remains} restantes</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div 
+                                className="bg-indigo-600 h-2 rounded-full" 
+                                style={{ 
+                                  width: `${Math.max(0, Math.min(100, 100 - (parseInt(order.metadata.provider_status.remains) / order.quantity * 100)))}%` 
+                                }}
+                              ></div>
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              Atualizado: {new Date(order.metadata.provider_status.updated_at).toLocaleString('pt-BR')}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {order.refills && order.refills.length > 0 && (
+                          <div className="mb-4">
+                            <p className="text-xs text-gray-500 mb-2">Reposições:</p>
+                            <div className="space-y-2">
+                              {order.refills.map((refill) => (
+                                <div key={refill.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-md">
+                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${getStatusColor(refill.status)}`}>
+                                    {refill.status}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {formatDateToBrasilia(refill.created_at)}
+                                  </span>
                                 </div>
-                              </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        <div className="flex flex-col space-y-2">
+                          <Button
+                            onClick={() => checkOrderStatus(order.external_order_id)}
+                            disabled={checkingStatus[order.external_order_id]}
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                          >
+                            {checkingStatus[order.external_order_id] ? (
+                              <>
+                                <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                Verificando...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="h-3 w-3 mr-1" />
+                                Atualizar Status
+                              </>
                             )}
-                            {order.refills && order.refills.length > 0 && (
-                              <div className="mt-2 space-y-1">
-                                {order.refills.map((refill) => (
-                                  <div key={refill.id} className="text-xs">
-                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${getStatusColor(refill.status)}`}>
-                                      Reposição: {refill.status}
-                                    </span>
-                                    <span className="ml-1 text-gray-500">
-                                      {formatDateToBrasilia(refill.created_at)}
-                                    </span>
-                                  </div>
-                                ))}
+                          </Button>
+                          
+                          {isWithin30Days(order.created_at) && (!order.refills || order.refills.length === 0) && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1 text-center">
+                                Reposição disponível: {getDaysRemaining(order.created_at)} dias restantes
                               </div>
-                            )}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            {formatDateToBrasilia(order.created_at)}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm space-y-2">
-                            <Button
-                              onClick={() => checkOrderStatus(order.external_order_id)}
-                              disabled={checkingStatus[order.external_order_id]}
-                              variant="outline"
-                              size="sm"
-                              className="w-full"
-                            >
-                              {checkingStatus[order.external_order_id] ? (
-                                <>
-                                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                                  Verificando...
-                                </>
-                              ) : (
-                                <>
-                                  <RefreshCw className="h-3 w-3 mr-1" />
-                                  Atualizar Status
-                                </>
-                              )}
-                            </Button>
-                            
-                            {isWithin30Days(order.created_at) && (!order.refills || order.refills.length === 0) && (
-                              <div>
-                                <div className="text-xs text-gray-500 mb-1">
-                                  Reposição disponível: {getDaysRemaining(order.created_at)} dias restantes
-                                </div>
-                                <Button
-                                  onClick={() => handleRefill(order.id)}
-                                  disabled={processingRefill === order.id}
-                                  variant="outline"
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  {processingRefill === order.id ? 'Processando...' : 'Solicitar Reposição'}
-                                </Button>
-                              </div>
-                            )}
-                            
-                            {!isWithin30Days(order.created_at) && (!order.refills || order.refills.length === 0) && (
-                              <div className="text-xs text-red-500">
-                                Prazo para reposição expirado
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                              <Button
+                                onClick={() => handleRefill(order.id)}
+                                disabled={processingRefill === order.id}
+                                variant="default"
+                                size="sm"
+                                className="w-full bg-pink-600 hover:bg-pink-700"
+                              >
+                                {processingRefill === order.id ? 'Processando...' : 'Solicitar Reposição'}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

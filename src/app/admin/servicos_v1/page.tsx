@@ -94,6 +94,7 @@ export default function ServicosV1Page() {
   const [showServiceSelectionModal, setShowServiceSelectionModal] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [showInactiveServices, setShowInactiveServices] = useState(false);
   const supabase = createClient();
   const router = useRouter();
 
@@ -536,6 +537,22 @@ export default function ServicosV1Page() {
         ))}
       </div>
 
+      {/* Filtro de serviços inativos */}
+      <div className="flex space-x-2 mb-4">
+        <Button 
+          variant={showInactiveServices ? 'default' : 'outline'}
+          onClick={() => setShowInactiveServices(true)}
+        >
+          Mostrar Inativos
+        </Button>
+        <Button 
+          variant={!showInactiveServices ? 'default' : 'outline'}
+          onClick={() => setShowInactiveServices(false)}
+        >
+          Ocultar Inativos
+        </Button>
+      </div>
+
       {loading ? (
         <div>Carregando...</div>
       ) : (
@@ -547,7 +564,10 @@ export default function ServicosV1Page() {
                 <h2 className="text-xl font-semibold mb-4">{socialName}</h2>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {socialServices
-                    .filter(service => selectedProviderFilter === null || service.provider?.name === selectedProviderFilter)
+                    .filter(service => 
+                      (showInactiveServices || service.status) && 
+                      (selectedProviderFilter === null || service.provider?.name === selectedProviderFilter)
+                    )
                     .map((service) => (
                       <div 
                         key={service.id} 
