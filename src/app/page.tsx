@@ -642,43 +642,11 @@ export default function HomeV3() {
               <div className="col-md-6">
                 <div className="hero" id="hero-ig-animation">
                   <div className="_right_pic">
-                    <img alt="phone" className="phone transformY-4" width="300" src="https://fama24horas.com/assets/images/phone.svg" />
-                    <img alt="icon" className="icon1 transformY-5" src="https://fama24horas.com/assets/images/icon1.svg" />
-                    <div className="icon2 transformY-6">
-                      <img className="icon-img" alt="icon" width="282" height="80" src="https://fama24horas.com/assets/images/icon2.svg" />
-                      <ul className="_info">
-                        <li className="post1">
-                          <strong id="numroll1">
-                            <em className="list" style={{marginTop: '-208px'}}><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i></em>
-                            <em className="list" style={{marginTop: '-156px'}}><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i></em>
-                          </strong>
-                          <span>Posts</span>
-                        </li>
-                        <li className="post2">
-                          <strong id="numroll3">
-                            <em className="list" style={{marginTop: '-208px'}}><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i></em>
-                            <i className="comma">.</i>
-                            <em className="list" style={{marginTop: '-234px'}}><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i></em>
-                            <em className="list" style={{marginTop: '-234px'}}><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i></em>
-                            <em className="list" style={{marginTop: '-156px'}}><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i></em>
-                          </strong>
-                          <span>Seguidores</span>
-                        </li>
-                        <li className="post3">
-                          <strong id="numroll2">
-                            <em className="list" style={{marginTop: '-52px'}}><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i></em>
-                            <em className="list" style={{marginTop: '-234px'}}><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i></em>
-                            <em className="list" style={{marginTop: '-208px'}}><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i></em>
-                          </strong>
-                          <span>Seguindo</span>
-                        </li>
-                      </ul>
-                    </div>
-                    <img alt="icon" className="icon3 transformY-7" src="https://fama24horas.com/assets/images/icon3.svg" loading="lazy" />
-                    <img alt="icon" className="icon4 transformY-8" src="https://fama24horas.com/assets/images/icon4.svg" loading="lazy" />
-                    <img alt="icon" className="icon5 transformY-8" src="https://fama24horas.com/assets/images/icon5.svg" loading="lazy" />
-                    <img alt="icon" className="icon6 transformY-8" src="https://fama24horas.com/assets/images/icon4.svg" loading="lazy" />
-                    <img alt="icon" className="icon7 transformY-8" src="https://fama24horas.com/assets/images/icon5.svg" loading="lazy" />
+                    <iframe
+                      src="https://lottie.host/embed/3aebbf3c-f428-4e4f-8a2a-910a06b6510e/LhWjsbo9xB.lottie"
+                      style={{ width: '100%', height: '500px', border: 'none' }}
+                      allowFullScreen
+                    ></iframe>
                   </div>
                 </div>
               </div>
