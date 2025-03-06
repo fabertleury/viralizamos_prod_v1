@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { getProxiedImageUrl } from '../../utils/proxy-image';
 import { PaymentPixModal } from '@/components/payment/PaymentPixModal';
+import { CouponInput } from '@/components/checkout/CouponInput';
 
 interface ProfileData {
   username: string;
@@ -27,6 +28,9 @@ interface Service {
   name: string;
   preco: number;
   quantidade: number;
+  checkout: {
+    slug: string;
+  };
 }
 
 interface Post {
@@ -47,12 +51,10 @@ export default function Step2Page() {
     name: '',
     whatsapp: ''
   });
-  const [paymentData, setPaymentData] = useState<{
-    qrCode: string;
-    qrCodeText: string;
-    amount?: number;
-    qrCodeBase64?: string;
-  } | null>(null);
+  const [paymentData, setPaymentData] = useState<any>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [finalAmount, setFinalAmount] = useState<number | null>(null);
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
 
   const supabase = useSupabase();
 
@@ -106,42 +108,69 @@ export default function Step2Page() {
     setService(serviceData);
   };
 
-  const handleSubmit = async () => {
-    if (!profileData || !service || selectedPosts.length === 0) {
-      toast.error('Selecione pelo menos um reel');
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!service) {
+      toast.error('Serviço não encontrado');
       return;
     }
-
+    
+    if (!profileData) {
+      toast.error('Perfil não encontrado');
+      return;
+    }
+    
+    if (selectedPosts.length === 0) {
+      toast.error('Selecione pelo menos um post');
+      return;
+    }
+    
     setLoading(true);
-
+    
     try {
+      // Preparar os dados para o pagamento
+      const paymentData = {
+        service_id: service.id,
+        amount: finalAmount || service.preco,
+        original_amount: service.preco,
+        discount_amount: discountAmount,
+        coupon_code: appliedCoupon,
+        description: `${service.quantidade} visualizações para ${selectedPosts.length} posts`,
+        service: {
+          id: service.id,
+          name: service.name,
+          quantity: service.quantidade
+        },
+        profile: {
+          username: profileData.username,
+          full_name: profileData.full_name,
+          link: `https://instagram.com/${profileData.username}`
+        },
+        customer: {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.whatsapp
+        },
+        posts: selectedPosts.map(post => ({
+          id: post.id,
+          code: post.shortcode,
+          image_url: post.image_url,
+          caption: post.caption,
+          link: `https://instagram.com/p/${post.shortcode}`
+        }))
+      };
+
       // Criar transação
       const { data: transaction, error: transactionError } = await supabase
         .from('transactions')
         .insert({
           type: 'payment',
-          amount: service.preco,
+          amount: paymentData.amount,
           status: 'pending',
           payment_method: 'pix',
           payment_id: null, // será atualizado após a criação do pagamento
-          metadata: {
-            service: {
-              id: service.id,
-              name: service.name,
-              quantidade: service.quantidade
-            },
-            posts: selectedPosts,
-            profile: {
-              username: profileData.username,
-              full_name: profileData.full_name
-            },
-            customer: {
-              name: formData.name,
-              email: formData.email,
-              phone: formData.whatsapp
-            },
-            checkout_type: 'Mostrar Posts'
-          },
+          metadata: paymentData,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -159,26 +188,7 @@ export default function Step2Page() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          amount: service.preco,
-          description: `${service.quantidade} visualizações para ${selectedPosts.length} reels`,
-          service: {
-            id: service.id,
-            name: service.name,
-            quantidade: service.quantidade
-          },
-          user_id: null, // será preenchido pelo servidor
-          profile: {
-            username: profileData.username,
-            full_name: profileData.full_name
-          },
-          customer: {
-            name: formData.name,
-            email: formData.email,
-            phone: formData.whatsapp
-          },
-          posts: selectedPosts
-        }),
+        body: JSON.stringify(paymentData),
       });
 
       if (!response.ok) {
@@ -186,16 +196,16 @@ export default function Step2Page() {
         throw new Error(error.message || 'Erro ao gerar pagamento');
       }
 
-      const paymentData = await response.json();
+      const paymentDataResponse = await response.json();
       
       // Atualizar transação com dados do pagamento
       const { error: updateError } = await supabase
         .from('transactions')
         .update({
-          payment_id: paymentData.id,
+          payment_id: paymentDataResponse.id,
           metadata: {
             ...transaction.metadata,
-            payment: paymentData
+            payment: paymentDataResponse
           }
         })
         .eq('id', transaction.id);
@@ -204,10 +214,10 @@ export default function Step2Page() {
 
       // Mostrar modal de pagamento
       setPaymentData({
-        qrCode: paymentData.qr_code_base64,
-        qrCodeText: paymentData.qr_code,
-        amount: paymentData.amount,
-        qrCodeBase64: paymentData.qr_code_base64
+        qrCode: paymentDataResponse.qr_code_base64,
+        qrCodeText: paymentDataResponse.qr_code,
+        amount: paymentDataResponse.amount,
+        qrCodeBase64: paymentDataResponse.qr_code_base64
       });
 
       // Limpar dados do checkout após sucesso
@@ -265,8 +275,11 @@ export default function Step2Page() {
                 })));
               }}
               selected={selectedPosts.map(post => post.id)}
-              maxPosts={1}
-              showOnlyReels={true}
+              maxPosts={12}
+              showReels={true}
+              showPosts={true}
+              reelsCount={12}
+              postsCount={12}
             />
           </div>
 
@@ -286,6 +299,30 @@ export default function Step2Page() {
                 'Continuar'
               )}
             </Button>
+          </div>
+
+          <div className="max-w-xl mx-auto mt-8">
+            <div className="flex justify-between text-lg font-semibold mt-4 pt-2 border-t">
+              <span>Valor total:</span>
+              <span>R$ {(finalAmount || service.preco).toFixed(2)}</span>
+            </div>
+
+            {discountAmount > 0 && (
+              <div className="flex justify-between text-sm text-gray-600 mt-1">
+                <span>Valor original:</span>
+                <span className="line-through">R$ {service.preco.toFixed(2)}</span>
+              </div>
+            )}
+
+            <CouponInput 
+              serviceId={service.id}
+              originalAmount={service.preco}
+              onCouponApplied={(discount, final, code) => {
+                setDiscountAmount(discount);
+                setFinalAmount(final);
+                setAppliedCoupon(code || null);
+              }}
+            />
           </div>
         </div>
       </main>

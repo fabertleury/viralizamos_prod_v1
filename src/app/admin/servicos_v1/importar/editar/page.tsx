@@ -234,12 +234,16 @@ export default function EditarServicoImportadoPage() {
           {/* Tipo */}
           <div>
             <label className="block mb-2">Tipo</label>
-            <input
-              type="text"
+            <select
               value={type}
               onChange={(e) => setType(e.target.value)}
               className="w-full p-2 border rounded"
-            />
+              required
+            >
+              <option value="">Selecione um tipo</option>
+              <option value="curtidas">Curtidas</option>
+              <option value="seguidores">Seguidores</option>
+            </select>
           </div>
 
           {/* Categoria */}

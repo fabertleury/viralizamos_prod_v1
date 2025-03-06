@@ -131,10 +131,10 @@ export default function OrdersPage() {
       const processedOrders: Order[] = [];
       
       Object.entries(groupedOrders).forEach(([transactionId, orders]) => {
-        // Verificar se é um pedido de seguidores (checkout_type = 'Apenas Link do Usuário')
+        // Verificar se é um pedido de seguidores (checkout_type = 'apenas-link-usuario')
         const isFollowersOrder = orders.some(order => 
-          order.metadata?.checkout_type === 'Apenas Link do Usuário' || 
-          order.transaction?.metadata?.checkout_type === 'Apenas Link do Usuário'
+          order.metadata?.checkout_type === 'apenas-link-usuario' || 
+          order.transaction?.metadata?.checkout_type === 'apenas-link-usuario'
         );
 
         if (orders.length === 1 || isFollowersOrder) {

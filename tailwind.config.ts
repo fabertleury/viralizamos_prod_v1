@@ -23,6 +23,8 @@ export default {
         'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'slide-down': 'slide-down 0.3s ease-out',
         'gradient-x': 'gradient-x 15s ease infinite',
+        'collapsible-down': 'collapsible-down 0.2s ease-out',
+        'collapsible-up': 'collapsible-up 0.2s ease-out',
       },
       keyframes: {
         fadeRight: {
@@ -50,7 +52,15 @@ export default {
             'background-size': '200% 200%',
             'background-position': 'right center'
           }
-        }
+        },
+        'collapsible-down': {
+          '0%': { height: '0' },
+          '100%': { height: 'var(--radix-collapsible-content-height)' },
+        },
+        'collapsible-up': {
+          '0%': { height: 'var(--radix-collapsible-content-height)' },
+          '100%': { height: '0' },
+        },
       },
     },
   },

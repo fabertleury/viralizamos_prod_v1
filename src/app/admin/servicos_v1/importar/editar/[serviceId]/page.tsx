@@ -166,6 +166,23 @@ export default function EditarServicoImportadoPage() {
     setSubcategories(selectedCategoryObj?.subcategories || []);
   }, [category, categories]);
 
+  // Efeito para sugerir automaticamente o tipo de checkout com base no tipo de serviço
+  useEffect(() => {
+    if (type && checkoutTypes.length > 0) {
+      // Se o tipo for curtidas, sugerir "Mostrar Posts"
+      // Se o tipo for seguidores, sugerir "Apenas Link do Usuário"
+      const checkoutTypeToSuggest = type === 'curtidas' 
+        ? checkoutTypes.find(ct => ct.name === 'Mostrar Posts')
+        : type === 'seguidores'
+          ? checkoutTypes.find(ct => ct.name === 'Apenas Link do Usuário')
+          : null;
+      
+      if (checkoutTypeToSuggest) {
+        setCheckoutTypeId(checkoutTypeToSuggest.id);
+      }
+    }
+  }, [type, checkoutTypes]);
+
   // Adicionar nova linha de quantidade e preço
   const addQuantityPriceRow = () => {
     setQuantityPrices([
@@ -308,12 +325,16 @@ export default function EditarServicoImportadoPage() {
           {/* Tipo */}
           <div>
             <label className="block mb-2">Tipo</label>
-            <input
-              type="text"
+            <select
               value={type}
               onChange={(e) => setType(e.target.value)}
               className="w-full p-2 border rounded"
-            />
+              required
+            >
+              <option value="">Selecione um tipo</option>
+              <option value="curtidas">Curtidas</option>
+              <option value="seguidores">Seguidores</option>
+            </select>
           </div>
 
           {/* Categoria */}

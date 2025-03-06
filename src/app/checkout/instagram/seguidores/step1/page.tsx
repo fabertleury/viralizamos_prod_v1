@@ -38,6 +38,11 @@ interface Service {
     quantidade_preco?: QuantidadePreco[];
     serviceDetails?: ServiceDetail[];
   };
+  checkout: {
+    id: string;
+    name: string;
+    slug: string;
+  };
 }
 
 interface FormData {
@@ -83,9 +88,16 @@ export default function Step1Page() {
         return;
       }
 
-      const { data, error } = await supabase.client
+      const { data, error } = await supabase
         .from('services')
-        .select('*')
+        .select(`
+          *,
+          checkout:checkout_type_id(
+            id,
+            name,
+            slug
+          )
+        `)
         .eq('id', serviceId)
         .single();
 

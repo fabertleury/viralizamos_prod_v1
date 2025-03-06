@@ -17,6 +17,11 @@ interface Service {
   icon: string;
   checkout_type_id: string;
   quantidade: number;
+  checkout: {
+    id: string;
+    name: string;
+    slug: string;
+  };
 }
 
 interface FormData {
@@ -55,7 +60,14 @@ export default function Step1Page() {
 
         const { data, error } = await supabase
           .from('services')
-          .select('*')
+          .select(`
+            *,
+            checkout:checkout_type_id(
+              id,
+              name,
+              slug
+            )
+          `)
           .eq('id', serviceId)
           .single();
 

@@ -1,14 +1,20 @@
-import { createClient } from '@/lib/supabase/server';
 import { SocialMediaService } from '@/lib/services/socialMediaService';
-import { Transaction, Provider, Post, ProviderRequestData, OrderResponse } from './types';
-import { LinkFormatter } from './linkFormatter';
+import { Transaction, Provider, Post, ProviderRequestData } from './types';
+import { 
+  DatabaseService, 
+  LinkService, 
+  ProviderService, 
+  TransactionService 
+} from './services';
 
 /**
  * Processa pedidos para provedores
  */
 export class OrderProcessor {
-  private supabase = createClient();
-  private linkFormatter = new LinkFormatter();
+  private databaseService = new DatabaseService();
+  private linkService = new LinkService();
+  private providerService = new ProviderService();
+  private transactionService = new TransactionService();
 
   /**
    * Processa pedidos de curtidas com múltiplos posts
@@ -19,137 +25,109 @@ export class OrderProcessor {
    * @returns Lista de pedidos criados
    */
   async processLikesOrder(transaction: Transaction, provider: Provider, posts?: Post[], username?: string): Promise<any[]> {
-    console.log('[OrderProcessor] Processando pedido de curtidas');
-    
-    // Se não tiver posts, tentar extrair dos metadados da transação
-    if (!posts || posts.length === 0) {
-      posts = transaction.metadata?.posts || [];
-      console.log('[OrderProcessor] Usando posts dos metadados da transação:', posts.length);
-    }
-    
-    // Se ainda não tiver posts, lançar erro
-    if (!posts || posts.length === 0) {
-      console.error('[OrderProcessor] Nenhum post encontrado para processar');
-      throw new Error('Nenhum post encontrado para processar');
-    }
-    
-    console.log('[OrderProcessor] Processando', posts.length, 'posts');
-    
-    // Se não tiver username, tentar extrair dos metadados da transação
-    if (!username) {
-      username = transaction.target_username || 
-                transaction.metadata?.username || 
-                transaction.metadata?.profile?.username;
-      console.log('[OrderProcessor] Usando username dos metadados da transação:', username);
-    }
-    
-    console.log('[OrderProcessor] Checkout de curtidas para:', username);
-    
-    const orders: any[] = [];
-    
-    // Calcular a quantidade dividida entre os posts
-    const originalQuantity = transaction.service?.quantity || transaction.metadata?.service?.quantity;
-    const dividedQuantity = Math.floor(originalQuantity / posts.length);
-    
-    console.log(`[OrderProcessor] Quantidade original: ${originalQuantity}, Quantidade dividida por post: ${dividedQuantity}`);
-    
-    for (const post of posts) {
-      try {
-        console.log('[OrderProcessor] Processando post:', post);
-        
-        // Formatar o link para o Instagram (com https://)
-        const formattedLink = this.linkFormatter.formatPostLink(post);
-        console.log('[OrderProcessor] Link formatado para o Instagram (com https):', formattedLink);
-        
-        // Verificar se é um reel ou post normal
-        const isReel = 
-          post.type === 'reel' || 
-          (post.url && post.url.includes('/reel/')) || 
-          (post.link && post.link.includes('/reel/'));
-        const postType = isReel ? 'reel' : 'p';
-        
-        console.log('[OrderProcessor] Tipo de post detectado:', isReel ? 'REEL' : 'POST', {
-          type: post.type,
-          url: post.url,
-          link: post.link,
-          indicators: {
-            typeIsReel: post.type === 'reel',
-            urlContainsReel: post.url && post.url.includes('/reel/'),
-            linkContainsReel: post.link && post.link.includes('/reel/')
+    try {
+      // Validar posts
+      if (!posts || posts.length === 0) {
+        console.error('[OrderProcessor] Nenhum post encontrado para processar');
+        throw new Error('Nenhum post encontrado para processar');
+      }
+      
+      console.log('[OrderProcessor] Processando', posts.length, 'posts');
+      
+      // Se não tiver username, tentar extrair dos metadados da transação
+      if (!username) {
+        username = transaction.target_username || 
+                  transaction.metadata?.username || 
+                  transaction.metadata?.profile?.username;
+        console.log('[OrderProcessor] Usando username dos metadados da transação:', username);
+      }
+      
+      console.log('[OrderProcessor] Checkout de curtidas para:', username);
+      
+      const orders: any[] = [];
+      
+      // Calcular a quantidade dividida entre os posts
+      const originalQuantity = transaction.service?.quantity || transaction.metadata?.service?.quantity;
+      const dividedQuantity = Math.floor(originalQuantity / posts.length);
+      
+      console.log(`[OrderProcessor] Quantidade original: ${originalQuantity}, Quantidade dividida por post: ${dividedQuantity}`);
+      
+      for (const post of posts) {
+        try {
+          console.log('[OrderProcessor] Processando post:', post);
+          
+          // Formatar o link para o provedor
+          const postLinkForProvider = this.linkService.formatPostLinkForProvider(post);
+          console.log('[OrderProcessor] Link formatado para o provedor:', postLinkForProvider);
+          
+          // Extrair o ID do serviço
+          const serviceId = this.transactionService.getServiceId(transaction);
+          
+          if (!serviceId) {
+            console.error('[OrderProcessor] ID do serviço não encontrado na transação:', transaction);
+            throw new Error('ID do serviço não encontrado na transação');
           }
-        });
-        
-        // Extrair o código do post
-        let postCode = post.code || post.shortcode;
-        if (!postCode && post.url) {
-          postCode = this.linkFormatter.extractPostCode(post.url);
-        }
-        
-        if (!postCode) {
-          console.error('[OrderProcessor] Código do post não encontrado:', post);
+          
+          // Preparar os dados para a requisição ao provedor
+          const providerRequestData: ProviderRequestData = {
+            service: serviceId,
+            link: postLinkForProvider,
+            quantity: dividedQuantity, // Usar a quantidade dividida
+            transaction_id: transaction.id,
+            target_username: username,
+            key: provider.api_key,
+            action: 'add'
+          };
+          
+          // Log detalhado para depuração
+          this.providerService.logRequestDetails(providerRequestData);
+          
+          // Enviar para o endpoint do provedor
+          const orderResponse = await this.providerService.sendOrderToProvider(provider, providerRequestData);
+          console.log('[OrderProcessor] Resposta do provedor para o post:', orderResponse);
+          
+          // Criar pedido no banco de dados
+          const order = await this.databaseService.createOrderInDatabase(
+            transaction, 
+            provider, 
+            orderResponse, 
+            postLinkForProvider, 
+            username, 
+            post, 
+            posts.length, 
+            providerRequestData
+          );
+          
+          orders.push({
+            success: true,
+            data: {
+              order: order,
+              response: orderResponse
+            },
+            post: post
+          });
+          
+        } catch (error) {
+          console.error('[OrderProcessor] Erro ao processar post:', post, error);
+          orders.push({
+            success: false,
+            error: error instanceof Error ? error.message : 'Erro desconhecido',
+            post: post
+          });
+          
+          // Continuar processando os próximos posts
           continue;
         }
-        
-        // Formatar o link para o provedor (sem https://)
-        // Para o provedor enviamos apenas: instagram.com/p/{code} ou instagram.com/reel/{code}
-        const postLinkForProvider = `instagram.com/${postType}/${postCode}`;
-        console.log('[OrderProcessor] Link formatado para o provedor (sem https):', postLinkForProvider);
-        
-        // Extrair o external_id do serviço
-        const serviceId = this.getServiceId(transaction);
-        
-        if (!serviceId) {
-          console.error('[OrderProcessor] ID do serviço não encontrado na transação:', transaction);
-          throw new Error('ID do serviço não encontrado na transação');
-        }
-        
-        // Preparar os dados para a requisição ao provedor
-        const providerRequestData: ProviderRequestData = {
-          service: serviceId,
-          link: postLinkForProvider,
-          quantity: dividedQuantity, // Usar a quantidade dividida
-          transaction_id: transaction.id,
-          target_username: username,
-          key: provider.api_key,
-          action: 'add'
-        };
-        
-        // Log detalhado para depuração
-        this.logRequestDetails(providerRequestData);
-        
-        // Enviar para o endpoint do provedor
-        const orderResponse = await this.sendOrderToProvider(provider, providerRequestData);
-        console.log('[OrderProcessor] Resposta do provedor para o post:', orderResponse);
-        
-        // Criar pedido no banco de dados
-        const order = await this.createOrderInDatabase(transaction, provider, orderResponse, postLinkForProvider, username, post, posts.length, providerRequestData);
-        
-        orders.push({
-          success: true,
-          data: {
-            order: order,
-            response: orderResponse
-          },
-          post: post
-        });
-        
-      } catch (error) {
-        console.error('[OrderProcessor] Erro ao processar post:', post, error);
-        orders.push({
-          success: false,
-          error: error instanceof Error ? error.message : 'Erro desconhecido',
-          post: post
-        });
-        
-        // Continuar processando os próximos posts
-        continue;
       }
+      
+      // Atualizar o status da transação
+      await this.databaseService.updateTransactionStatus(transaction.id);
+      
+      return orders;
+    } catch (error) {
+      console.error('[OrderProcessor] Erro ao processar pedido de curtidas:', error);
+      throw error;
     }
-    
-    // Atualizar o status da transação
-    await this.updateTransactionStatus(transaction.id);
-    
-    return orders;
   }
 
   /**
@@ -163,7 +141,7 @@ export class OrderProcessor {
   async processGenericOrder(transaction: Transaction, provider: Provider, targetLink: string, username: string): Promise<any> {
     try {
       // Extrair o external_id do serviço
-      const serviceId = this.getServiceId(transaction);
+      const serviceId = this.transactionService.getServiceId(transaction);
       
       if (!serviceId) {
         console.error('[OrderProcessor] ID do serviço não encontrado na transação:', transaction);
@@ -173,12 +151,13 @@ export class OrderProcessor {
       console.log('[OrderProcessor] Usando external_id do serviço:', serviceId);
       
       // Verificar se é um pedido de seguidores (checkout_type = 'Apenas Link do Usuário')
-      const isFollowersOrder = 
-        transaction.checkout_type === 'Apenas Link do Usuário' || 
-        transaction.service?.type === 'followers' ||
-        (transaction.service?.name && transaction.service.name.toLowerCase().includes('seguidor'));
+      const isFollowersOrder = this.linkService.isFollowersLink(
+        transaction.checkout_type,
+        transaction.service?.type,
+        transaction.service?.name
+      );
       
-      // Se for um link do Instagram, formatar corretamente
+      // Formatar o link de acordo com o tipo de pedido
       let formattedTargetLink = targetLink;
       
       if (targetLink.includes('instagram.com')) {
@@ -186,30 +165,18 @@ export class OrderProcessor {
         
         if (isFollowersOrder) {
           // Para seguidores, extrair apenas o username
-          const extractedUsername = this.linkFormatter.extractUsername(targetLink);
-          if (extractedUsername) {
-            console.log('[OrderProcessor] Username extraído para seguidores:', extractedUsername);
-            // Para seguidores, enviamos apenas o username para o provedor
-            formattedTargetLink = extractedUsername;
-          } else {
-            // Se não conseguir extrair o username, usar o que já temos
-            formattedTargetLink = username.replace('@', '');
-            console.log('[OrderProcessor] Usando username direto para seguidores:', formattedTargetLink);
-          }
+          formattedTargetLink = this.linkService.formatProfileLinkForProvider(targetLink, username);
+          console.log('[OrderProcessor] Username formatado para seguidores:', formattedTargetLink);
         } else {
-          // Para outros tipos de pedidos (curtidas, visualizações, etc.)
-          // Formatar o link para o Instagram - COM https:// para logs internos
-          const formattedLinkWithHttps = this.linkFormatter.formatInstagramLink(targetLink, true);
-          console.log('[OrderProcessor] Link formatado para o Instagram (com https):', formattedLinkWithHttps);
-          
-          // Verificar se é um reel ou post normal
-          const isReel = formattedLinkWithHttps.includes('/reel/');
+          // Para posts e reels, formatar o link adequadamente
+          const isReel = targetLink.includes('/reel/');
           const postType = isReel ? 'reel' : 'p';
           
           console.log('[OrderProcessor] Tipo de link detectado:', isReel ? 'REEL' : 'POST');
           
-          // Extrair o código do post
-          const postCode = this.linkFormatter.extractPostCode(targetLink);
+          // Extrair o código do post usando o LinkFormatter
+          const linkFormatter = new LinkService().linkFormatter;
+          const postCode = linkFormatter.extractPostCode(targetLink);
           
           if (postCode) {
             // Para o provedor enviamos apenas: instagram.com/p/{code} ou instagram.com/reel/{code}
@@ -247,14 +214,22 @@ export class OrderProcessor {
         };
         
         // Log detalhado para depuração
-        this.logRequestDetails(providerRequestData);
+        this.providerService.logRequestDetails(providerRequestData);
         
         // Enviar para o endpoint do provedor
-        const orderResponse = await this.sendOrderToProvider(provider, providerRequestData);
+        const orderResponse = await this.providerService.sendOrderToProvider(provider, providerRequestData);
         console.log('[OrderProcessor] Resposta do provedor:', orderResponse);
         
         // Criar pedido no banco de dados
-        return await this.createOrderInDatabase(transaction, provider, orderResponse, formattedTargetLink, username, totalPosts, providerRequestData);
+        return await this.databaseService.createOrderInDatabase(
+          transaction, 
+          provider, 
+          orderResponse, 
+          formattedTargetLink, 
+          username, 
+          totalPosts, 
+          providerRequestData
+        );
       } else {
         // Criar o serviço social media diretamente
         console.log('[OrderProcessor] Provedor não tem API configurada, usando SocialMediaService diretamente');
@@ -271,7 +246,7 @@ export class OrderProcessor {
         console.log('[OrderProcessor] Resposta do SocialMediaService:', orderResponse);
         
         // Criar pedido no banco de dados
-        return await this.createOrderInDatabase(
+        return await this.databaseService.createOrderInDatabase(
           transaction, 
           provider, 
           orderResponse, 
@@ -289,226 +264,6 @@ export class OrderProcessor {
     } catch (error) {
       console.error('[OrderProcessor] Erro ao processar pedido:', error);
       throw error;
-    }
-  }
-
-  /**
-   * Obtém o nome de usuário para o pedido de várias fontes possíveis
-   * @param transaction Dados da transação
-   * @returns Nome de usuário para o pedido
-   */
-  private getUsernameForOrder(transaction: Transaction): string | null {
-    return transaction.metadata?.profile?.username || 
-           (transaction.metadata?.posts && transaction.metadata?.posts.length > 0 ? 
-             transaction.metadata?.posts[0].username : transaction.target_username);
-  }
-
-  /**
-   * Obtém o ID do serviço de várias fontes possíveis
-   * @param transaction Dados da transação
-   * @returns ID do serviço
-   */
-  private getServiceId(transaction: Transaction): string | null {
-    if (transaction.service && transaction.service.external_id) {
-      console.log('[OrderProcessor] Usando external_id do serviço:', transaction.service.external_id);
-      return transaction.service.external_id;
-    } else if (transaction.metadata?.service?.external_id) {
-      console.log('[OrderProcessor] Usando external_id do metadata:', transaction.metadata.service.external_id);
-      return transaction.metadata.service.external_id;
-    } else if (transaction.service && transaction.service.id) {
-      console.log('[OrderProcessor] Usando ID do serviço:', transaction.service.id);
-      return transaction.service.id;
-    } else if (transaction.metadata?.service?.id) {
-      console.log('[OrderProcessor] Usando ID do serviço do metadata:', transaction.metadata.service.id);
-      return transaction.metadata.service.id;
-    }
-    
-    return null;
-  }
-
-  /**
-   * Registra detalhes da requisição para depuração
-   * @param requestData Dados da requisição
-   */
-  private logRequestDetails(requestData: ProviderRequestData): void {
-    console.log('[OrderProcessor] Enviando para o provedor:');
-    console.log(`service: ${requestData.service}`);
-    console.log(`link: ${requestData.link}`);
-    console.log(`quantity: ${requestData.quantity}`);
-    console.log(`transaction_id: ${requestData.transaction_id}`);
-    console.log(`target_username: ${requestData.target_username}`);
-    console.log(`key: ${requestData.key}`);
-    console.log(`action: ${requestData.action}`);
-  }
-
-  /**
-   * Envia o pedido para o provedor
-   * @param provider Provedor a ser utilizado
-   * @param requestData Dados da requisição
-   * @returns Resposta do provedor
-   */
-  private async sendOrderToProvider(provider: Provider, requestData: ProviderRequestData): Promise<OrderResponse> {
-    // Usar a URL direta do provedor se disponível, caso contrário usar a URL do Supabase
-    const apiUrl = provider.api_url || `${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/providers/${provider.slug}/add-order`;
-    
-    console.log('[OrderProcessor] Enviando pedido para o provedor:', provider.slug);
-    console.log('[OrderProcessor] URL da API:', apiUrl);
-    console.log('[OrderProcessor] Dados do pedido:', JSON.stringify(requestData, null, 2));
-    
-    // Verificar se o link está no formato correto (sem https://)
-    if (requestData.link && requestData.link.startsWith('https://')) {
-      console.warn('[OrderProcessor] ALERTA: Link contém https://, pode causar erro no provedor:', requestData.link);
-      requestData.link = requestData.link.replace('https://', '');
-      console.log('[OrderProcessor] Link corrigido para:', requestData.link);
-    }
-    
-    // Converter para formato x-www-form-urlencoded manualmente
-    const formData = new URLSearchParams();
-    Object.entries(requestData).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        formData.append(key, value.toString());
-      }
-    });
-    
-    const formDataString = formData.toString();
-    console.log('[OrderProcessor] Dados formatados para envio:', formDataString);
-    
-    // Log detalhado para depuração
-    console.log('[OrderProcessor] Enviando para o provedor:');
-    for (const [key, value] of formData.entries()) {
-      console.log(`${key}: ${value}`);
-    }
-    
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      },
-      body: formDataString,
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch (e) {
-        errorData = { error: errorText };
-      }
-      console.error('[OrderProcessor] Erro na resposta do provedor:', errorData);
-      throw new Error(`Erro ao enviar pedido para o provedor: ${JSON.stringify(errorData)}`);
-    }
-    
-    const responseData = await response.json();
-    console.log('[OrderProcessor] Resposta do provedor:', JSON.stringify(responseData, null, 2));
-    
-    return responseData;
-  }
-
-  /**
-   * Cria o pedido no banco de dados
-   * @param transaction Dados da transação
-   * @param provider Provedor utilizado
-   * @param orderResponse Resposta do provedor
-   * @param targetLink Link alvo do pedido
-   * @param username Nome de usuário para o pedido
-   * @param post Post processado (opcional)
-   * @param totalPosts Total de posts na transação (opcional)
-   * @returns Pedido criado
-   */
-  private async createOrderInDatabase(
-    transaction: Transaction, 
-    provider: Provider, 
-    orderResponse: OrderResponse, 
-    targetLink: string, 
-    username: string,
-    post?: Post,
-    totalPosts: number = 1,
-    requestData?: ProviderRequestData
-  ): Promise<any> {
-    console.log('[OrderProcessor] Criando pedido no banco...');
-    
-    // Calcular a quantidade dividida entre os posts
-    const originalQuantity = transaction.service?.quantity || transaction.metadata?.service?.quantity;
-    const dividedQuantity = totalPosts > 1 ? Math.floor(originalQuantity / totalPosts) : originalQuantity;
-    
-    console.log(`[OrderProcessor] Quantidade original: ${originalQuantity}, Quantidade dividida: ${dividedQuantity}, Total de posts: ${totalPosts}`);
-    
-    const { data: order, error: orderError } = await this.supabase
-      .from('orders')
-      .insert({
-        transaction_id: transaction.id,
-        customer_id: transaction.customer_id,
-        service_id: transaction.service_id,
-        external_order_id: orderResponse.orderId || orderResponse.order,
-        status: orderResponse.status || 'processing',
-        amount: totalPosts > 1 ? (transaction.amount / totalPosts) : transaction.amount,
-        quantity: dividedQuantity, // Usar a quantidade dividida
-        target_username: username,
-        payment_status: transaction.status === 'processing' ? 'approved' : 
-                        transaction.status === 'completed' ? 'approved' : 
-                        transaction.status === 'failed' ? 'rejected' : 'pending',
-        payment_method: transaction.payment_method || 'pix',
-        payment_id: transaction.payment_id || transaction.external_id,
-        metadata: {
-          link: targetLink,
-          provider: provider.slug,
-          provider_name: provider.name,
-          provider_service_id: this.getServiceId(transaction),
-          provider_order_id: orderResponse.orderId || orderResponse.order,
-          provider_response: orderResponse,
-          providerRequestData: requestData, // Adicionando os dados enviados para o provedor
-          post: post,
-          customer: {
-            name: transaction.customer_name || transaction.metadata?.customer?.name,
-            email: transaction.customer_email || transaction.metadata?.customer?.email,
-            phone: transaction.customer_phone || transaction.metadata?.customer?.phone
-          }
-        }
-      })
-      .select()
-      .single();
-    
-    if (orderError) {
-      console.error('[OrderProcessor] Erro ao criar pedido no banco:', orderError);
-      throw orderError;
-    }
-    
-    console.log('[OrderProcessor] Atualizando transação com order_id:', order.id);
-    const { error: updateTransactionError } = await this.supabase
-      .from('transactions')
-      .update({
-        order_created: true,
-        order_id: order.id
-      })
-      .eq('id', transaction.id);
-    
-    if (updateTransactionError) {
-      console.error('[OrderProcessor] Erro ao atualizar transação com order_id:', updateTransactionError);
-    } else {
-      console.log('[OrderProcessor] Transação atualizada com order_id:', order.id);
-    }
-    
-    return order;
-  }
-
-  /**
-   * Atualiza o status da transação após criar o pedido
-   * @param transactionId ID da transação
-   */
-  private async updateTransactionStatus(transactionId: string): Promise<void> {
-    const { error: updateError } = await this.supabase
-      .from('transactions')
-      .update({
-        order_created: true
-        // Removido o status: 'processing' que estava causando o erro
-      })
-      .eq('id', transactionId);
-    
-    if (updateError) {
-      console.error('[OrderProcessor] Erro ao atualizar status da transação:', updateError);
-      throw updateError;
     }
   }
 }

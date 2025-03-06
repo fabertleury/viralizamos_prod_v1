@@ -68,13 +68,29 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
       { icon: '⚡', title: 'Entrega Gradual' },
       { icon: '👥', title: 'Seguidores de Qualidade' },
       { icon: '🔒', title: 'Suporte 24/7' }
-    ]
+    ],
+    price_variations: [] as { quantidade: number; preco: number; preco_original: number | null }[],
+    type: ''
   });
 
   const supabase = createClient();
 
   useEffect(() => {
     if (service) {
+      // Verificar e parsear as variações de preço
+      let priceVariations = [];
+      try {
+        if (service.metadata?.quantidade_preco) {
+          priceVariations = service.metadata.quantidade_preco.map((variation: any) => ({
+            quantidade: variation.quantidade,
+            preco: variation.preco,
+            preco_original: variation.preco_original || null
+          }));
+        }
+      } catch (error) {
+        console.error('Erro ao parsear variações de preço:', error);
+      }
+
       setFormData({
         name: service.name || '',
         descricao: service.descricao || '',
@@ -91,7 +107,9 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
         global_reach: service.metadata?.service_details?.global_reach || false,
         fast_delivery: service.metadata?.service_details?.fast_delivery || false,
         guaranteed_security: service.metadata?.service_details?.guaranteed_security || false,
-        service_details: service.metadata?.service_details || []
+        service_details: service.metadata?.service_details || [],
+        price_variations: priceVariations,
+        type: service.type || ''
       });
     }
   }, [service]);
@@ -149,6 +167,25 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
     }
   }, [isOpen, service]);
 
+  useEffect(() => {
+    if (formData.type && checkoutTypes.length > 0) {
+      // Se o tipo for curtidas, sugerir "Mostrar Posts"
+      // Se o tipo for seguidores, sugerir "Apenas Link do Usuário"
+      const checkoutTypeToSuggest = formData.type === 'curtidas' 
+        ? checkoutTypes.find(type => type.name === 'Mostrar Posts')
+        : formData.type === 'seguidores'
+          ? checkoutTypes.find(type => type.name === 'Apenas Link do Usuário')
+          : null;
+      
+      if (checkoutTypeToSuggest) {
+        setFormData(prev => ({
+          ...prev,
+          checkout_type_id: checkoutTypeToSuggest.id
+        }));
+      }
+    }
+  }, [formData.type, checkoutTypes]);
+
   const filteredCategories = categories.filter(cat => cat.social_id === selectedSocial);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -156,47 +193,55 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
     setLoading(true);
 
     try {
-      const data: any = {
+      const serviceData = {
         name: formData.name,
         descricao: formData.descricao,
         preco: parseFloat(formData.preco),
         quantidade: parseInt(formData.quantidade),
+        category_id: formData.category_id,
+        subcategory_id: formData.subcategory_id,
+        checkout_type_id: formData.checkout_type_id,
         featured: formData.featured,
         status: formData.status,
         external_id: formData.external_id,
-        min_order: parseInt(formData.min_order) || 20,
-        max_order: parseInt(formData.max_order) || 10000,
+        min_order: parseInt(formData.min_order),
+        max_order: parseInt(formData.max_order),
         metadata: {
           service_details: {
             global_reach: formData.global_reach,
             fast_delivery: formData.fast_delivery,
             guaranteed_security: formData.guaranteed_security,
-            service_details: formData.service_details
-          }
-        }
+            ...formData.service_details.reduce((acc, detail, index) => {
+              acc[`detail_${index + 1}`] = detail;
+              return acc;
+            }, {})
+          },
+          quantidade_preco: formData.price_variations
+        },
+        type: formData.type
       };
 
       // Tratar campos UUID para evitar strings vazias
       if (formData.category_id) {
-        data.category_id = formData.category_id;
+        serviceData.category_id = formData.category_id;
       }
 
       if (formData.subcategory_id && formData.subcategory_id.trim() !== '') {
-        data.subcategory_id = formData.subcategory_id;
+        serviceData.subcategory_id = formData.subcategory_id;
       } else {
-        data.subcategory_id = null;
+        serviceData.subcategory_id = null;
       }
 
       if (formData.checkout_type_id && formData.checkout_type_id.trim() !== '') {
-        data.checkout_type_id = formData.checkout_type_id;
+        serviceData.checkout_type_id = formData.checkout_type_id;
       } else {
-        data.checkout_type_id = null;
+        serviceData.checkout_type_id = null;
       }
 
       if (service?.id) {
         const { error } = await supabase
           .from('services')
-          .update(data)
+          .update(serviceData)
           .eq('id', service.id);
 
         if (error) {
@@ -209,7 +254,7 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
         const { data: existingService } = await supabase
           .from('services')
           .select('*')
-          .eq('external_id', data.external_id)
+          .eq('external_id', serviceData.external_id)
           .single();
 
         if (existingService) {
@@ -219,7 +264,7 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
 
         const { error } = await supabase
           .from('services')
-          .insert([data]);
+          .insert([serviceData]);
 
         if (error) {
           console.error('Detailed error:', error);
@@ -403,6 +448,22 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
           )}
 
           <div>
+            <label className="block text-sm font-medium mb-1">Tipo de Serviço</label>
+            <Select
+              value={formData.type}
+              onValueChange={(value) => setFormData({ ...formData, type: value })}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Selecione um tipo de serviço" />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                <SelectItem value="curtidas">Curtidas</SelectItem>
+                <SelectItem value="seguidores">Seguidores</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
             <label className="block text-sm font-medium mb-1">Tipo de Checkout</label>
             <Select
               value={formData.checkout_type_id}
@@ -529,6 +590,85 @@ export function ServiceFormModal({ isOpen, onClose, service, onSuccess }: Servic
             >
               Adicionar Detalhe
             </Button>
+          </div>
+
+          {/* Variações de Preço */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Variações de Preço</label>
+            <div className="space-y-3 mt-2 p-3 border rounded-md">
+              {formData.price_variations.map((variation, index) => (
+                <div key={index} className="grid grid-cols-3 gap-2 items-center">
+                  <div>
+                    <label className="text-xs font-medium">Quantidade</label>
+                    <Input
+                      type="number"
+                      value={variation.quantidade}
+                      onChange={(e) => {
+                        const newVariations = [...formData.price_variations];
+                        newVariations[index].quantidade = parseInt(e.target.value);
+                        setFormData({ ...formData, price_variations: newVariations });
+                      }}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">Preço Original (opcional)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={variation.preco_original || ''}
+                      onChange={(e) => {
+                        const newVariations = [...formData.price_variations];
+                        newVariations[index].preco_original = e.target.value ? parseFloat(e.target.value) : null;
+                        setFormData({ ...formData, price_variations: newVariations });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">Preço Final</label>
+                    <div className="flex items-center">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={variation.preco}
+                        onChange={(e) => {
+                          const newVariations = [...formData.price_variations];
+                          newVariations[index].preco = parseFloat(e.target.value);
+                          setFormData({ ...formData, price_variations: newVariations });
+                        }}
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={() => {
+                          const newVariations = [...formData.price_variations];
+                          newVariations.splice(index, 1);
+                          setFormData({ ...formData, price_variations: newVariations });
+                        }}
+                        className="ml-2 px-2 py-1"
+                      >
+                        X
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const newVariations = [
+                    ...formData.price_variations,
+                    { quantidade: 100, preco: parseFloat(formData.preco) || 0, preco_original: null }
+                  ];
+                  setFormData({ ...formData, price_variations: newVariations });
+                }}
+                className="mt-2"
+              >
+                Adicionar Variação
+              </Button>
+            </div>
           </div>
 
           <div className="flex justify-end space-x-2">

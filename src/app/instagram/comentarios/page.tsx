@@ -110,6 +110,46 @@ export default function ComentariosPage() {
     fetchServices();
   }, []);
 
+  const getServiceDetails = (service: Service) => {
+    const details = [];
+
+    if (service.metadata?.service_details?.fast_delivery) {
+      details.push({ icon: '✓', label: 'Entrega rápida' });
+    }
+
+    if (service.metadata?.service_details?.global_reach) {
+      details.push({ icon: '✓', label: 'Alcance global' });
+    }
+
+    if (service.metadata?.service_details?.guaranteed_security) {
+      details.push({ icon: '✓', label: 'Segurança garantida' });
+    }
+
+    return details;
+  };
+
+  const isServiceSelected = (serviceId: string) => {
+    return selectedServices[serviceId] !== undefined;
+  };
+
+  const hasDiscount = (service: Service) => {
+    return service.discount_price !== undefined;
+  };
+
+  const getOriginalPrice = (service: Service) => {
+    return service.price;
+  };
+
+  const calculateTotalPrice = (service: Service) => {
+    const quantity = selectedServices[service.id];
+    const price = service.quantidade_preco.find(variation => variation.quantidade === quantity)?.preco || service.price;
+    return price;
+  };
+
+  const updateServiceQuantity = (serviceId: string, quantity: number) => {
+    setSelectedServices(prevState => ({ ...prevState, [serviceId]: quantity }));
+  };
+
   return (
     <>
       <Header />
@@ -143,55 +183,106 @@ export default function ComentariosPage() {
               ))}
             </div>
           ) : services.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {services.map((service) => (
-                <Card key={service.id} className="p-6 bg-white hover:shadow-lg transition-shadow duration-200 h-full flex flex-col">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">{service.name}</h3>
-                    <p className="text-gray-600 mb-4">{service.description}</p>
-                    
-                    <div className="flex items-center mb-4">
-                      <div className="text-2xl font-bold text-gray-900">
-                        R$ {service.price.toFixed(2)}
+            <div className="space-y-12">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                {services.map((service, index) => (
+                  <Card 
+                    key={service.id} 
+                    className="flex flex-col p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 ease-in-out relative"
+                  >
+                    {/* Badge de Mais Vendido */}
+                    {index === 0 && (
+                      <div className="absolute top-0 right-0 m-2 px-3 py-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-xs font-bold rounded-full shadow-md z-10">
+                        Mais Vendido
                       </div>
-                      {service.discount_price && (
-                        <div className="ml-2 text-lg text-gray-500 line-through">
-                          R$ {service.discount_price.toFixed(2)}
+                    )}
+
+                    <div className="flex-grow flex flex-col">
+                      {/* Título do Serviço */}
+                      <div className="mb-4 text-center">
+                        <h3 className="text-2xl font-bold text-gray-900 break-words">
+                          {service.name}
+                        </h3>
+                        <p className="text-sm font-medium text-purple-600 mt-1 bg-purple-50 py-1 px-2 rounded-md mx-auto inline-block">
+                          Divida em até 5 posts diferentes!
+                        </p>
+                      </div>
+
+                      {/* Detalhes adicionais do serviço */}
+                      <div className="flex justify-between mb-4">
+                        {getServiceDetails(service).map((detail, idx) => (
+                          <div 
+                            key={idx} 
+                            className="flex items-center text-sm text-gray-600"
+                          >
+                            <span className="mr-2">{detail.icon}</span>
+                            {detail.label}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mb-4">
+                        <p className="text-center text-gray-600 mb-2 font-semibold">
+                          Escolha a quantidade
+                        </p>
+                        <div className="flex flex-wrap justify-center gap-3">
+                          {service.quantidade_preco.map((variation) => (
+                            <Button
+                              key={variation.quantidade}
+                              variant={selectedServices[service.id] === variation.quantidade ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => updateServiceQuantity(service.id, variation.quantidade)}
+                              className={`min-w-[80px] transition-all duration-300 ease-in-out ${
+                                selectedServices[service.id] === variation.quantidade 
+                                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transform scale-105' 
+                                  : 'hover:bg-purple-100'
+                              }`}
+                            >
+                              {variation.quantidade}
+                            </Button>
+                          ))}
                         </div>
+                      </div>
+
+                      {isServiceSelected(service.id) && (
+                        <div className="text-center mb-4">
+                          {hasDiscount(service) ? (
+                            <>
+                              <p className="text-gray-500 line-through text-lg">
+                                De: R$ {getOriginalPrice(service)}
+                              </p>
+                              <p className="text-2xl font-bold text-purple-600">
+                                Por: R$ {calculateTotalPrice(service)}
+                              </p>
+                              <p className="text-xs text-green-600 font-medium mt-1 bg-green-50 py-1 px-2 rounded-md inline-block">
+                                Promoção!
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-2xl font-bold text-purple-600">
+                              Por: R$ {calculateTotalPrice(service)}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {isServiceSelected(service.id) && (
+                        <Link 
+                          href={`/checkout/instagram/comentarios/step1?service_id=${service.id}&quantity=${selectedServices[service.id]}`}
+                          className="w-full mt-auto"
+                        >
+                          <Button 
+                            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transition-all duration-300 ease-in-out transform hover:scale-105"
+                            size="lg"
+                          >
+                            Comprar Agora
+                          </Button>
+                        </Link>
                       )}
                     </div>
-                    
-                    <div className="space-y-2 mb-4">
-                      {service.metadata?.service_details?.fast_delivery && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <span className="mr-2">✓</span>
-                          <span>Entrega rápida</span>
-                        </div>
-                      )}
-                      {service.metadata?.service_details?.global_reach && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <span className="mr-2">✓</span>
-                          <span>Alcance global</span>
-                        </div>
-                      )}
-                      {service.metadata?.service_details?.guaranteed_security && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <span className="mr-2">✓</span>
-                          <span>Segurança garantida</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="mt-auto">
-                    <Link href={`/checkout/instagram/comentario/step1?service_id=${service.id}`}>
-                      <Button className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white">
-                        Selecionar
-                      </Button>
-                    </Link>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="text-center py-12">

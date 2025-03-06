@@ -29,7 +29,8 @@ import {
   NetworkIcon,
   ChartBarIcon,
   ServerIcon,
-  BanknotesIcon
+  BanknotesIcon,
+  TicketIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -37,7 +38,6 @@ import Image from 'next/image';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Toaster, toast } from 'sonner';
 import { classNames } from '../lib/helpers';
-import { Header } from '@/components/layout/header';
 
 const navigation = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: ChartBarIcon },
@@ -49,6 +49,7 @@ const navigation = [
   { name: 'Categorias', href: '/admin/categories', icon: TagIcon },
   { name: 'Provedores', href: '/admin/provedores', icon: BuildingStorefrontIcon },
   { name: 'Serviços', href: '/admin/servicos_v1', icon: CubeIcon },
+  { name: 'Cupons', href: '/admin/cupons', icon: TicketIcon },
   { name: 'Clientes', href: '/admin/clientes', icon: UsersIcon },
   { name: 'Tickets de Suporte', href: '/admin/tickets', icon: ChatBubbleLeftRightIcon },
   { name: "FAQ's", href: '/admin/faqs', icon: QuestionMarkCircleIcon },
@@ -311,7 +312,6 @@ export default function AdminLayout({
       </div>
 
       <div className="flex flex-1 flex-col lg:pl-72">
-        <Header />
         <main className="flex-1 py-10">
           <div className="px-4 sm:px-6 lg:px-8">
             <Toaster richColors position="top-right" />

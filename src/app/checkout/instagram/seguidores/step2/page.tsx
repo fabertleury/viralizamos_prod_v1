@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { getProxiedImageUrl } from '../../utils/proxy-image';
 import { PaymentPixModal } from '@/components/payment/PaymentPixModal';
+import { CouponInput } from '@/components/checkout/CouponInput';
 import { maskPhone } from '@/lib/utils/mask';
 import axios from 'axios';
 
@@ -40,6 +41,9 @@ interface Service {
     icon: string;
     title: string;
   }[];
+  checkout?: {
+    slug: string;
+  };
 }
 
 export default function Step2Page() {
@@ -50,12 +54,10 @@ export default function Step2Page() {
     phone: ''
   });
   const [service, setService] = useState<Service | null>(null);
-  const [paymentData, setPaymentData] = useState<{
-    qrCodeText: string;
-    paymentId: string;
-    amount: number;
-    qrCodeBase64?: string;
-  } | null>(null);
+  const [paymentData, setPaymentData] = useState<any>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [finalAmount, setFinalAmount] = useState<number | null>(null);
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -195,7 +197,8 @@ export default function Step2Page() {
             quantidade: selectedVariation.quantidade,
             preco: selectedVariation.preco,
             metadata: data.metadata,
-            service_details: data.metadata?.service_details
+            service_details: data.metadata?.service_details,
+            checkout: data.checkout
           });
           return;
         }
@@ -208,7 +211,8 @@ export default function Step2Page() {
         quantidade: data.quantidade,
         preco: data.preco,
         metadata: data.metadata,
-        service_details: data.metadata?.service_details
+        service_details: data.metadata?.service_details,
+        checkout: data.checkout
       });
     } catch (error) {
       console.error('Erro ao buscar dados do serviço:', error);
@@ -219,25 +223,44 @@ export default function Step2Page() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!service || !profileData) {
-      toast.error('Informações incompletas');
+    if (!service) {
+      toast.error('Serviço não encontrado');
+      return;
+    }
+
+    if (!profileData) {
+      toast.error('Perfil não encontrado');
       return;
     }
 
     setLoading(true);
 
     try {
-      // Preparar os dados para o checkout
+      // Preparar os dados para o pagamento
       const checkoutData = {
         service_id: service.id,
-        profile_username: profileData.username,
-        profile_url: `https://instagram.com/${profileData.username}`,
-        quantity: service.quantidade,
-        amount: service.preco,
-        customer_name: formData.name,
-        customer_email: formData.email,
-        customer_phone: formData.phone,
-        checkout_type: 'Apenas Link do Usuário'
+        amount: finalAmount || service.preco,
+        original_amount: service.preco,
+        discount_amount: discountAmount,
+        coupon_code: appliedCoupon,
+        description: `${service.quantidade} seguidores para @${profileData.username}`,
+        service: {
+          id: service.id,
+          name: service.name,
+          quantity: service.quantidade,
+          provider_id: service.provider_id
+        },
+        user_id: null,
+        profile: {
+          username: profileData.username,
+          full_name: profileData.full_name,
+          link: `https://instagram.com/${profileData.username}`
+        },
+        customer: {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone
+        }
       };
 
       // Enviar para a API de pagamento
@@ -372,9 +395,16 @@ export default function Step2Page() {
                     <p className="text-sm text-gray-500">{service.quantidade} seguidores</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-2xl font-bold text-purple-600">R$ {service.preco.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-purple-600">R$ {(finalAmount || service.preco).toFixed(2)}</p>
                   </div>
                 </div>
+                
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-sm text-gray-600 mt-1">
+                    <span>Valor original:</span>
+                    <span className="line-through">R$ {service.preco.toFixed(2)}</span>
+                  </div>
+                )}
                 
                 {service.metadata?.service_details?.service_details && (
                   <div className="space-y-3 mt-4">
@@ -442,6 +472,28 @@ export default function Step2Page() {
                       className="w-full"
                     />
                   </div>
+                  
+                  <div className="flex justify-between text-lg font-semibold mt-2 pt-2 border-t">
+                    <span>Valor total:</span>
+                    <span>R$ {(finalAmount || service.preco).toFixed(2)}</span>
+                  </div>
+
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-sm text-gray-600 mt-1">
+                      <span>Valor original:</span>
+                      <span className="line-through">R$ {service.preco.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  <CouponInput 
+                    serviceId={service.id}
+                    originalAmount={service.preco}
+                    onCouponApplied={(discount, final, code) => {
+                      setDiscountAmount(discount);
+                      setFinalAmount(final);
+                      setAppliedCoupon(code || null);
+                    }}
+                  />
                   
                   <Button
                     type="submit"

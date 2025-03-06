@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { getProxiedImageUrl } from '../../utils/proxy-image';
 import { PaymentPixModal } from '@/components/payment/PaymentPixModal';
+import { CouponInput } from '@/components/checkout/CouponInput';
 import axios from 'axios';
 
 interface ProfileData {
@@ -62,7 +63,7 @@ export default function Step2Page() {
   });
   const [service, setService] = useState<Service | null>(null);
   const [selectedPosts, setSelectedPosts] = useState<InstagramPost[]>([]);
-  const [selectedReels, setSelectedReels] = useState<InstagramPost[]>([]);
+  const [selectedReels, setSelectedReels] = useState<Post[]>([]);
   const [instagramPosts, setInstagramPosts] = useState<Post[]>([]);
   const [instagramReels, setInstagramReels] = useState<Post[]>([]);
   const [paymentData, setPaymentData] = useState<{
@@ -77,6 +78,9 @@ export default function Step2Page() {
   const [reelsLoaded, setReelsLoaded] = useState(false);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [loadingReels, setLoadingReels] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [finalAmount, setFinalAmount] = useState<number | null>(null);
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
 
   const supabase = createClient();
 
@@ -567,65 +571,43 @@ export default function Step2Page() {
         url: `https://instagram.com/p/${reel.code}`
       })));
 
+      // Preparar os dados para o pagamento
+      const postIds = selectedPosts.map(post => post.id);
+      const reelIds = selectedReels.map(reel => reel.id);
+      const postCodes = selectedPosts.map(post => extractPostCode(post));
+      const reelCodes = selectedReels.map(reel => extractPostCode(reel));
+
+      const paymentData = {
+        service_id: service.id,
+        amount: finalAmount || service.preco,
+        original_amount: service.preco,
+        discount_amount: discountAmount,
+        coupon_code: appliedCoupon,
+        customer: {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone
+        },
+        metadata: {
+          profile: profileData,
+          posts: selectedPosts,
+          reels: selectedReels,
+          post_ids: postIds,
+          reel_ids: reelIds,
+          post_codes: postCodes,
+          reel_codes: reelCodes,
+          service_name: service.name,
+          service_quantity: service.quantidade
+        }
+      };
+
       // Criar pagamento via Pix
       const response = await fetch('/api/payment/pix', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          amount: service.preco,
-          description: `${service.quantidade} curtidas para ${selectedPosts.length + selectedReels.length} itens`,
-          service: {
-            id: service.id,
-            name: service.name,
-            quantity: service.quantidade,
-            provider_id: service.provider_id // Usar apenas provider_id
-          },
-          user_id: null,
-          profile: {
-            username: profileData.username,
-            full_name: profileData.full_name,
-            link: `https://instagram.com/${profileData.username}`
-          },
-          customer: {
-            name: formData.name,
-            email: formData.email,
-            phone: formData.phone
-          },
-          posts: [...selectedPosts, ...selectedReels].map(post => {
-            // Garantir que temos um código válido para o link usando nossa função auxiliar
-            const postCode = extractPostCode(post);
-            
-            // Determinar se é um post ou reel
-            const isReel = post.type === 'reel' || (post.url && post.url.includes('/reel/'));
-            const postType = isReel ? 'reel' : 'p';
-            
-            console.log('🔄 Processando post/reel para pagamento:', {
-              id: post.id,
-              code: post.code,
-              shortcode: post.shortcode,
-              extractedCode: postCode,
-              isReel: isReel,
-              postType: postType,
-              finalUrl: `https://instagram.com/${postType}/${postCode}`
-            });
-            
-            return {
-              id: post.id,
-              code: postCode,
-              shortcode: postCode,
-              image_url: post.image_url,
-              type: isReel ? 'reel' : 'post',
-              caption: post.caption 
-                ? (typeof post.caption === 'object' 
-                  ? post.caption.text || 'Sem legenda'
-                  : String(post.caption)) 
-                : (post.text || 'Sem legenda'),
-              link: `https://instagram.com/${postType}/${postCode}`
-            };
-          })
-        }),
+        body: JSON.stringify(paymentData),
       });
 
       if (!response.ok) {
@@ -633,25 +615,25 @@ export default function Step2Page() {
         throw new Error(error.message || 'Erro ao criar pagamento');
       }
 
-      const paymentData = await response.json();
+      const paymentResponse = await response.json();
       
       console.log('Dados completos do pagamento:', {
-        paymentId: paymentData.id,
-        paymentIdType: typeof paymentData.id,
-        paymentIdLength: paymentData.id?.length,
-        paymentData: JSON.stringify(paymentData, null, 2)
+        paymentId: paymentResponse.id,
+        paymentIdType: typeof paymentResponse.id,
+        paymentIdLength: paymentResponse.id?.length,
+        paymentData: JSON.stringify(paymentResponse, null, 2)
       });
 
       // Garantir que temos todos os dados necessários
-      if (!paymentData.id || !paymentData.qr_code) {
+      if (!paymentResponse.id || !paymentResponse.qr_code) {
         throw new Error('Dados de pagamento incompletos');
       }
 
       setPaymentData({
-        qrCodeText: paymentData.qr_code,
-        paymentId: paymentData.id,
+        qrCodeText: paymentResponse.qr_code,
+        paymentId: paymentResponse.id,
         amount: service.preco,
-        qrCodeBase64: paymentData.qr_code_base64
+        qrCodeBase64: paymentResponse.qr_code_base64
       });
 
       await sendTransactionToAdmin();
@@ -881,28 +863,26 @@ export default function Step2Page() {
 
                     <div className="flex justify-between text-lg font-semibold mt-2 pt-2 border-t">
                       <span>Valor total:</span>
-                      <span>R$ {service.preco.toFixed(2)}</span>
+                      <span>R$ {(finalAmount || service.preco).toFixed(2)}</span>
                     </div>
-                  </div>
 
-                  <Button
-                    onClick={handleSubmit}
-                    disabled={loading || !service || (selectedPosts.length + selectedReels.length) === 0}
-                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processando...
-                      </>
-                    ) : (
-                      'Pagar com Pix'
+                    {discountAmount > 0 && (
+                      <div className="flex justify-between text-sm text-gray-600 mt-1">
+                        <span>Valor original:</span>
+                        <span className="line-through">R$ {service.preco.toFixed(2)}</span>
+                      </div>
                     )}
-                  </Button>
 
-                  <p className="text-xs text-gray-500 text-center">
-                    Após o pagamento as curtidas iniciaram automaticamente em 15 a 30 minutos.
-                  </p>
+                    <CouponInput 
+                      serviceId={service.id}
+                      originalAmount={service.preco}
+                      onCouponApplied={(discount, final, code) => {
+                        setDiscountAmount(discount);
+                        setFinalAmount(final);
+                        setAppliedCoupon(code || null);
+                      }}
+                    />
+                  </div>
                 </div>
               </Card>
             </div>

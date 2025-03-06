@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       customer_name, 
       customer_email, 
       customer_phone,
-      checkout_type = 'likes' // Valor padrão é 'likes', mas pode ser 'followers' ou outros
+      checkout_type = 'mostrar-posts' // Valor padrão é 'mostrar-posts', mas pode ser 'apenas-link-usuario' ou outros
     } = body;
     
     // Buscar o serviço completo do banco de dados para garantir que temos o provider_id correto

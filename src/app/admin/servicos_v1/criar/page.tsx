@@ -94,6 +94,7 @@ export default function CriarServicoPage() {
     success_rate: '',
     checkout_type_id: '',
     status: true,
+    type: '', // Adicionado o campo type
   });
   
   // Estado para refill (será usado apenas no metadata)
@@ -254,6 +255,26 @@ export default function CriarServicoPage() {
 
     fetchData();
   }, []);
+
+  // Efeito para sugerir automaticamente o tipo de checkout com base no tipo de serviço
+  useEffect(() => {
+    if (formData.type && checkoutTypes.length > 0) {
+      // Se o tipo for curtidas, sugerir "Mostrar Posts"
+      // Se o tipo for seguidores, sugerir "Apenas Link do Usuário"
+      const checkoutTypeToSuggest = formData.type === 'curtidas' 
+        ? checkoutTypes.find(ct => ct.name === 'Mostrar Posts')
+        : formData.type === 'seguidores'
+          ? checkoutTypes.find(ct => ct.name === 'Apenas Link do Usuário')
+          : null;
+      
+      if (checkoutTypeToSuggest) {
+        setFormData(prev => ({
+          ...prev,
+          checkout_type_id: checkoutTypeToSuggest.id
+        }));
+      }
+    }
+  }, [formData.type, checkoutTypes]);
 
   const handleSocialChange = (socialId: string) => {
     setFormData(prev => ({
@@ -486,6 +507,24 @@ export default function CriarServicoPage() {
                     {type.name}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Tipo de Serviço */}
+          <div>
+            <Label>Tipo de Serviço</Label>
+            <Select 
+              value={formData.type} 
+              onValueChange={(value) => handleInputChange('type', value)}
+              required
+            >
+              <SelectTrigger className="bg-white">
+                <SelectValue placeholder="Selecione o tipo de serviço" />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                <SelectItem value="curtidas">Curtidas</SelectItem>
+                <SelectItem value="seguidores">Seguidores</SelectItem>
               </SelectContent>
             </Select>
           </div>
