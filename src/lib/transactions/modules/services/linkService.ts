@@ -40,8 +40,8 @@ export class LinkService {
       return post.url || post.link || '';
     }
     
-    // Para o provedor enviamos apenas: instagram.com/p/{code} ou instagram.com/reel/{code}
-    return `instagram.com/${postType}/${postCode}`;
+    // Para o provedor enviamos com https: https://instagram.com/p/{code} ou https://instagram.com/reel/{code}
+    return `https://instagram.com/${postType}/${postCode}`;
   }
 
   /**
@@ -55,10 +55,20 @@ export class LinkService {
     const extractedUsername = this.linkFormatter.extractUsername(profileLink);
     
     if (extractedUsername) {
-      return extractedUsername;
+      // Retornar o link completo com https para o provedor
+      return `https://instagram.com/${extractedUsername}`;
     } else if (username) {
       // Se não conseguir extrair o username, usar o que já temos
-      return username.replace('@', '');
+      const cleanUsername = username.replace('@', '');
+      return `https://instagram.com/${cleanUsername}`;
+    }
+    
+    // Se não conseguir extrair o username, retornar o link original
+    // Garantir que o link tenha https://
+    if (!profileLink.startsWith('https://')) {
+      return profileLink.startsWith('http://') 
+        ? profileLink.replace('http://', 'https://') 
+        : `https://${profileLink}`;
     }
     
     return profileLink;

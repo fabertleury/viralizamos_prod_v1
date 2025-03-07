@@ -179,9 +179,9 @@ export class OrderProcessor {
           const postCode = linkFormatter.extractPostCode(targetLink);
           
           if (postCode) {
-            // Para o provedor enviamos apenas: instagram.com/p/{code} ou instagram.com/reel/{code}
-            formattedTargetLink = `instagram.com/${postType}/${postCode}`;
-            console.log('[OrderProcessor] Link formatado para o provedor (sem https):', formattedTargetLink);
+            // Para o provedor enviamos com https: https://instagram.com/p/{code} ou https://instagram.com/reel/{code}
+            formattedTargetLink = `https://instagram.com/${postType}/${postCode}`;
+            console.log('[OrderProcessor] Link formatado para o provedor (com https):', formattedTargetLink);
           } else {
             console.warn('[OrderProcessor] Não foi possível extrair o código do post, usando o link original');
           }

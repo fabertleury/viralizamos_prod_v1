@@ -50,28 +50,33 @@ export async function GET(request: Request) {
               return;
             }
 
-            const posts = data.data.items.map((post: any) => ({
+            const posts = data.data.items
+              .filter((post: any) => {
+                // Filtrar apenas posts (não reels)
+                const isNotReel = post.product_type !== 'clips' && post.product_type !== 'reels';
+                const isImageOrCarousel = (post.media_type === 1 || post.media_type === 8);
+                const isNotVideo = !post.is_video;
+                
+                return isNotReel && isImageOrCarousel && isNotVideo;
+              })
+              .map((post: any) => ({
               id: post.id,
+              shortcode: post.code || post.id,
               media_type: post.media_type,
               is_video: post.media_type === 2,
-              likes_count: post.like_count || 0,
-              comments_count: post.comment_count || 0,
+              like_count: post.like_count || 0,
+              comment_count: post.comment_count || 0,
               caption: post.caption?.text || '',
               view_count: post.view_count || 0,
               timestamp: post.taken_at || Date.now(),
               hashtags: (post.caption?.text?.match(/#[\w\u0590-\u05ff]+/g) || []),
-              carousel_media: post.carousel_media,
-              image_versions: post.image_versions
+              carousel_media_count: post.carousel_media?.length || 1,
+              image_url: post.image_versions?.items?.[0]?.url || post.carousel_media?.[0]?.image_versions?.items?.[0]?.url || post.display_url
             }));
 
             console.log('Posts processados:', posts.length);
 
-            resolve({
-              data: {
-                items: posts,
-                count: posts.length
-              }
-            });
+            resolve(posts);
           } catch (e) {
             console.error('Erro ao processar resposta:', e);
             reject(e);
@@ -87,7 +92,7 @@ export async function GET(request: Request) {
       req.end();
     });
 
-    return NextResponse.json(data);
+    return NextResponse.json({ posts: data });
   } catch (error: any) {
     console.error('Erro ao buscar posts:', error);
     return NextResponse.json(

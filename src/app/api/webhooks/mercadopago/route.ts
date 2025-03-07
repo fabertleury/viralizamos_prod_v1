@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { processTransaction } from '@/lib/famaapi';
+import { processTransaction } from '@/lib/transactions/transactionProcessor';
 
 export async function POST(request: NextRequest) {
   console.log('[MercadoPagoWebhook] Recebendo notificação');

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { getRefillStatus } from '@/lib/famaapi';
+import { checkRefillStatus } from '@/lib/transactions/transactionProcessor';
 
 export async function GET(request: Request) {
   try {
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     }
 
     // Verificar status na API do Fama
-    const refillStatus = await getRefillStatus(refill.external_refill_id);
+    const refillStatus = await checkRefillStatus(refill.external_refill_id);
 
     // Atualizar status no banco
     const { data: updatedRefill, error: updateError } = await supabase

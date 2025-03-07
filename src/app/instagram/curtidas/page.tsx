@@ -44,7 +44,7 @@ export default function CurtidasPage() {
         // Log para debug
         console.log('Buscando serviços de curtidas...');
 
-        // Buscar serviços relacionados a curtidas usando a coluna 'categoria'
+        // Buscar todos os serviços ativos e depois filtrar
         const { data, error } = await supabase
           .from('services')
           .select(`
@@ -57,9 +57,9 @@ export default function CurtidasPage() {
             categoria,
             status,
             metadata,
-            service_variations
+            service_variations,
+            checkout_type_id
           `)
-          .or(`categoria.ilike.%curtida%,name.ilike.%curtida%`)
           .eq('status', true)
           .order('preco', { ascending: true });
 
@@ -69,11 +69,17 @@ export default function CurtidasPage() {
 
         if (error) throw error;
 
-        // Mapear os dados para o formato esperado
-        const curtidasServices = (data || []).filter(service => 
-          service.categoria?.toLowerCase().includes('curtida') || 
-          service.name.toLowerCase().includes('curtida')
-        ).map(service => {
+        // Filtrar serviços de curtidas de forma mais abrangente
+        const curtidasServices = (data || []).filter(service => {
+          const categoria = service.categoria?.toLowerCase() || '';
+          const nome = service.name?.toLowerCase() || '';
+          
+          return (
+            categoria.includes('curtida') || 
+            nome.includes('curtida') || 
+            nome.includes('like')
+          );
+        }).map(service => {
           // Tratar metadata de forma segura
           let metadata: Record<string, any> = {};
           try {

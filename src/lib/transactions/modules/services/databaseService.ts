@@ -42,14 +42,16 @@ export class DatabaseService {
         user_id: transaction.user_id,
         customer_id: transaction.customer_id,
         service_id: transaction.service_id,
-        provider_id: provider.id,
+        // Remover provider_id que não existe na tabela
+        // provider_id: provider.id,
         // Remover external_id que não existe na tabela
         // external_id: transaction.service?.external_id || transaction.metadata?.service?.external_id,
         external_order_id: orderResponse.order || orderResponse.orderId,
         status: orderResponse.status || 'pending',
         amount: transaction.amount ? transaction.amount / totalPosts : 0,
         quantity: quantity,
-        link: link,
+        // Remover link pois a coluna não existe mais
+        // link: link,
         target_username: username,
         // Não atualizar payment_status diretamente
         // payment_status: transaction.status,
@@ -59,6 +61,11 @@ export class DatabaseService {
           provider_response: orderResponse,
           provider_request: requestData,
           post: currentPost,
+          // Armazenar o link no metadata já que não temos a coluna
+          link: link,
+          // Armazenar o provider_id no metadata já que não temos a coluna
+          provider_id: provider.id,
+          provider_name: provider.name,
           // Armazenar o external_id no metadata já que não temos a coluna
           external_id: transaction.service?.external_id || transaction.metadata?.service?.external_id
         },
@@ -94,11 +101,11 @@ export class DatabaseService {
     try {
       console.log('[DatabaseService] Atualizando status da transação:', transactionId);
       
-      // Atualizar o status da transação para 'completed' em vez de 'processed'
-      // 'processed' não é um valor válido para o enum payment_status
+      // Atualizar o status da transação para 'approved' em vez de 'paid'
+      // 'paid' não é um valor válido para o enum payment_status
       const { error } = await this.supabase
         .from('transactions')
-        .update({ status: 'completed' })
+        .update({ status: 'approved' })
         .eq('id', transactionId);
       
       if (error) {

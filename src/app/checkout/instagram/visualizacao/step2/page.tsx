@@ -323,6 +323,21 @@ export default function Step2Page() {
                 setAppliedCoupon(code || null);
               }}
             />
+            
+            <Button
+              onClick={handleSubmit}
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white mt-4"
+              disabled={loading || selectedPosts.length === 0 || !formData.email || !formData.name}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                'Pagar com PIX'
+              )}
+            </Button>
           </div>
         </div>
       </main>

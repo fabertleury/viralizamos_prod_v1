@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getOrderStatus } from '@/lib/famaapi';
+import { checkOrderStatus } from '@/lib/transactions/transactionProcessor';
 
 export async function POST(request: NextRequest) {
   try {
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
       try {
         console.log(`[CheckDeliveryStatus] Verificando status do pedido ${order.external_order_id}`);
-        const statusResponse = await getOrderStatus(order.external_order_id);
+        const statusResponse = await checkOrderStatus(order.external_order_id);
         console.log(`[CheckDeliveryStatus] Status do pedido ${order.external_order_id}:`, JSON.stringify(statusResponse, null, 2));
 
         // Atualizar o status no banco de dados

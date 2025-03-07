@@ -594,6 +594,30 @@ export default function AcompanharPedidoPage() {
               <div className="mt-8">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Seus Pedidos</h2>
                 
+                <div className="mb-6 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg shadow-md overflow-hidden">
+                  <div className="p-6 text-white">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-xl font-bold">Parabéns! 🎉</h3>
+                        <p className="text-white/90">Você acabou de ganhar um cupom de desconto!</p>
+                      </div>
+                      <div className="bg-white text-pink-600 font-bold py-2 px-4 rounded-full text-lg">
+                        CLIENTE10
+                      </div>
+                    </div>
+                    <p className="mb-4">Use este cupom para obter 10% de desconto em sua próxima compra. Válido para qualquer serviço!</p>
+                    <Button 
+                      className="bg-white text-pink-600 hover:bg-gray-100 transition-colors"
+                      onClick={() => {
+                        navigator.clipboard.writeText('CLIENTE10');
+                        toast.success('Cupom copiado para a área de transferência!');
+                      }}
+                    >
+                      Copiar Cupom
+                    </Button>
+                  </div>
+                </div>
+                
                 <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div className="flex-1">
@@ -743,31 +767,6 @@ export default function AcompanharPedidoPage() {
                         </div>
                       </div>
                     ))}
-                </div>
-                
-                {/* Seção de cupom de desconto */}
-                <div className="mt-8 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg shadow-md overflow-hidden">
-                  <div className="p-6 text-white">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h3 className="text-xl font-bold">Parabéns! 🎉</h3>
-                        <p className="text-white/90">Você acabou de ganhar um cupom de desconto!</p>
-                      </div>
-                      <div className="bg-white text-pink-600 font-bold py-2 px-4 rounded-full text-lg">
-                        CLIENTE10
-                      </div>
-                    </div>
-                    <p className="mb-4">Use este cupom para obter 10% de desconto em sua próxima compra. Válido para qualquer serviço!</p>
-                    <Button 
-                      className="bg-white text-pink-600 hover:bg-gray-100 transition-colors"
-                      onClick={() => {
-                        navigator.clipboard.writeText('CLIENTE10');
-                        toast.success('Cupom copiado para a área de transferência!');
-                      }}
-                    >
-                      Copiar Cupom
-                    </Button>
-                  </div>
                 </div>
                 
                 {/* Detalhes do Pedido */}

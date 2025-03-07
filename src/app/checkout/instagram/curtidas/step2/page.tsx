@@ -492,7 +492,7 @@ export default function Step2Page() {
       return {
         postId: reel.id,
         postCode: reelCode,
-        postLink: `https://instagram.com/p/${reelCode}`,
+        postLink: `https://instagram.com/reel/${reelCode}`,
         likes: likesPerItem
       };
     });
@@ -568,7 +568,7 @@ export default function Step2Page() {
         id: reel.id,
         code: reel.code,
         shortcode: reel.shortcode,
-        url: `https://instagram.com/p/${reel.code}`
+        url: `https://instagram.com/reel/${reel.code}`
       })));
 
       // Preparar os dados para o pagamento

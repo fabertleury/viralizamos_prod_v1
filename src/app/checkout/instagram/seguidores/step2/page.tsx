@@ -506,7 +506,7 @@ export default function Step2Page() {
                         Processando...
                       </>
                     ) : (
-                      'Finalizar Compra'
+                      'Pagar com PIX'
                     )}
                   </Button>
                 </form>

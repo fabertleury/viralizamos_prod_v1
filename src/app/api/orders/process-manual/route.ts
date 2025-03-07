@@ -31,8 +31,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Importar a função processTransaction do famaapi.ts
-    const { processTransaction } = await import('@/lib/famaapi');
+    // Importar a função processTransaction do sistema de transações
+    const { processTransaction } = await import('@/lib/transactions/transactionProcessor');
 
     // Processar a transação
     console.log('[ProcessManual] Iniciando processamento...');

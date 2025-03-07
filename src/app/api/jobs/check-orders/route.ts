@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import { famaRedesOrderService } from '@/lib/famaapi';
+import { checkMultipleOrdersStatus } from '@/lib/transactions/transactionProcessor';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     // 3. Verificar status de cada lote
     const results = [];
     for (const batch of batches) {
-      const statusResponse = await famaRedesOrderService.getMultipleOrdersStatus(batch);
+      const statusResponse = await checkMultipleOrdersStatus(batch);
       
       // 4. Atualizar cada pedido no banco
       for (const order of orders) {

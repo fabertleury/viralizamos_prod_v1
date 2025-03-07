@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getRefillStatus } from '@/lib/famaapi';
+import { checkRefillStatus } from '@/lib/transactions/transactionProcessor';
 import { cookies } from 'next/headers';
 
 export async function POST(request: NextRequest) {
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     // Verificar status da reposição no provedor
     try {
-      const statusResponse = await getRefillStatus(externalRefillId);
+      const statusResponse = await checkRefillStatus(externalRefillId);
       console.log('[CheckRefillStatus] Status da reposição no provedor:', statusResponse);
 
       // Mapear status do provedor para status interno

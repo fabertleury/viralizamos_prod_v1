@@ -187,4 +187,26 @@ async function updateOrderStatus(orderId: string, status: string) {
   return await orderStatusManager.updateOrderStatus(orderId, status);
 }
 
-export { processTransaction, checkOrderStatus, updateOrderStatus };
+/**
+ * Verifica o status de múltiplos pedidos nos provedores
+ * @param orderIds Lista de IDs dos pedidos
+ * @param providerId ID do provedor (opcional)
+ * @returns Status dos pedidos
+ */
+async function checkMultipleOrdersStatus(orderIds: string[], providerId?: string) {
+  const orderStatusManager = new OrderStatusManager();
+  return await orderStatusManager.checkMultipleOrdersStatus(orderIds, providerId);
+}
+
+/**
+ * Verifica o status de uma reposição (refill) no provedor
+ * @param refillId ID da reposição
+ * @param providerId ID do provedor (opcional)
+ * @returns Status da reposição
+ */
+async function checkRefillStatus(refillId: string, providerId?: string) {
+  const orderStatusManager = new OrderStatusManager();
+  return await orderStatusManager.checkRefillStatus(refillId, providerId);
+}
+
+export { processTransaction, checkOrderStatus, updateOrderStatus, checkMultipleOrdersStatus, checkRefillStatus };

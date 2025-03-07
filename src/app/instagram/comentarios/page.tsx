@@ -42,6 +42,7 @@ export default function ComentariosPage() {
       try {
         console.log('Buscando serviços de comentários...');
 
+        // Modificando a consulta para ser mais abrangente
         const { data, error } = await supabase
           .from('services')
           .select(`
@@ -54,9 +55,9 @@ export default function ComentariosPage() {
             categoria,
             status,
             metadata,
-            service_variations
+            service_variations,
+            checkout_type_id
           `)
-          .or(`categoria.ilike.%comentario%,name.ilike.%comentario%`)
           .eq('status', true)
           .order('preco', { ascending: true });
 
@@ -65,10 +66,18 @@ export default function ComentariosPage() {
 
         if (error) throw error;
 
-        const comentariosServices = (data || []).filter(service => 
-          service.categoria?.toLowerCase().includes('comentario') || 
-          service.name.toLowerCase().includes('comentario')
-        ).map(service => {
+        // Filtrando serviços de comentários de forma mais abrangente
+        const comentariosServices = (data || []).filter(service => {
+          const categoria = service.categoria?.toLowerCase() || '';
+          const nome = service.name?.toLowerCase() || '';
+          
+          return (
+            categoria.includes('comentario') || 
+            categoria.includes('comentário') || 
+            nome.includes('comentario') || 
+            nome.includes('comentário')
+          );
+        }).map(service => {
           let metadata: Record<string, any> = {};
           try {
             metadata = service.metadata && typeof service.metadata === 'string' 
