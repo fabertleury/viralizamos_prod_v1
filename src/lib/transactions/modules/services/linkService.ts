@@ -13,11 +13,21 @@ export class LinkService {
    * @returns Verdadeiro se for um reel
    */
   isReel(post: Post): boolean {
-    return (
-      post.type === 'reel' || 
-      (post.url && post.url.includes('/reel/')) || 
-      (post.link && post.link.includes('/reel/'))
-    );
+    // Log para depuração
+    console.log('[LinkService] Verificando se é reel:', post);
+    
+    // Verificar múltiplos indicadores de que é um reel
+    const isReelByType = post.type === 'reel';
+    const isReelByUrl = post.url && post.url.includes('/reel/');
+    const isReelByLink = post.link && post.link.includes('/reel/');
+    const isReelByPostLink = post.postLink && post.postLink.includes('/reel/');
+    
+    const result = isReelByType || isReelByUrl || isReelByLink || isReelByPostLink;
+    
+    // Log do resultado
+    console.log(`[LinkService] É reel? ${result} (type=${isReelByType}, url=${isReelByUrl}, link=${isReelByLink}, postLink=${isReelByPostLink})`);
+    
+    return result;
   }
 
   /**
@@ -29,19 +39,33 @@ export class LinkService {
     const isReel = this.isReel(post);
     const postType = isReel ? 'reel' : 'p';
     
-    // Extrair o código do post
-    let postCode = post.code || post.shortcode;
-    if (!postCode && post.url) {
-      postCode = this.linkFormatter.extractPostCode(post.url);
+    console.log('[LinkService] Formatando link para o provedor:', post);
+    
+    // Extrair o código do post de todas as fontes possíveis
+    let postCode = post.postCode || post.code || post.shortcode;
+    
+    // Se não encontrou o código, tentar extrair das URLs
+    if (!postCode) {
+      if (post.postLink) {
+        postCode = this.linkFormatter.extractPostCode(post.postLink);
+      } else if (post.url) {
+        postCode = this.linkFormatter.extractPostCode(post.url);
+      } else if (post.link) {
+        postCode = this.linkFormatter.extractPostCode(post.link);
+      }
     }
     
     if (!postCode) {
       console.error('[LinkService] Código do post não encontrado:', post);
-      return post.url || post.link || '';
+      // Retornar a URL original se disponível
+      return post.postLink || post.url || post.link || '';
     }
     
     // Para o provedor enviamos com https: https://instagram.com/p/{code} ou https://instagram.com/reel/{code}
-    return `https://instagram.com/${postType}/${postCode}`;
+    const formattedLink = `https://instagram.com/${postType}/${postCode}`;
+    console.log(`[LinkService] Link formatado: ${formattedLink} (isReel=${isReel}, postType=${postType})`);
+    
+    return formattedLink;
   }
 
   /**
