@@ -577,29 +577,27 @@ export default function Step2Page() {
       const postCodes = selectedPosts.map(post => extractPostCode(post));
       const reelCodes = selectedReels.map(reel => extractPostCode(reel));
 
+      // Estruturar os dados conforme esperado pela API
       const paymentData = {
-        service_id: service.id,
-        amount: finalAmount || service.preco,
-        original_amount: service.preco,
-        discount_amount: discountAmount,
-        coupon_code: appliedCoupon,
+        service: {
+          id: service.id,
+          name: service.name,
+          price: finalAmount || service.preco,
+          preco: finalAmount || service.preco,
+          quantity: service.quantidade,
+          quantidade: service.quantidade
+        },
+        profile: profileData,
         customer: {
           name: formData.name,
           email: formData.email,
           phone: formData.phone
         },
-        metadata: {
-          profile: profileData,
-          posts: selectedPosts,
-          reels: selectedReels,
-          post_ids: postIds,
-          reel_ids: reelIds,
-          post_codes: postCodes,
-          reel_codes: reelCodes,
-          service_name: service.name,
-          service_quantity: service.quantidade
-        }
+        posts: [...selectedPosts, ...selectedReels],
+        amount: finalAmount || service.preco
       };
+
+      console.log('Enviando dados para API de pagamento:', paymentData);
 
       // Criar pagamento via Pix
       const response = await fetch('/api/payment/pix', {
@@ -873,6 +871,32 @@ export default function Step2Page() {
                       </div>
                     )}
 
+                    {/* Botão de pagamento PIX */}
+                    <div className="flex items-center justify-center my-4">
+                      <button 
+                        onClick={() => handleSubmit()}
+                        disabled={loading || selectedItemsCount === 0 || !formData.name || !formData.email || !formData.phone}
+                        className={`
+                          px-6 py-3 rounded-full font-bold text-sm uppercase tracking-wider 
+                          transition-all duration-300 ease-in-out transform w-full
+                          ${loading || selectedItemsCount === 0 || !formData.name || !formData.email || !formData.phone
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:scale-105 hover:shadow-lg'}
+                        `}
+                      >
+                        {loading ? (
+                          <span className="flex items-center justify-center">
+                            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                            Processando...
+                          </span>
+                        ) : (
+                          <span className="flex items-center justify-center">
+                            PAGAR COM PIX
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
                     <CouponInput 
                       serviceId={service.id}
                       originalAmount={service.preco}
@@ -890,17 +914,18 @@ export default function Step2Page() {
         )}
       </main>
 
-      {paymentData && (
-        <PaymentPixModal
-          isOpen={!!paymentData}
-          onClose={handleClosePaymentModal}
-          qrCode={paymentData.qrCodeText}
-          qrCodeText={paymentData.qrCodeText}
-          paymentId={paymentData.paymentId}
-          amount={paymentData.amount}
-          qrCodeBase64={paymentData.qrCodeBase64}
-        />
-      )}
+      {paymentData ? (
+        <div className="mt-6">
+          <PaymentPixModal
+            qrCodeText={paymentData.qrCodeText}
+            qrCodeBase64={paymentData.qrCodeBase64}
+            amount={paymentData.amount}
+            paymentId={paymentData.paymentId}
+            onClose={() => setPaymentData(null)}
+            isOpen={!!paymentData}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
