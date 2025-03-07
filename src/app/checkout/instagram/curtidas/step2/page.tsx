@@ -482,7 +482,8 @@ export default function Step2Page() {
         postId: post.id,
         postCode: postCode,
         postLink: `https://instagram.com/p/${postCode}`,
-        likes: index === 0 ? likesPerItem + remainingLikes : likesPerItem
+        likes: index === 0 ? likesPerItem + remainingLikes : likesPerItem,
+        type: 'post' // Adicionar tipo explícito para posts
       };
     });
 
@@ -493,7 +494,8 @@ export default function Step2Page() {
         postId: reel.id,
         postCode: reelCode,
         postLink: `https://instagram.com/reel/${reelCode}`,
-        likes: likesPerItem
+        likes: likesPerItem,
+        type: 'reel' // Adicionar tipo explícito para reels
       };
     });
 

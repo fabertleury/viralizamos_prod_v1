@@ -68,6 +68,10 @@ export interface Post {
   caption?: string | { text?: string };
   text?: string;
   id?: string;
+  postLink?: string; // Link formatado para o post/reel (usado no checkout)
+  postId?: string; // ID do post (usado no checkout)
+  postCode?: string; // Código do post (usado no checkout)
+  likes?: number; // Quantidade de curtidas (usado no checkout)
 }
 
 export interface Provider {
