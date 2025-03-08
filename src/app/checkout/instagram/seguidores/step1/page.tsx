@@ -98,7 +98,7 @@ export default function Step1Page() {
       }
 
       const { data, error } = await supabase
-        .from('services')
+        .from('service')
         .select(`
           *,
           checkout:checkout_type_id(
