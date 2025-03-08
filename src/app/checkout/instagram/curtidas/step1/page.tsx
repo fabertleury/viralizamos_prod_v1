@@ -91,7 +91,7 @@ export default function Step1Page() {
         // Criar cliente do Supabase
         const supabase = createClient();
         
-        // Buscar serviço pelo ID
+        // Buscar serviço pelo ID - Atualizado para usar o nome correto da tabela 'services'
         const { data, error } = await supabase
           .from('services')
           .select('*')
