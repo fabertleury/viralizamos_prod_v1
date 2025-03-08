@@ -33,13 +33,7 @@ export async function GET(request: NextRequest) {
   let apiOrder: ApiOrder[] = [
     { id: 1, name: 'rocketapi_get_info', enabled: true, order: 1, max_requests: 100, current_requests: 0 },
     { id: 2, name: 'instagram_scraper', enabled: true, order: 2, max_requests: 50, current_requests: 0 },
-    { id: 3, name: 'instagram360', enabled: true, order: 3, max_requests: 50, current_requests: 0 },
-    { id: 4, name: 'instagram_scraper_ai', enabled: true, order: 4, max_requests: 30, current_requests: 0 },
-    { id: 5, name: 'realtime_instagram_scraper', enabled: true, order: 5, max_requests: 50, current_requests: 0 },
-    { id: 6, name: 'instagram_public_api', enabled: true, order: 6, max_requests: 1000, current_requests: 0 },
-    { id: 7, name: 'instagram_web_profile_api', enabled: true, order: 7, max_requests: 1000, current_requests: 0 },
-    { id: 8, name: 'instagram_dimensions_api', enabled: true, order: 8, max_requests: 1000, current_requests: 0 },
-    { id: 9, name: 'html_scraping', enabled: true, order: 9, max_requests: 1000, current_requests: 0 }
+    { id: 3, name: 'realtime_instagram_scraper', enabled: true, order: 3, max_requests: 50, current_requests: 0 }
   ];
 
   try {
@@ -58,11 +52,40 @@ export async function GET(request: NextRequest) {
     console.error('Erro ao acessar o Supabase:', error);
   }
 
-  // Filtrar apenas APIs habilitadas
-  const enabledApis = apiOrder.filter(api => api.enabled);
+  // Obter a última API usada para este usuário
+  let lastUsedApi = null;
+  try {
+    const { data, error } = await supabase
+      .from('instagram_verification_history')
+      .select('api_name')
+      .eq('username', username)
+      .order('verified_at', { ascending: false })
+      .limit(1);
 
-  // Ordenar APIs pela ordem definida
-  enabledApis.sort((a, b) => a.order - b.order);
+    if (!error && data && data.length > 0) {
+      lastUsedApi = data[0].api_name;
+      console.log(`Última API usada para ${username}: ${lastUsedApi}`);
+    }
+  } catch (error) {
+    console.error('Erro ao verificar histórico de APIs:', error);
+  }
+
+  // Filtrar apenas APIs habilitadas
+  let enabledApis = apiOrder.filter(api => api.enabled);
+
+  // Se houver uma última API usada, reordene para evitar usá-la primeiro
+  if (lastUsedApi) {
+    // Remover a última API usada da lista
+    const lastApiIndex = enabledApis.findIndex(api => api.name === lastUsedApi);
+    if (lastApiIndex !== -1) {
+      const lastApi = enabledApis.splice(lastApiIndex, 1)[0];
+      // Adicionar a última API usada ao final da lista
+      enabledApis.push(lastApi);
+    }
+  } else {
+    // Ordenar APIs pela ordem definida se não houver histórico
+    enabledApis.sort((a, b) => a.order - b.order);
+  }
 
   // Função para atualizar o contador de requisições
   const updateRequestCount = async (apiName: string) => {
@@ -80,6 +103,32 @@ export async function GET(request: NextRequest) {
       }
     } catch (error) {
       console.error(`Erro ao atualizar contador para ${apiName}:`, error);
+    }
+  };
+
+  // Função para registrar a API usada no histórico
+  const updateVerificationHistory = async (apiName: string) => {
+    try {
+      // Primeiro, excluir qualquer registro existente para este usuário e API
+      await supabase
+        .from('instagram_verification_history')
+        .delete()
+        .match({ username, api_name: apiName });
+
+      // Inserir o novo registro
+      const { error } = await supabase
+        .from('instagram_verification_history')
+        .insert({
+          username,
+          api_name: apiName,
+          verified_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error(`Erro ao atualizar histórico para ${apiName}:`, error);
+      }
+    } catch (error) {
+      console.error(`Erro ao atualizar histórico para ${apiName}:`, error);
     }
   };
 
@@ -104,18 +153,28 @@ export async function GET(request: NextRequest) {
             }
           });
 
-          if (response.data && response.data.data && response.data.data.user) {
-            const userData = response.data.data.user;
+          // Verificar o caminho correto da resposta
+          if (response.data && 
+              response.data.status === 'done' && 
+              response.data.response && 
+              response.data.response.body && 
+              response.data.response.body.data && 
+              response.data.response.body.data.user) {
+            
+            const userData = response.data.response.body.data.user;
             
             // Atualizar contador de requisições
             await updateRequestCount('rocketapi_get_info');
+            
+            // Registrar no histórico
+            await updateVerificationHistory('rocketapi_get_info');
             
             return NextResponse.json({
               username: userData.username,
               full_name: userData.full_name,
               is_private: userData.is_private,
-              follower_count: userData.follower_count,
-              following_count: userData.following_count,
+              follower_count: userData.edge_followed_by?.count,
+              following_count: userData.edge_follow?.count,
               profile_pic_url: userData.profile_pic_url,
               source: 'rocketapi_get_info'
             });
@@ -140,96 +199,38 @@ export async function GET(request: NextRequest) {
             }
           });
 
-          if (response.data && response.data.user) {
-            const userData = response.data.user;
+          // Verificar a estrutura da resposta e extrair os dados do usuário
+          if (response.data) {
+            // A API pode retornar os dados do usuário diretamente ou dentro de um objeto 'user'
+            const userData = response.data.user || response.data;
             
-            // Atualizar contador de requisições
-            await updateRequestCount('instagram_scraper');
-            
-            return NextResponse.json({
-              username: userData.username,
-              full_name: userData.full_name || userData.fullname,
-              is_private: userData.is_private,
-              follower_count: userData.follower_count || userData.edge_followed_by?.count,
-              following_count: userData.following_count || userData.edge_follow?.count,
-              profile_pic_url: userData.profile_pic_url,
-              source: 'instagram_scraper'
-            });
+            // Verificar se temos as informações necessárias
+            if (userData && (userData.username || userData.is_private !== undefined)) {
+              // Atualizar contador de requisições
+              await updateRequestCount('instagram_scraper');
+              
+              // Registrar no histórico
+              await updateVerificationHistory('instagram_scraper');
+              
+              // Verificar se o perfil é privado
+              const isPrivate = userData.is_private === true || 
+                               userData.private === true || 
+                               userData.is_private === 'true' || 
+                               userData.private === 'true';
+              
+              return NextResponse.json({
+                username: userData.username || username,
+                full_name: userData.full_name || userData.fullname || '',
+                is_private: isPrivate,
+                follower_count: userData.follower_count || userData.edge_followed_by?.count || 0,
+                following_count: userData.following_count || userData.edge_follow?.count || 0,
+                profile_pic_url: userData.profile_pic_url || userData.profile_pic_url_hd || '',
+                source: 'instagram_scraper'
+              });
+            }
           }
         } catch (error) {
           console.error('Erro na API Instagram Scraper:', error);
-        }
-      }
-
-      // Instagram360 (50 requisições/mês)
-      else if (api.name === 'instagram360') {
-        try {
-          const response = await axios.request({
-            method: 'GET',
-            url: 'https://instagram360.p.rapidapi.com/userinfo/',
-            params: {
-              username_or_id_or_url: username
-            },
-            headers: {
-              'x-rapidapi-key': 'cbfd294384msh525c1f1508b114ap1863a2jsn6c295cc5d3c8',
-              'x-rapidapi-host': 'instagram360.p.rapidapi.com'
-            }
-          });
-
-          if (response.data && response.data.user) {
-            const userData = response.data.user;
-            
-            // Atualizar contador de requisições
-            await updateRequestCount('instagram360');
-            
-            return NextResponse.json({
-              username: userData.username,
-              full_name: userData.full_name || userData.fullname,
-              is_private: userData.is_private,
-              follower_count: userData.follower_count || userData.edge_followed_by?.count,
-              following_count: userData.following_count || userData.edge_follow?.count,
-              profile_pic_url: userData.profile_pic_url,
-              source: 'instagram360'
-            });
-          }
-        } catch (error) {
-          console.error('Erro na API Instagram360:', error);
-        }
-      }
-
-      // Instagram Scraper AI (30 requisições/mês)
-      else if (api.name === 'instagram_scraper_ai') {
-        try {
-          const response = await axios.request({
-            method: 'GET',
-            url: 'https://instagram-scraper-ai1.p.rapidapi.com/user/info_v2/',
-            params: {
-              username: username
-            },
-            headers: {
-              'x-rapidapi-key': 'cbfd294384msh525c1f1508b114ap1863a2jsn6c295cc5d3c8',
-              'x-rapidapi-host': 'instagram-scraper-ai1.p.rapidapi.com'
-            }
-          });
-
-          if (response.data && response.data.data) {
-            const userData = response.data.data;
-            
-            // Atualizar contador de requisições
-            await updateRequestCount('instagram_scraper_ai');
-            
-            return NextResponse.json({
-              username: userData.username,
-              full_name: userData.full_name || userData.fullname,
-              is_private: userData.is_private,
-              follower_count: userData.follower_count || userData.edge_followed_by?.count,
-              following_count: userData.following_count || userData.edge_follow?.count,
-              profile_pic_url: userData.profile_pic_url,
-              source: 'instagram_scraper_ai'
-            });
-          }
-        } catch (error) {
-          console.error('Erro na API Instagram Scraper AI:', error);
         }
       }
 
@@ -248,175 +249,44 @@ export async function GET(request: NextRequest) {
             }
           });
 
-          if (response.data && response.data.data) {
+          // Verificar a estrutura da resposta
+          if (response.data && 
+              response.data.status === 'ok' && 
+              response.data.data) {
+            
             const userData = response.data.data;
             
-            // Atualizar contador de requisições
-            await updateRequestCount('realtime_instagram_scraper');
-            
-            return NextResponse.json({
-              username: userData.username,
-              full_name: userData.full_name || userData.fullname,
-              is_private: userData.is_private,
-              follower_count: userData.follower_count || userData.edge_followed_by?.count,
-              following_count: userData.following_count || userData.edge_follow?.count,
-              profile_pic_url: userData.profile_pic_url,
-              source: 'realtime_instagram_scraper'
-            });
+            // Verificar se temos as informações necessárias
+            if (userData.username) {
+              // Atualizar contador de requisições
+              await updateRequestCount('realtime_instagram_scraper');
+              
+              // Registrar no histórico
+              await updateVerificationHistory('realtime_instagram_scraper');
+              
+              return NextResponse.json({
+                username: userData.username,
+                full_name: userData.full_name || '',
+                is_private: userData.is_private === true,
+                follower_count: userData.follower_count || 0,
+                following_count: userData.following_count || 0,
+                profile_pic_url: userData.profile_pic_url || userData.hd_profile_pic_url_info?.url || '',
+                source: 'realtime_instagram_scraper'
+              });
+            }
           }
         } catch (error) {
           console.error('Erro na API Real-Time Instagram Scraper:', error);
         }
       }
-
-      // API pública do Instagram
-      else if (api.name === 'instagram_public_api') {
-        try {
-          const response = await axios.get(`https://www.instagram.com/${username}/?__a=1&__d=dis`, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-              'Accept': 'application/json',
-              'Accept-Language': 'en-US,en;q=0.5',
-            }
-          });
-
-          if (response.data && response.data.graphql && response.data.graphql.user) {
-            const userData = response.data.graphql.user;
-            
-            // Atualizar contador de requisições
-            await updateRequestCount('instagram_public_api');
-            
-            return NextResponse.json({
-              username: userData.username,
-              full_name: userData.full_name,
-              is_private: userData.is_private,
-              follower_count: userData.edge_followed_by?.count,
-              following_count: userData.edge_follow?.count,
-              profile_pic_url: userData.profile_pic_url,
-              source: 'instagram_public_api'
-            });
-          }
-        } catch (error) {
-          console.error('Erro na API pública do Instagram:', error);
-        }
-      }
-
-      // API web_profile_info
-      else if (api.name === 'instagram_web_profile_api') {
-        try {
-          const response = await axios.get(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${username}`, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-              'Accept': 'application/json',
-              'X-IG-App-ID': '936619743392459'
-            }
-          });
-
-          if (response.data && response.data.data && response.data.data.user) {
-            const userData = response.data.data.user;
-            
-            // Atualizar contador de requisições
-            await updateRequestCount('instagram_web_profile_api');
-            
-            return NextResponse.json({
-              username: userData.username,
-              full_name: userData.full_name,
-              is_private: userData.is_private,
-              follower_count: userData.edge_followed_by?.count,
-              following_count: userData.edge_follow?.count,
-              profile_pic_url: userData.profile_pic_url,
-              source: 'instagram_web_profile_api'
-            });
-          }
-        } catch (error) {
-          console.error('Erro na API web_profile_info:', error);
-        }
-      }
-
-      // API alternativa instagramdimensions
-      else if (api.name === 'instagram_dimensions_api') {
-        try {
-          const response = await axios.get(`https://instagramdimensions.com/api/user-profile?username=${username}`, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            }
-          });
-          
-          if (response.data && response.data.status === 'ok' && response.data.data) {
-            const userData = response.data.data;
-            
-            // Atualizar contador de requisições
-            await updateRequestCount('instagram_dimensions_api');
-            
-            return NextResponse.json({
-              username: userData.username,
-              full_name: userData.full_name,
-              is_private: userData.is_private,
-              follower_count: userData.edge_followed_by?.count,
-              following_count: userData.edge_follow?.count,
-              profile_pic_url: userData.profile_pic_url,
-              source: 'instagram_dimensions_api'
-            });
-          }
-        } catch (error) {
-          console.error('Erro na API instagramdimensions:', error);
-        }
-      }
-
-      // Web scraping direto
-      else if (api.name === 'html_scraping') {
-        try {
-          const response = await axios.get(`https://www.instagram.com/${username}/`, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            }
-          });
-          
-          const htmlContent = response.data;
-          
-          // Verificando se o perfil existe
-          if (htmlContent.includes('Page Not Found') || htmlContent.includes('página não está disponível')) {
-            return NextResponse.json(
-              { message: 'Perfil não encontrado' },
-              { status: 404 }
-            );
-          }
-          
-          // Verificando se o perfil é privado
-          const isPrivate = htmlContent.includes('This Account is Private') || 
-                            htmlContent.includes('Esta conta é privada') ||
-                            htmlContent.includes('"is_private":true');
-          
-          // Tentando extrair dados básicos do perfil
-          let fullName = '';
-          
-          // Tentativa de extrair o nome completo
-          const fullNameMatch = htmlContent.match(/"full_name":"([^"]+)"/);
-          if (fullNameMatch && fullNameMatch[1]) {
-            fullName = fullNameMatch[1];
-          }
-          
-          // Atualizar contador de requisições
-          await updateRequestCount('html_scraping');
-          
-          return NextResponse.json({
-            username,
-            full_name: fullName,
-            is_private: isPrivate,
-            source: 'html_scraping'
-          });
-        } catch (error) {
-          console.error('Erro no web scraping:', error);
-        }
-      }
     } catch (error) {
-      console.error(`Erro ao usar a API ${api.name}:`, error);
+      console.error(`Erro ao processar API ${api.name}:`, error);
     }
   }
 
-  // Se todas as tentativas falharem
+  // Se nenhuma API funcionou, retornar erro
   return NextResponse.json(
-    { message: 'Não foi possível verificar o status do perfil' },
+    { message: 'Não foi possível verificar o perfil do Instagram' },
     { status: 500 }
   );
 }
