@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
+import { createClient } from '@supabase/supabase-js';
 import { useSupabase } from '../../../../../../src/lib/hooks/useSupabase';
 import { LoadingProfileModal } from '../../components/LoadingProfileModal';
 import { toast } from 'sonner';
@@ -39,125 +41,105 @@ const messages = [
 ];
 
 export default function Step1Page() {
+  const [username, setUsername] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [service, setService] = useState<Service | null>(null);
-  const [loadingStage, setLoadingStage] = useState<'searching' | 'checking' | 'loading' | 'done' | 'error'>('searching');
+  const [error, setError] = useState<string | null>(null);
   const [profileData, setProfileData] = useState<any>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  const searchParams = useSearchParams();
-  const supabase = useSupabase();
-  const serviceId = searchParams.get('service_id');
+  const [showModal, setShowModal] = useState(false);
+  const [loadingStage, setLoadingStage] = useState<'searching' | 'checking' | 'loading' | 'done' | 'error'>('searching');
+  const [service, setService] = useState<Service | null>(null);
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const serviceId = searchParams.get('service_id');
+  const quantity = searchParams.get('quantity');
+
+  const supabase = useSupabase();
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>();
 
   useEffect(() => {
     const fetchService = async () => {
-      try {
-        if (!serviceId) {
-          throw new Error('ID do serviço não encontrado');
-        }
+      if (!serviceId) return;
 
-        const { data, error } = await supabase
+      try {
+        const { data, error } = await supabase.client
           .from('services')
-          .select(`
-            *,
-            checkout:checkout_type_id(
-              id,
-              name,
-              slug
-            )
-          `)
+          .select('*')
           .eq('id', serviceId)
           .single();
 
-        if (error) throw error;
-        if (!data) throw new Error('Serviço não encontrado');
+        if (error) {
+          console.error('Erro ao buscar serviço:', error);
+          toast.error('Erro ao carregar informações do serviço');
+          return;
+        }
 
-        setService(data);
+        if (data) {
+          setService(data);
+        }
       } catch (error) {
-        console.error('Erro ao carregar serviço:', error);
-        toast.error('Erro ao carregar serviço');
+        console.error('Erro ao buscar serviço:', error);
+        toast.error('Erro ao carregar informações do serviço');
       }
     };
 
     fetchService();
-  }, [serviceId, supabase]);
+  }, [serviceId, supabase.client]);
 
-  const onSubmit = async (data: FormData) => {
+  // Função para verificar o perfil do Instagram usando a API em cascata
+  const checkProfile = async (usernameToCheck: string) => {
     setIsLoading(true);
-    setIsModalOpen(true);
-    setLoadingStage('searching');
-    setProfileData(null);
-
+    setError(null);
+    setShowModal(true);
+    setLoadingStage('loading');
+    
     try {
-      const username = data.instagram_username.replace('@', '');
-
-      // Buscar dados do perfil
-      setLoadingStage('loading');
-      const response = await fetch(`/api/instagram/info/${username}`);
-      const json = await response.json();
-
+      console.log(`Verificando perfil: ${usernameToCheck}`);
+      
+      // Usar a API em cascata para verificar o perfil
+      const response = await fetch(`/api/instagram/graphql-check?username=${usernameToCheck}`);
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error(json.message || 'Erro ao buscar perfil');
+        throw new Error(data.message || 'Erro ao verificar perfil');
       }
-
-      // Verificando se é público
-      setLoadingStage('checking');
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      const profile = json.data;
-      if (profile.is_private) {
-        setProfileData({
-          username: profile.username,
-          full_name: profile.full_name,
-          profile_pic_url: profile.profile_pic_url_hd || profile.profile_pic_url,
-          follower_count: profile.follower_count,
-          following_count: profile.following_count,
-          media_count: profile.media_count,
-          biography: profile.biography,
-          is_private: profile.is_private,
-          is_verified: profile.is_verified,
-          whatsapp: data.whatsapp,
-          email: data.email
-        });
-        throw new Error('Perfil privado');
+      // Formatar os dados do perfil
+      const profileInfo = {
+        username: data.username,
+        full_name: data.full_name,
+        profile_pic_url: data.profile_pic_url,
+        follower_count: data.follower_count,
+        following_count: data.following_count,
+        is_private: data.is_private,
+        is_verified: data.is_verified,
+        source: data.source
+      };
+      
+      console.log('Dados do perfil:', profileInfo);
+      setProfileData(profileInfo);
+      
+      if (profileInfo.is_private) {
+        console.log('Perfil privado detectado:', profileInfo);
+        setLoadingStage('error');
+        return;
       }
-
-      // Perfil verificado
-      setProfileData({
-        username: profile.username,
-        full_name: profile.full_name,
-        profile_pic_url: profile.profile_pic_url_hd || profile.profile_pic_url,
-        follower_count: profile.follower_count,
-        following_count: profile.following_count,
-        media_count: profile.media_count,
-        biography: profile.biography,
-        is_private: profile.is_private,
-        is_verified: profile.is_verified,
-        whatsapp: data.whatsapp,
-        email: data.email
-      });
       
+      // Perfil está público, redirecionar para a próxima etapa
       setLoadingStage('done');
-    } catch (error) {
+      router.push(`/checkout/instagram/visualizacao/step2?username=${encodeURIComponent(usernameToCheck)}`);
+    } catch (error: any) {
+      console.error('Erro ao verificar perfil:', error);
+      setError(error.message || 'Erro ao verificar o perfil');
       setLoadingStage('error');
-      toast.error(error instanceof Error ? error.message : 'Erro ao buscar perfil');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleConfirm = () => {
-    // Redirecionar para o step2 com os dados
-    const params = new URLSearchParams({
-      username: profileData.username,
-      whatsapp: profileData.whatsapp,
-      email: profileData.email,
-      service_id: serviceId!,
-    });
-
-    window.location.href = `/checkout/instagram/visualizacao/step2?${params.toString()}`;
+  const onSubmit = async (data: FormData) => {
+    const usernameToCheck = data.instagram_username.replace('@', '');
+    checkProfile(usernameToCheck);
   };
 
   if (!service) {
@@ -296,12 +278,13 @@ export default function Step1Page() {
       </main>
 
       <LoadingProfileModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        stage={loadingStage}
+        open={showModal}
+        onOpenChange={setShowModal}
+        loadingStage={loadingStage}
+        error={error || undefined}
         profileData={profileData}
-        onConfirm={handleConfirm}
-        messages={messages}
+        serviceId={serviceId || ''}
+        checkoutSlug="visualizacao"
       />
     </div>
   );

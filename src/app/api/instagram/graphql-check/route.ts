@@ -33,7 +33,9 @@ export async function GET(request: NextRequest) {
   let apiOrder: ApiOrder[] = [
     { id: 1, name: 'rocketapi_get_info', enabled: true, order: 1, max_requests: 100, current_requests: 0 },
     { id: 2, name: 'instagram_scraper', enabled: true, order: 2, max_requests: 50, current_requests: 0 },
-    { id: 3, name: 'realtime_instagram_scraper', enabled: true, order: 3, max_requests: 50, current_requests: 0 }
+    { id: 3, name: 'realtime_instagram_scraper', enabled: true, order: 3, max_requests: 50, current_requests: 0 },
+    { id: 4, name: 'instagram230', enabled: true, order: 4, max_requests: 100, current_requests: 0 },
+    { id: 5, name: 'instagram_statistics', enabled: true, order: 5, max_requests: 50, current_requests: 0 }
   ];
 
   try {
@@ -277,6 +279,86 @@ export async function GET(request: NextRequest) {
           }
         } catch (error) {
           console.error('Erro na API Real-Time Instagram Scraper:', error);
+        }
+      }
+
+      // Instagram230 API (100 requisições/mês)
+      else if (api.name === 'instagram230') {
+        try {
+          const response = await axios.request({
+            method: 'GET',
+            url: 'https://instagram230.p.rapidapi.com/user/details',
+            params: {
+              username: username
+            },
+            headers: {
+              'x-rapidapi-key': 'cbfd294384msh525c1f1508b114ap1863a2jsn6c295cc5d3c8',
+              'x-rapidapi-host': 'instagram230.p.rapidapi.com'
+            }
+          });
+
+          // Verificar a estrutura da resposta
+          if (response.data && response.data.username) {
+            const userData = response.data;
+            
+            // Atualizar contador de requisições
+            await updateRequestCount('instagram230');
+            
+            // Registrar no histórico
+            await updateVerificationHistory('instagram230');
+            
+            return NextResponse.json({
+              username: userData.username,
+              full_name: userData.user_full_name || '',
+              is_private: userData.is_private === true,
+              follower_count: userData.number_of_followers || 0,
+              following_count: userData.number_of_following || 0,
+              profile_pic_url: userData.profile_pic_url || '',
+              source: 'instagram230'
+            });
+          }
+        } catch (error) {
+          console.error('Erro na API Instagram230:', error);
+        }
+      }
+
+      // Instagram Statistics API (50 requisições/mês)
+      else if (api.name === 'instagram_statistics') {
+        try {
+          const response = await axios.request({
+            method: 'GET',
+            url: 'https://instagram-statistics-api.p.rapidapi.com/community',
+            params: {
+              url: `https://www.instagram.com/${username}/`
+            },
+            headers: {
+              'x-rapidapi-key': 'cbfd294384msh525c1f1508b114ap1863a2jsn6c295cc5d3c8',
+              'x-rapidapi-host': 'instagram-statistics-api.p.rapidapi.com'
+            }
+          });
+
+          // Verificar a estrutura da resposta
+          if (response.data && response.data.data && response.data.data.screenName) {
+            const userData = response.data.data;
+            
+            // Atualizar contador de requisições
+            await updateRequestCount('instagram_statistics');
+            
+            // Registrar no histórico
+            await updateVerificationHistory('instagram_statistics');
+            
+            return NextResponse.json({
+              username: userData.screenName,
+              full_name: userData.name || '',
+              is_private: false, // Esta API não fornece informação sobre perfil privado
+              follower_count: userData.usersCount || 0,
+              following_count: 0, // Esta API não fornece contagem de seguindo
+              profile_pic_url: userData.image || '',
+              source: 'instagram_statistics'
+            });
+          }
+        } catch (error) {
+          console.error('Erro na API Instagram Statistics:', error);
         }
       }
     } catch (error) {

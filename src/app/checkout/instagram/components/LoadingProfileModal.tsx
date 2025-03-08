@@ -19,6 +19,7 @@ interface LoadingProfileModalProps {
   serviceId?: string;
   checkoutSlug?: string;
   onRetryAfterPrivate?: () => void;
+  handleContinue?: () => void;
 }
 
 export function LoadingProfileModal({
@@ -29,7 +30,8 @@ export function LoadingProfileModal({
   profileData,
   serviceId,
   checkoutSlug,
-  onRetryAfterPrivate
+  onRetryAfterPrivate,
+  handleContinue: externalHandleContinue
 }: LoadingProfileModalProps) {
   const router = useRouter();
 
@@ -64,6 +66,13 @@ export function LoadingProfileModal({
   };
 
   const handleContinue = () => {
+    // Se uma função externa de continuação foi fornecida, use-a
+    if (externalHandleContinue) {
+      console.log('Usando função de continuação externa');
+      externalHandleContinue();
+      return;
+    }
+
     console.log('Tentando continuar com dados:', {
       profileData,
       serviceId,

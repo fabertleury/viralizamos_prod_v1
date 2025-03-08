@@ -140,7 +140,7 @@ export default function Step1Page() {
     fetchServiceData();
   }, [serviceId, quantity]);
 
-  // Função para verificar o perfil do Instagram
+  // Função para verificar o perfil do Instagram usando a API em cascata
   const checkProfile = async (usernameToCheck: string) => {
     setIsLoading(true);
     setError(null);
@@ -149,18 +149,32 @@ export default function Step1Page() {
     
     try {
       console.log(`Verificando perfil: ${usernameToCheck}`);
-      const data = await fetchInstagramProfileInfo(usernameToCheck);
       
-      if (!data) {
-        setError('Não foi possível encontrar o perfil. Verifique o nome de usuário e tente novamente.');
-        setLoadingStage('error');
-        return;
+      // Usar a API em cascata para verificar o perfil
+      const response = await fetch(`/api/instagram/graphql-check?username=${usernameToCheck}`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Erro ao verificar perfil');
       }
       
-      setProfileData(data);
+      // Formatar os dados do perfil
+      const profileInfo = {
+        username: data.username,
+        full_name: data.full_name,
+        profile_pic_url: data.profile_pic_url,
+        follower_count: data.follower_count,
+        following_count: data.following_count,
+        is_private: data.is_private,
+        is_verified: data.is_verified,
+        source: data.source
+      };
       
-      if (data.is_private) {
-        console.log('Perfil privado detectado:', data);
+      console.log('Dados do perfil:', profileInfo);
+      setProfileData(profileInfo);
+      
+      if (profileInfo.is_private) {
+        console.log('Perfil privado detectado:', profileInfo);
         setLoadingStage('error');
         return;
       }

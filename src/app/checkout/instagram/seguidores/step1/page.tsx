@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import { LoadingProfileModal } from '../../components/LoadingProfileModal';
@@ -63,8 +64,11 @@ interface ProfileData {
   profile_pic_url?: string;
   follower_count?: number;
   following_count?: number;
-  media_count?: number;
-  is_private: boolean;
+  is_private?: boolean;
+  is_verified?: boolean;
+  source?: string;
+  email: string;
+  whatsapp: string;
 }
 
 export default function Step1Page() {
@@ -75,6 +79,7 @@ export default function Step1Page() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   
+  const router = useRouter();
   const searchParams = useSearchParams();
   const serviceId = searchParams.get('service_id');
   const quantity = searchParams.get('quantity');
@@ -139,10 +144,11 @@ export default function Step1Page() {
       return;
     }
 
-    // Garantir que o WhatsApp esteja formatado corretamente
-    const formattedWhatsApp = maskPhone(formData.whatsapp);
-    if (formattedWhatsApp !== formData.whatsapp) {
-      setValue('whatsapp', formattedWhatsApp);
+    // Formatar o WhatsApp
+    const formattedWhatsApp = formData.whatsapp.replace(/\D/g, '');
+    if (formattedWhatsApp.length < 10) {
+      toast.error('WhatsApp inválido');
+      return;
     }
 
     setIsLoading(true);
@@ -151,64 +157,61 @@ export default function Step1Page() {
     setError(undefined);
 
     try {
-      const result = await fetchInstagramProfile(formData.instagram_username);
-
-      if (result.error) {
-        setLoadingStage('error');
-        setError(result.error);
-        setProfileData(result.profileData || null);
-        return;
+      // Usar a API em cascata para verificar o perfil
+      const username = formData.instagram_username.replace('@', '');
+      
+      setLoadingStage('loading');
+      const response = await fetch(`/api/instagram/graphql-check?username=${username}`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Erro ao verificar perfil');
       }
-
-      // Adicionar os dados do formulário ao profileData
-      setProfileData({
-        ...(result.profileData || {}),
-        username: formData.instagram_username,
+      
+      // Formatar os dados do perfil
+      const profileInfo = {
+        username: data.username,
+        full_name: data.full_name,
+        profile_pic_url: data.profile_pic_url,
+        follower_count: data.follower_count,
+        following_count: data.following_count,
+        is_private: data.is_private,
+        is_verified: data.is_verified,
+        source: data.source,
+        // Adicionar os dados do formulário
         email: formData.email,
         whatsapp: formattedWhatsApp
-      });
+      };
+      
+      setProfileData(profileInfo);
+      
+      if (profileInfo.is_private) {
+        setLoadingStage('error');
+        setError('Perfil privado');
+        return;
+      }
+      
       setLoadingStage('done');
-    } catch {
+    } catch (error: any) {
       setLoadingStage('error');
-      setError('Erro ao verificar perfil');
+      setError(error.message || 'Erro ao verificar perfil');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleConfirm = () => {
-    // Verificar se temos todos os dados necessários
-    if (!profileData?.username || !serviceId) {
-      toast.error('Informações incompletas. Por favor, preencha todos os campos.');
-      return;
-    }
+  const handleContinue = () => {
+    if (!profileData || !serviceId) return;
+    
+    // Redirecionar para o step2 com os dados
+    const params = new URLSearchParams({
+      username: profileData.username,
+      whatsapp: profileData.whatsapp,
+      email: profileData.email,
+      service_id: serviceId,
+    });
 
-    try {
-      // Salvar dados no localStorage para garantir que estejam disponíveis no step2
-      localStorage.setItem('checkoutProfileData', JSON.stringify({
-        profileData: {
-          ...profileData,
-          username: profileData.username,
-          email: profileData.email,
-          whatsapp: profileData.whatsapp
-        },
-        serviceId: serviceId,
-        quantity: quantity || undefined,
-        timestamp: new Date().getTime()
-      }));
-
-      console.log('Dados salvos no localStorage:', {
-        profileData,
-        serviceId,
-        quantity
-      });
-
-      // Redirecionar para o step2 com os parâmetros mínimos necessários
-      window.location.href = `/checkout/instagram/seguidores/step2?username=${encodeURIComponent(profileData.username)}&service_id=${encodeURIComponent(serviceId)}`;
-    } catch (error) {
-      console.error('Erro ao salvar dados:', error);
-      toast.error('Erro ao processar dados. Tente novamente.');
-    }
+    router.push(`/checkout/instagram/seguidores/step2?${params.toString()}`);
   };
 
   return (
@@ -441,25 +444,18 @@ export default function Step1Page() {
           onOpenChange={setIsModalOpen}
           loadingStage={loadingStage}
           error={error}
-          profileData={profileData}
-          serviceId={serviceId || undefined}
-          checkoutSlug="seguidores"
-          service={{
-            id: service?.id,
-            name: service?.name,
-            quantity: service?.quantidade,
-            link: `https://instagram.com/${profileData?.username}`
+          profileData={{
+            username: profileData?.username || '',
+            full_name: profileData?.full_name || '',
+            profile_pic_url: profileData?.profile_pic_url || '',
+            follower_count: profileData?.follower_count || 0,
+            following_count: profileData?.following_count || 0,
+            is_private: profileData?.is_private || false,
+            email: profileData?.email || '',
+            phone: profileData?.whatsapp || ''
           }}
-          profile={{
-            username: profileData?.username,
-            full_name: profileData?.full_name
-          }}
-          customer={{
-            name: '',
-            email: profileData?.email,
-            phone: profileData?.whatsapp
-          }}
-          handleConfirm={handleConfirm}
+          handleContinue={handleContinue}
+          serviceId={serviceId || ''}
         />
       </main>
     </div>

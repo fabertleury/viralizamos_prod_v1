@@ -52,12 +52,12 @@ export interface InstagramAPIStatus {
 export interface ContentData {
   id: string;
   code: string;
-  type: 'image' | 'video' | 'carousel';
+  type: "video" | "image" | "carousel" | string;
   caption: string;
   likes: number;
   comments: number;
   mediaUrl: string;
-  timestamp: number;
+  timestamp: string;
   views?: number;
 }
 
@@ -116,59 +116,6 @@ export const useInstagramAPI = () => {
     } catch (error) {
       console.error('Erro ao verificar perfil:', error);
       return false;
-    }
-  };
-
-  const fetchInstagramProfileInfo = async (username: string) => {
-    try {
-      const options = {
-        method: 'GET',
-        url: `${BASE_URL}/v1/info`,
-        params: { username_or_id_or_url: username },
-        headers: HEADERS
-      };
-
-      const response = await axios.request(options);
-      console.log('Resposta completa da API de perfil:', response.data);
-
-      // Verificar se a resposta tem os dados esperados
-      const profileData = response.data.data || response.data;
-      
-      if (!profileData) {
-        console.error('Nenhum dado de perfil encontrado');
-        return null;
-      }
-
-      // Mapear dados do perfil com fallback para valores padrão
-      return {
-        username: profileData.username || username,
-        full_name: profileData.full_name || profileData.username,
-        biography: profileData.biography || 'Sem biografia',
-        followers: profileData.followers_count || 
-                   profileData.followers || 
-                   profileData.follower_count || 
-                   0,
-        following: profileData.following_count || 
-                   profileData.following || 
-                   profileData.friend_count || 
-                   0,
-        totalPosts: profileData.media_count || 
-                    profileData.posts_count || 
-                    profileData.post_count || 
-                    0,
-        profilePicture: profileData.profile_pic_url || 
-                        profileData.profile_picture_url || 
-                        profileData.profile_picture || 
-                        '',
-        isVerified: profileData.is_verified || 
-                    profileData.verified || 
-                    profileData.is_business || 
-                    false,
-        is_private: profileData.is_private || false
-      };
-    } catch (error: any) {
-      console.error('Erro ao buscar informações do perfil:', error.response?.data || error.message);
-      throw error;
     }
   };
 
@@ -389,29 +336,29 @@ export const useInstagramAPI = () => {
         ...postsData.map(post => ({
           id: post.id,
           code: post.code,
-          type: post.type,
+          type: post.type as "image" | "video" | "carousel" | string,
           caption: post.caption || '',
           likes: post.likes_count,
           comments: post.comments_count,
           mediaUrl: post.media_url,
-          timestamp: post.timestamp,
+          timestamp: post.timestamp.toString(),
           views: undefined
         })),
         ...reelsData.map(reel => ({
           id: reel.id,
           code: reel.code,
-          type: 'video',
+          type: 'video' as "video",
           caption: reel.caption || '',
           likes: reel.likes_count,
           comments: reel.comments_count,
           mediaUrl: reel.media_url,
-          timestamp: reel.timestamp,
+          timestamp: reel.timestamp.toString(),
           views: reel.views_count
         }))
       ];
 
       // Ordenar por timestamp mais recente
-      return combinedContent.sort((a, b) => b.timestamp - a.timestamp);
+      return combinedContent.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     } catch (error) {
       console.error('Erro ao buscar conteúdo:', error);
       return [];
@@ -420,7 +367,6 @@ export const useInstagramAPI = () => {
 
   return {
     checkInstagramProfile,
-    fetchInstagramProfileInfo,
     fetchInstagramPosts,
     fetchInstagramReels,
     fetchPostLikes,
