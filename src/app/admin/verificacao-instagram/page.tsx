@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { createClient } from '@supabase/supabase-js';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -20,20 +20,17 @@ interface ApiOrder {
   current_requests: number;
 }
 
-export default function TestePage() {
+export default function VerificacaoInstagramPage() {
   const [username, setUsername] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [apiOrder, setApiOrder] = useState<ApiOrder[]>([]);
   const [isLoadingApis, setIsLoadingApis] = useState(true);
-  const [activeTab, setActiveTab] = useState('verificar');
+  const [activeTab, setActiveTab] = useState('configurar');
 
   // Inicializar o cliente do Supabase
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-  );
+  const supabase = createClientComponentClient();
 
   // Carregar a ordem das APIs do Supabase
   useEffect(() => {
@@ -94,7 +91,7 @@ export default function TestePage() {
     };
 
     fetchApiOrder();
-  }, []);
+  }, [supabase]);
 
   // Função para verificar o perfil do Instagram
   const checkProfile = async () => {
@@ -262,93 +259,14 @@ export default function TestePage() {
   };
 
   return (
-    <div className="container mx-auto py-10">
-      <h1 className="text-2xl font-bold mb-6">Teste de Verificação de Perfil do Instagram</h1>
+    <div className="container mx-auto py-6">
+      <h1 className="text-2xl font-bold mb-6">Gerenciamento de APIs de Verificação do Instagram</h1>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-4">
-          <TabsTrigger value="verificar">Verificar Perfil</TabsTrigger>
           <TabsTrigger value="configurar">Configurar APIs</TabsTrigger>
+          <TabsTrigger value="verificar">Testar Verificação</TabsTrigger>
         </TabsList>
-        
-        <TabsContent value="verificar">
-          <Card>
-            <CardHeader>
-              <CardTitle>Verificar Perfil do Instagram</CardTitle>
-              <CardDescription>
-                Digite o nome de usuário do Instagram para verificar se o perfil é público ou privado
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-4 mb-4">
-                <Input
-                  placeholder="Nome de usuário do Instagram"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="max-w-md"
-                />
-                <Button 
-                  onClick={checkProfile}
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Verificando...' : 'Verificar Perfil'}
-                </Button>
-              </div>
-
-              {error && (
-                <div className="p-4 bg-red-100 text-red-700 rounded-md mb-4">
-                  <p className="font-semibold">Erro:</p>
-                  <p>{error}</p>
-                </div>
-              )}
-
-              {result && (
-                <div className="p-4 bg-gray-100 rounded-md">
-                  <h2 className="text-xl font-semibold mb-2">Resultado:</h2>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="font-semibold">Nome de usuário:</p>
-                      <p>{result.username}</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Nome completo:</p>
-                      <p>{result.full_name || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Status do perfil:</p>
-                      <p className={result.is_private ? "text-red-600 font-bold" : "text-green-600 font-bold"}>
-                        {result.is_private ? 'Privado' : 'Público'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold">API utilizada:</p>
-                      <p>{getApiName(result.source)}</p>
-                    </div>
-                    {result.follower_count && (
-                      <div>
-                        <p className="font-semibold">Seguidores:</p>
-                        <p>{result.follower_count.toLocaleString()}</p>
-                      </div>
-                    )}
-                    {result.following_count && (
-                      <div>
-                        <p className="font-semibold">Seguindo:</p>
-                        <p>{result.following_count.toLocaleString()}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-4">
-                    <p className="font-semibold">Dados brutos:</p>
-                    <pre className="bg-gray-800 text-white p-4 rounded-md overflow-auto mt-2 text-sm">
-                      {JSON.stringify(result, null, 2)}
-                    </pre>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
         
         <TabsContent value="configurar">
           <Card>
@@ -425,6 +343,85 @@ export default function TestePage() {
                 As APIs serão utilizadas na ordem definida acima. Se uma API falhar, a próxima será utilizada.
               </p>
             </CardFooter>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="verificar">
+          <Card>
+            <CardHeader>
+              <CardTitle>Testar Verificação de Perfil</CardTitle>
+              <CardDescription>
+                Digite o nome de usuário do Instagram para verificar se o perfil é público ou privado
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-4 mb-4">
+                <Input
+                  placeholder="Nome de usuário do Instagram"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="max-w-md"
+                />
+                <Button 
+                  onClick={checkProfile}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Verificando...' : 'Verificar Perfil'}
+                </Button>
+              </div>
+
+              {error && (
+                <div className="p-4 bg-red-100 text-red-700 rounded-md mb-4">
+                  <p className="font-semibold">Erro:</p>
+                  <p>{error}</p>
+                </div>
+              )}
+
+              {result && (
+                <div className="p-4 bg-gray-100 rounded-md">
+                  <h2 className="text-xl font-semibold mb-2">Resultado:</h2>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="font-semibold">Nome de usuário:</p>
+                      <p>{result.username}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Nome completo:</p>
+                      <p>{result.full_name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Status do perfil:</p>
+                      <p className={result.is_private ? "text-red-600 font-bold" : "text-green-600 font-bold"}>
+                        {result.is_private ? 'Privado' : 'Público'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">API utilizada:</p>
+                      <p>{getApiName(result.source)}</p>
+                    </div>
+                    {result.follower_count && (
+                      <div>
+                        <p className="font-semibold">Seguidores:</p>
+                        <p>{result.follower_count.toLocaleString()}</p>
+                      </div>
+                    )}
+                    {result.following_count && (
+                      <div>
+                        <p className="font-semibold">Seguindo:</p>
+                        <p>{result.following_count.toLocaleString()}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="font-semibold">Dados brutos:</p>
+                    <pre className="bg-gray-800 text-white p-4 rounded-md overflow-auto mt-2 text-sm">
+                      {JSON.stringify(result, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </CardContent>
           </Card>
         </TabsContent>
       </Tabs>

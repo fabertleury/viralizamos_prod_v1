@@ -46,6 +46,7 @@ const navigation = [
   { name: 'Transações', href: '/admin/transacoes', icon: CurrencyDollarIcon },
   { name: 'Financeiro', href: '/admin/financeiro', icon: BanknotesIcon },
   { name: 'Redes Sociais', href: '/admin/socials', icon: ShareIcon },
+  { name: 'Verificação Instagram', href: '/admin/verificacao-instagram', icon: ImageIcon },
   { name: 'Categorias', href: '/admin/categories', icon: TagIcon },
   { name: 'Provedores', href: '/admin/provedores', icon: BuildingStorefrontIcon },
   { name: 'Serviços', href: '/admin/servicos_v1', icon: CubeIcon },
