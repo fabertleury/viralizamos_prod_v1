@@ -165,7 +165,7 @@ export class OrderProcessor {
         
         if (isFollowersOrder) {
           // Para seguidores, extrair apenas o username
-          formattedTargetLink = this.linkService.formatProfileLinkForProvider(targetLink, username);
+          formattedTargetLink = this.linkService.formatProfileLinkForProvider(targetLink, username, true);
           console.log('[OrderProcessor] Username formatado para seguidores:', formattedTargetLink);
         } else {
           // Para posts e reels, formatar o link adequadamente

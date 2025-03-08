@@ -5,7 +5,8 @@ export async function GET(
   { params }: { params: { username: string } }
 ) {
   try {
-    const username = params.username;
+    // Garantir que params.username seja tratado como assíncrono
+    const username = await Promise.resolve(params.username);
 
     const response = await fetch(
       `https://instagram-scraper-api2.p.rapidapi.com/v1/info?username_or_id_or_url=${username}`,
@@ -29,7 +30,7 @@ export async function GET(
   } catch (error) {
     console.error('Erro ao buscar perfil:', error);
     return NextResponse.json(
-      { message: 'Erro ao buscar perfil' },
+      { message: 'Erro ao processar requisição' },
       { status: 500 }
     );
   }

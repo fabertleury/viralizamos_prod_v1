@@ -49,6 +49,7 @@ const navigation = [
   { name: 'Categorias', href: '/admin/categories', icon: TagIcon },
   { name: 'Provedores', href: '/admin/provedores', icon: BuildingStorefrontIcon },
   { name: 'Serviços', href: '/admin/servicos_v1', icon: CubeIcon },
+  { name: 'Teste Scraper', href: '/admin/test-scraper', icon: WrenchScrewdriverIcon },
   { name: 'Cupons', href: '/admin/cupons', icon: TicketIcon },
   { name: 'Clientes', href: '/admin/clientes', icon: UsersIcon },
   { name: 'Tickets de Suporte', href: '/admin/tickets', icon: ChatBubbleLeftRightIcon },

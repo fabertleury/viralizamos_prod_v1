@@ -30,6 +30,7 @@ interface Service {
   name: string;
   preco: number;
   quantidade: number;
+  provider_id: string;
 }
 
 interface Post {
@@ -519,6 +520,7 @@ export default function Step2Page() {
       payment_qr_code: paymentData.qrCodeText || null,
       payment_external_reference: paymentData.paymentId,
       service_id: service.id,
+      provider_id: service.provider_id,
       target_profile_link: `https://www.instagram.com/${profileData.username}/`
     };
   };
@@ -587,7 +589,8 @@ export default function Step2Page() {
           price: finalAmount || service.preco,
           preco: finalAmount || service.preco,
           quantity: service.quantidade,
-          quantidade: service.quantidade
+          quantidade: service.quantidade,
+          provider_id: service.provider_id
         },
         profile: profileData,
         customer: {

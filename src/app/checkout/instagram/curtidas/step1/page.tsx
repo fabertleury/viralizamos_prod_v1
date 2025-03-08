@@ -1,14 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { useSupabase } from '../../../../../../src/lib/hooks/useSupabase';
+import { useRouter } from 'next/navigation';
+import { useInstagramAPI } from '@/hooks/useInstagramAPI';
 import { LoadingProfileModal } from '../../components/LoadingProfileModal';
 import { toast } from 'sonner';
 import { Header } from '@/components/layout/header';
 import { useForm } from 'react-hook-form';
 import { fetchInstagramProfile } from '@/lib/services/instagram-profile';
-// import { useRouter } from 'next/navigation';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faCoffee, faLemon, faCar, faHeart, faStar, faClock, faCheck, 
@@ -56,16 +55,18 @@ interface ProfileData {
 }
 
 export default function Step1Page() {
+  const [username, setUsername] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [profileData, setProfileData] = useState<any>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [loadingStage, setLoadingStage] = useState<'loading' | 'error' | 'done'>('loading');
   const [service, setService] = useState<Service | null>(null);
-  const [loadingStage, setLoadingStage] = useState<'searching' | 'checking' | 'loading' | 'done' | 'error'>('searching');
-  const [profileData, setProfileData] = useState<ProfileData | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
-  
-  const searchParams = useSearchParams();
-  const supabase = useSupabase();
-  // const router = useRouter(); // Não utilizado por enquanto
+  const [loadingStageService, setLoadingStageService] = useState<'searching' | 'checking' | 'loading' | 'done' | 'error'>('searching');
+
+  const router = useRouter();
+  const { fetchInstagramProfileInfo } = useInstagramAPI();
+  const searchParams = useRouter().useSearchParams();
   const serviceId = searchParams.get('service_id');
   const quantity = searchParams.get('quantity');
 
@@ -82,14 +83,15 @@ export default function Step1Page() {
         return;
       }
 
-      const { data, error } = await supabase.client
-        .from('services')
-        .select('*')
-        .eq('id', serviceId)
-        .single();
+      const { data, error } = await fetch('https://api.example.com/services/' + serviceId)
+        .then(response => response.json())
+        .catch(error => {
+          console.error('Erro ao buscar detalhes do serviço:', error);
+          toast.error('Erro ao buscar detalhes do serviço');
+          return null;
+        });
 
-      if (error) {
-        toast.error('Erro ao buscar detalhes do serviço');
+      if (!data) {
         return;
       }
 
@@ -114,7 +116,51 @@ export default function Step1Page() {
     };
 
     fetchServiceData();
-  }, [serviceId, quantity, supabase]);
+  }, [serviceId, quantity]);
+
+  // Função para verificar o perfil do Instagram
+  const checkProfile = async (usernameToCheck: string) => {
+    setIsLoading(true);
+    setError(null);
+    setShowModal(true);
+    setLoadingStage('loading');
+    
+    try {
+      console.log(`Verificando perfil: ${usernameToCheck}`);
+      const data = await fetchInstagramProfileInfo(usernameToCheck);
+      
+      if (!data) {
+        setError('Não foi possível encontrar o perfil. Verifique o nome de usuário e tente novamente.');
+        setLoadingStage('error');
+        return;
+      }
+      
+      setProfileData(data);
+      
+      if (data.is_private) {
+        console.log('Perfil privado detectado:', data);
+        setLoadingStage('error');
+        return;
+      }
+      
+      // Perfil está público, redirecionar para a próxima etapa
+      setLoadingStage('done');
+      router.push(`/checkout/instagram/curtidas/step2?username=${encodeURIComponent(usernameToCheck)}`);
+    } catch (error: any) {
+      console.error('Erro ao verificar perfil:', error);
+      setError(error.message || 'Erro ao verificar o perfil');
+      setLoadingStage('error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Função para tentar novamente após o usuário tornar o perfil público
+  const handleRetryAfterPrivate = async () => {
+    if (profileData?.username) {
+      await checkProfile(profileData.username);
+    }
+  };
 
   const onSubmit = async (formData: FormData) => {
     if (!formData.is_public_confirmed) {
@@ -122,29 +168,7 @@ export default function Step1Page() {
       return;
     }
 
-    setIsLoading(true);
-    setIsModalOpen(true);
-    setLoadingStage('searching');
-    setError(undefined);
-
-    try {
-      const result = await fetchInstagramProfile(formData.instagram_username);
-
-      if (result.error) {
-        setLoadingStage('error');
-        setError(result.error);
-        setProfileData(result.profileData || null);
-        return;
-      }
-
-      setProfileData(result.profileData || null);
-      setLoadingStage('done');
-    } catch {
-      setLoadingStage('error');
-      setError('Erro ao verificar perfil');
-    } finally {
-      setIsLoading(false);
-    }
+    await checkProfile(formData.instagram_username);
   };
 
   return (
@@ -316,13 +340,13 @@ export default function Step1Page() {
         </div>
 
         <LoadingProfileModal 
-          open={isModalOpen}
-          onOpenChange={setIsModalOpen}
+          open={showModal}
+          onOpenChange={setShowModal}
           loadingStage={loadingStage}
-          error={error}
           profileData={profileData}
-          serviceId={serviceId || undefined}
+          error={error}
           checkoutSlug="curtidas"
+          onRetryAfterPrivate={handleRetryAfterPrivate}
         />
       </main>
     </div>

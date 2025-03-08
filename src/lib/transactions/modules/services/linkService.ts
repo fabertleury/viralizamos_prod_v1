@@ -72,12 +72,26 @@ export class LinkService {
    * Formata o link de um perfil para o formato adequado para o provedor
    * @param profileLink Link do perfil
    * @param username Nome de usuário alternativo
+   * @param isFollowersOrder Se é um pedido de seguidores
    * @returns Username formatado para o provedor
    */
-  formatProfileLinkForProvider(profileLink: string, username?: string): string {
-    // Para seguidores, extrair apenas o username
+  formatProfileLinkForProvider(profileLink: string, username?: string, isFollowersOrder: boolean = false): string {
+    // Para seguidores, extrair apenas o username sem URL
     const extractedUsername = this.linkFormatter.extractUsername(profileLink);
     
+    // Se for um pedido de seguidores, retornar apenas o username sem URL
+    if (isFollowersOrder) {
+      console.log('[LinkService] Pedido de seguidores, retornando apenas o username');
+      if (extractedUsername) {
+        return extractedUsername;
+      } else if (username) {
+        return username.replace('@', '');
+      }
+      // Se não conseguir extrair, tentar extrair da URL diretamente
+      return profileLink.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '').replace(/\?.*$/, '');
+    }
+    
+    // Para outros tipos de pedidos, retornar a URL completa
     if (extractedUsername) {
       // Retornar o link completo com https para o provedor
       return `https://instagram.com/${extractedUsername}`;

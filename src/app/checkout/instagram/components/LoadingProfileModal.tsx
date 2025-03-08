@@ -1,13 +1,14 @@
 'use client';
 
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Lock } from 'lucide-react';
+import { Loader2, Lock, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { getProxiedImageUrl } from '../utils/proxy-image';
 import { CountdownTimer } from '@/components/ui/countdown-timer';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { checkInstagramProfilePublic } from '@/lib/instagram/profileScraper';
 
 interface LoadingProfileModalProps {
   open: boolean;
@@ -17,6 +18,7 @@ interface LoadingProfileModalProps {
   profileData?: any;
   serviceId?: string;
   checkoutSlug?: string;
+  onRetryAfterPrivate?: () => void;
 }
 
 export function LoadingProfileModal({
@@ -26,12 +28,15 @@ export function LoadingProfileModal({
   error,
   profileData,
   serviceId,
-  checkoutSlug
+  checkoutSlug,
+  onRetryAfterPrivate
 }: LoadingProfileModalProps) {
   const router = useRouter();
 
   const [canRetry, setCanRetry] = useState(false);
   const [timerKey, setTimerKey] = useState(0); // Chave para forçar reinício do timer
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState('');
 
   useEffect(() => {
     // Resetar o timer quando o modal for aberto
@@ -97,6 +102,37 @@ export function LoadingProfileModal({
     }
   };
 
+  const handleVerifyProfileAgain = async () => {
+    if (!profileData?.username) return;
+    
+    setIsVerifying(true);
+    setVerificationMessage('Verificando novamente...');
+    
+    try {
+      // Usar nosso scraper próprio para verificar se o perfil já está público
+      const result = await checkInstagramProfilePublic(profileData.username);
+      
+      if (result.isPublic) {
+        setVerificationMessage('Perfil agora está público! Redirecionando...');
+        // Esperar 1.5 segundos antes de chamar o callback para dar tempo de ler a mensagem
+        setTimeout(() => {
+          if (onRetryAfterPrivate) {
+            onRetryAfterPrivate();
+          }
+        }, 1500);
+      } else {
+        setVerificationMessage('O perfil ainda aparece como privado. Por favor, aguarde alguns instantes e tente novamente.');
+      }
+    } catch (error) {
+      console.error('Erro ao verificar perfil novamente:', error);
+      setVerificationMessage('Erro ao verificar. Por favor, tente novamente em alguns instantes.');
+    } finally {
+      setTimeout(() => {
+        setIsVerifying(false);
+      }, 3000);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md bg-white border-0">
@@ -148,31 +184,34 @@ export function LoadingProfileModal({
                   <li>Selecione "Privacidade"</li>
                   <li>Desative a opção "Conta Privada"</li>
                 </ol>
-                <p className="text-xs text-gray-600">Após alterar, pode levar alguns minutos para o Instagram atualizar suas configurações.</p>
-              </div>
-
-              {!canRetry ? (
-                <div className="w-full bg-blue-50 border border-blue-200 rounded-lg p-4 text-center text-blue-800">
-                  <p className="text-sm mb-2">Você poderá tentar novamente em:</p>
-                  <div className="text-lg font-bold">
-                    <CountdownTimer 
-                      key={timerKey} 
-                      initialSeconds={60} 
-                      onComplete={() => setCanRetry(true)} 
-                    />
+                <p className="text-xs text-gray-600 mb-4">Após alterar, pode levar alguns instantes para o Instagram atualizar suas configurações.</p>
+                
+                {verificationMessage && (
+                  <div className={`p-2 rounded mb-3 text-center ${verificationMessage.includes('público') ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                    {verificationMessage}
                   </div>
+                )}
+                
+                <div className="flex justify-center">
+                  <Button 
+                    onClick={handleVerifyProfileAgain}
+                    disabled={isVerifying}
+                    className="bg-pink-600 hover:bg-pink-700 text-white"
+                  >
+                    {isVerifying ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Verificando...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Já tornei meu perfil público
+                      </>
+                    )}
+                  </Button>
                 </div>
-              ) : (
-                <Button 
-                  onClick={() => {
-                    onOpenChange(false);
-                    setCanRetry(false);
-                  }}
-                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
-                >
-                  Tentar Novamente
-                </Button>
-              )}
+              </div>
             </div>
           )}
 

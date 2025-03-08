@@ -48,7 +48,10 @@ export class DatabaseService {
         // external_id: transaction.service?.external_id || transaction.metadata?.service?.external_id,
         external_order_id: orderResponse.order || orderResponse.orderId,
         status: orderResponse.status || 'pending',
-        amount: transaction.amount ? transaction.amount / totalPosts : 0,
+        // Garantir que amount nunca seja nulo
+        amount: transaction.amount 
+          ? transaction.amount / totalPosts 
+          : (transaction.metadata?.amount || transaction.metadata?.original_amount || 0.01),
         quantity: quantity,
         // Remover link pois a coluna não existe mais
         // link: link,

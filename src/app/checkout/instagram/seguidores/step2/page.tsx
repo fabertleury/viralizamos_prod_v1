@@ -44,6 +44,7 @@ interface Service {
   checkout?: {
     slug: string;
   };
+  provider_id: string;
 }
 
 export default function Step2Page() {
@@ -198,7 +199,8 @@ export default function Step2Page() {
             preco: selectedVariation.preco,
             metadata: data.metadata,
             service_details: data.metadata?.service_details,
-            checkout: data.checkout
+            checkout: data.checkout,
+            provider_id: data.provider_id
           });
           return;
         }
@@ -212,7 +214,8 @@ export default function Step2Page() {
         preco: data.preco,
         metadata: data.metadata,
         service_details: data.metadata?.service_details,
-        checkout: data.checkout
+        checkout: data.checkout,
+        provider_id: data.provider_id
       });
     } catch (error) {
       console.error('Erro ao buscar dados do serviço:', error);
@@ -251,6 +254,13 @@ export default function Step2Page() {
           provider_id: service.provider_id
         },
         user_id: null,
+        profile_username: profileData.username,
+        profile_url: `https://instagram.com/${profileData.username}`,
+        quantity: service.quantidade,
+        customer_name: formData.name,
+        customer_email: formData.email,
+        customer_phone: formData.phone,
+        checkout_type: 'apenas-link-usuario', // Tipo específico para seguidores
         profile: {
           username: profileData.username,
           full_name: profileData.full_name,

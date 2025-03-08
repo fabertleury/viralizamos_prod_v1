@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { checkInstagramProfilePublic } from '@/lib/instagram/profileScraper';
 
 export interface InstagramProfileInfo {
   username: string;
@@ -85,11 +86,33 @@ export const useInstagramAPI = () => {
 
   const checkInstagramProfile = async (username: string): Promise<boolean> => {
     try {
+      console.log(`[useInstagramAPI] Verificando perfil: ${username}`);
+      
+      // Primeiro, tenta verificar com o scraper próprio
+      try {
+        console.log(`[useInstagramAPI] Tentando verificar com scraper próprio`);
+        const scraperResult = await checkInstagramProfilePublic(username);
+        
+        if (scraperResult.error) {
+          console.log(`[useInstagramAPI] Scraper retornou erro: ${scraperResult.error}`);
+        } else {
+          console.log(`[useInstagramAPI] Scraper determinou que o perfil é ${scraperResult.isPublic ? 'público' : 'privado'}`);
+          return scraperResult.isPublic;
+        }
+      } catch (scraperError) {
+        console.error(`[useInstagramAPI] Erro ao usar scraper próprio:`, scraperError);
+      }
+      
+      // Se o scraper falhar, tenta com a API principal
+      console.log(`[useInstagramAPI] Tentando verificar com API principal`);
       const profileInfo = await makeRequest(`${BASE_URL}/v1/info`, { 
         username_or_id_or_url: username 
       });
       
-      return profileInfo ? !profileInfo.is_private : false;
+      const isPublic = profileInfo ? !profileInfo.is_private : false;
+      console.log(`[useInstagramAPI] API principal determinou que o perfil é ${isPublic ? 'público' : 'privado'}`);
+      
+      return isPublic;
     } catch (error) {
       console.error('Erro ao verificar perfil:', error);
       return false;
