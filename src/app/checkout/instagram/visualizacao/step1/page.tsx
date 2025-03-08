@@ -63,7 +63,7 @@ export default function Step1Page() {
 
       try {
         const { data, error } = await supabase.client
-          .from('service')
+          .from('services')
           .select('*')
           .eq('id', serviceId)
           .single();

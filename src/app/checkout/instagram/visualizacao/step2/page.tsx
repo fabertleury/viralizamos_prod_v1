@@ -94,7 +94,7 @@ export default function Step2Page() {
   }, []);
 
   const fetchService = async (serviceId: string) => {
-    const { data: serviceData, error } = await supabase
+    const { data, error } = await supabase.client
       .from('services')
       .select('*')
       .eq('id', serviceId)
@@ -105,7 +105,7 @@ export default function Step2Page() {
       return;
     }
 
-    setService(serviceData);
+    setService(data);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -162,7 +162,7 @@ export default function Step2Page() {
       };
 
       // Criar transação
-      const { data: transaction, error: transactionError } = await supabase
+      const { data: transaction, error: transactionError } = await supabase.client
         .from('transactions')
         .insert({
           type: 'payment',
@@ -199,7 +199,7 @@ export default function Step2Page() {
       const paymentDataResponse = await response.json();
       
       // Atualizar transação com dados do pagamento
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabase.client
         .from('transactions')
         .update({
           payment_id: paymentDataResponse.id,

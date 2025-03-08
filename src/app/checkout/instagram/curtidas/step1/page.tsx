@@ -93,7 +93,7 @@ export default function Step1Page() {
         
         // Buscar serviço pelo ID
         const { data, error } = await supabase
-          .from('service')
+          .from('services')
           .select('*')
           .eq('id', serviceId)
           .single();
