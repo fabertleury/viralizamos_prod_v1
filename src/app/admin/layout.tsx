@@ -30,7 +30,8 @@ import {
   ChartBarIcon,
   ServerIcon,
   BanknotesIcon,
-  TicketIcon
+  TicketIcon,
+  CheckBadgeIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -46,10 +47,10 @@ const navigation = [
   { name: 'Transações', href: '/admin/transacoes', icon: CurrencyDollarIcon },
   { name: 'Financeiro', href: '/admin/financeiro', icon: BanknotesIcon },
   { name: 'Redes Sociais', href: '/admin/socials', icon: ShareIcon },
+  { name: 'Verificação Instagram', href: '/admin/verificacao-instagram', icon: CheckBadgeIcon },
   { name: 'Categorias', href: '/admin/categories', icon: TagIcon },
   { name: 'Provedores', href: '/admin/provedores', icon: BuildingStorefrontIcon },
   { name: 'Serviços', href: '/admin/servicos_v1', icon: CubeIcon },
-  { name: 'Teste Scraper', href: '/admin/test-scraper', icon: WrenchScrewdriverIcon },
   { name: 'Cupons', href: '/admin/cupons', icon: TicketIcon },
   { name: 'Clientes', href: '/admin/clientes', icon: UsersIcon },
   { name: 'Tickets de Suporte', href: '/admin/tickets', icon: ChatBubbleLeftRightIcon },
