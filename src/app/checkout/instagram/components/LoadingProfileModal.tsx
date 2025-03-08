@@ -231,15 +231,27 @@ export function LoadingProfileModal({
                 
                 <div className="flex justify-center gap-8 mt-4">
                   <div className="text-center">
-                    <div className="font-semibold">{profileData.media_count}</div>
+                    <div className="font-semibold">{profileData.media_count || profileData.edge_owner_to_timeline_media?.count || 0}</div>
                     <div className="text-sm text-gray-600">publicações</div>
                   </div>
                   <div className="text-center">
-                    <div className="font-semibold">{profileData.follower_count.toLocaleString()}</div>
+                    <div className="font-semibold">
+                      {profileData.follower_count 
+                        ? profileData.follower_count.toLocaleString() 
+                        : profileData.edge_followed_by?.count 
+                          ? profileData.edge_followed_by.count.toLocaleString()
+                          : '0'}
+                    </div>
                     <div className="text-sm text-gray-600">seguidores</div>
                   </div>
                   <div className="text-center">
-                    <div className="font-semibold">{profileData.following_count.toLocaleString()}</div>
+                    <div className="font-semibold">
+                      {profileData.following_count 
+                        ? profileData.following_count.toLocaleString() 
+                        : profileData.edge_follow?.count 
+                          ? profileData.edge_follow.count.toLocaleString()
+                          : '0'}
+                    </div>
                     <div className="text-sm text-gray-600">seguindo</div>
                   </div>
                 </div>
