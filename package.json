@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "railway:build": "npm install --legacy-peer-deps && next build",
     "start": "next start -p ${PORT:-3000}",
     "lint": "next lint",
     "deploy": "git add . && git commit -m \"deploy: new version\" && git push railway main"
