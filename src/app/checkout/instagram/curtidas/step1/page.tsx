@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useInstagramAPI } from '@/hooks/useInstagramAPI';
 import { LoadingProfileModal } from '../../components/LoadingProfileModal';
 import { toast } from 'sonner';
@@ -14,6 +15,7 @@ import {
   faShield, faRocket, faGlobe, faUsers, faThumbsUp, faEye, faComment, 
   faBolt, faMedal, faTrophy, faGem, faCrown, faFire, faSmile, faLock, faUnlock 
 } from '@fortawesome/free-solid-svg-icons';
+import { createClient } from '@/lib/supabase/client';
 
 interface ServiceDetail {
   title: string;
@@ -66,7 +68,7 @@ export default function Step1Page() {
 
   const router = useRouter();
   const { fetchInstagramProfileInfo } = useInstagramAPI();
-  const searchParams = useRouter().useSearchParams();
+  const searchParams = useSearchParams();
   const serviceId = searchParams.get('service_id');
   const quantity = searchParams.get('quantity');
 
@@ -83,35 +85,55 @@ export default function Step1Page() {
         return;
       }
 
-      const { data, error } = await fetch('https://api.example.com/services/' + serviceId)
-        .then(response => response.json())
-        .catch(error => {
+      try {
+        setLoadingStageService('searching');
+        
+        // Criar cliente do Supabase
+        const supabase = createClient();
+        
+        // Buscar serviço pelo ID
+        const { data, error } = await supabase
+          .from('services')
+          .select('*')
+          .eq('id', serviceId)
+          .single();
+        
+        if (error) {
           console.error('Erro ao buscar detalhes do serviço:', error);
           toast.error('Erro ao buscar detalhes do serviço');
-          return null;
-        });
+          setLoadingStageService('error');
+          return;
+        }
+        
+        if (!data) {
+          toast.error('Serviço não encontrado');
+          setLoadingStageService('error');
+          return;
+        }
 
-      if (!data) {
-        return;
-      }
+        // Definir o serviço com todos os dados
+        setService(data);
+        setLoadingStageService('done');
 
-      // Definir o serviço com todos os dados
-      setService(data);
-
-      // Verificar preço com base na quantidade escolhida
-      const variations = data.service_variations || data.metadata?.quantidade_preco || [];
-      const selectedVariation = variations.find(
-        (v: QuantidadePreco) => v.quantidade === parseInt(quantity || '0')
-      );
-      if (selectedVariation) {
-        setService(prevService => {
-          if (prevService) {
-            return { ...prevService, preco: selectedVariation.preco };
-          }
-          return prevService;
-        });
-      } else {
-        toast.error('Variação de quantidade não encontrada');
+        // Verificar preço com base na quantidade escolhida
+        const variations = data.service_variations || data.metadata?.quantidade_preco || [];
+        const selectedVariation = variations.find(
+          (v: QuantidadePreco) => v.quantidade === parseInt(quantity || '0')
+        );
+        if (selectedVariation) {
+          setService(prevService => {
+            if (prevService) {
+              return { ...prevService, preco: selectedVariation.preco };
+            }
+            return prevService;
+          });
+        } else {
+          toast.error('Variação de quantidade não encontrada');
+        }
+      } catch (error: any) {
+        console.error('Erro ao buscar detalhes do serviço:', error);
+        toast.error('Erro ao buscar detalhes do serviço');
+        setLoadingStageService('error');
       }
     };
 
