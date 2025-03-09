@@ -191,7 +191,13 @@ export function TransactionDetailsModal({ isOpen, onClose, transaction }: Transa
                             )}
                           </div>
                           <div className="flex flex-col">
-                            <p className="text-sm text-gray-600 line-clamp-1">{post.caption || 'Sem legenda'}</p>
+                            <p className="text-sm text-gray-600 line-clamp-1">
+                              {typeof post.caption === 'object' && post.caption !== null && 'text' in post.caption 
+                                ? post.caption.text 
+                                : (typeof post.caption === 'string' 
+                                    ? post.caption 
+                                    : 'Sem legenda')}
+                            </p>
                             <div className="flex items-center space-x-2">
                               {postUrl ? (
                                 <a
