@@ -10,7 +10,6 @@ import { formatDateToBrasilia } from '@/lib/utils/date';
 import { formatCurrency } from '@/lib/utils';
 import { RefreshCw } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import { CouponStatus } from './components/CouponStatus';
 
 interface Order {
   id: string;
@@ -75,7 +74,6 @@ export default function AcompanharPedidoPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [order, setOrder] = useState<Order | null>(null);
-  const [finalAmount, setFinalAmount] = useState<number | undefined>(undefined);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   const searchParams = useSearchParams();
@@ -620,10 +618,6 @@ export default function AcompanharPedidoPage() {
     handleSearchOrders(email);
   };
 
-  const handleCouponApplied = (discount: number, newFinalAmount: number) => {
-    setFinalAmount(newFinalAmount);
-  };
-
   const handleViewOrder = (order: Order) => {
     setSelectedOrderId(order.id);
     setOrder(order);
@@ -925,27 +919,13 @@ export default function AcompanharPedidoPage() {
                               </span>
                             )}
                           </p>
-                          {(order.discount_amount > 0 || finalAmount !== undefined) && (
+                          {order.discount_amount > 0 && (
                             <p className="text-gray-900 font-medium">
-                              Total: {formatCurrency(finalAmount !== undefined ? finalAmount : order.final_amount)}
+                              Total: {formatCurrency(order.final_amount)}
                             </p>
                           )}
                         </div>
                       </div>
-
-                      {/* Cupom de desconto */}
-                      {order.status === 'pending' && (
-                        <div className="mt-4">
-                          <CouponStatus 
-                            orderId={order.id}
-                            initialDiscount={order.discount_amount || 0}
-                            initialAmount={order.amount}
-                            finalAmount={finalAmount !== undefined ? finalAmount : order.final_amount}
-                            onCouponApplied={handleCouponApplied}
-                            disabled={order.status !== 'pending'}
-                          />
-                        </div>
-                      )}
 
                       {/* Detalhes específicos do serviço */}
                       <div className="mt-6">
