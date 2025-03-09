@@ -78,29 +78,37 @@ export default function Step2Page() {
       return;
     }
 
-    try {
-      const { profileData: savedProfile, serviceId, formData: savedFormData, timestamp } = JSON.parse(checkoutData);
-      
-      // Verificar se os dados não são muito antigos (30 minutos)
-      const thirtyMinutes = 30 * 60 * 1000;
-      if (new Date().getTime() - timestamp > thirtyMinutes) {
-        toast.error('Sessão expirada. Por favor, comece novamente.');
-        localStorage.removeItem('checkoutProfileData');
-        router.push('/');
-        return;
-      }
+    const loadData = async () => {
+      try {
+        const { profileData: savedProfile, serviceId, formData: savedFormData, timestamp } = JSON.parse(checkoutData);
+        
+        // Verificar se os dados não são muito antigos (30 minutos)
+        const thirtyMinutes = 30 * 60 * 1000;
+        if (new Date().getTime() - timestamp > thirtyMinutes) {
+          toast.error('Sessão expirada. Por favor, comece novamente.');
+          localStorage.removeItem('checkoutProfileData');
+          router.push('/');
+          return;
+        }
 
-      setProfileData(savedProfile);
-      setFormData(savedFormData || formData);
-      
-      if (serviceId) {
-        fetchService(serviceId);
+        setProfileData(savedProfile);
+        setFormData(savedFormData || formData);
+        
+        if (serviceId) {
+          const serviceData = await fetchService(serviceId);
+          if (serviceData) {
+            setService(serviceData);
+            setFinalAmount(serviceData.preco);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading profile data:', error);
+        toast.error('Erro ao carregar dados do perfil');
+        router.push('/');
       }
-    } catch (error) {
-      console.error('Error loading profile data:', error);
-      toast.error('Erro ao carregar dados do perfil');
-      router.push('/');
-    }
+    };
+
+    loadData();
   }, []);
 
   const fetchService = async (externalId: string) => {
