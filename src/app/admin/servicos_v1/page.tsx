@@ -94,20 +94,18 @@ export default function ServicosV1Page() {
   const [showServiceSelectionModal, setShowServiceSelectionModal] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
-  const [showInactiveServices, setShowInactiveServices] = useState(false);
   const supabase = createClient();
   const router = useRouter();
 
   // Estado para controlar quais serviços têm variações expandidas
   const [expandedServiceVariations, setExpandedServiceVariations] = useState<{ [key: string]: boolean }>({});
 
-  // Estado para controlar o modal de variações
-  const [selectedSocial, setSelectedSocial] = useState<string | null>(null);
-  const [selectedProviderFilter, setSelectedProviderFilter] = useState<string | null>(null);
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
-  const [selectedCheckoutType, setSelectedCheckoutType] = useState<string | null>(null);
+  // Estado para pesquisa
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Estado para armazenar o mapa de provedores
+  const [providersMap, setProvidersMap] = useState<Record<string, Provider>>({});
 
   // Função para alternar a expansão das variações de um serviço
   const toggleServiceVariations = (serviceId: string) => {
@@ -350,8 +348,7 @@ export default function ServicosV1Page() {
               name,
               icon
             )
-          ),
-          provider:providers(id, name, slug)
+          )
         `)
         .order('name');
 
@@ -360,9 +357,12 @@ export default function ServicosV1Page() {
       // Buscar todos os provedores para ter uma referência completa
       const { data: providersData, error: providersError } = await supabase
         .from('providers')
-        .select('id, name, slug');
+        .select('*');
         
-      if (providersError) throw providersError;
+      if (providersError) {
+        console.error('Erro ao buscar provedores:', providersError);
+        throw providersError;
+      }
       
       // Criar um mapa de provedores para fácil acesso por ID
       const providersMap = (providersData || []).reduce((map, provider) => {
@@ -370,13 +370,15 @@ export default function ServicosV1Page() {
         return map;
       }, {});
 
+      setProvidersMap(providersMap);
+      
+      console.log('Provedores carregados:', providersData?.length);
+      if (providersData?.length > 0) {
+        console.log('Exemplo de provedor:', providersData[0]);
+      }
+
       // Adicionar informações completas do provedor aos serviços
       const enhancedServices = (servicesData || []).map(service => {
-        // Se o serviço já tem o provedor carregado, manter como está
-        if (service.provider && service.provider.name) {
-          return service;
-        }
-        
         // Se não tem provedor carregado mas tem provider_id, buscar do mapa
         if (service.provider_id && providersMap[service.provider_id]) {
           return {
@@ -489,102 +491,17 @@ export default function ServicosV1Page() {
     setShowVariationModal(true);
   };
 
-  // Agrupar serviços por rede social
-  const servicesBySocial = services.reduce((acc, service) => {
-    const socialName = service.category?.social?.name || 'Outros';
-    if (!acc[socialName]) {
-      acc[socialName] = [];
-    }
-    acc[socialName].push(service);
-    return acc;
-  }, {} as Record<string, Service[]>);
-
-  // Agrupar serviços por provedor
-  const servicesByProvider = services.reduce((acc, service) => {
-    const providerName = service.provider?.name || 'Sem Provedor';
-    if (!acc[providerName]) {
-      acc[providerName] = [];
-    }
-    acc[providerName].push(service);
-    return acc;
-  }, {} as Record<string, Service[]>);
-
-  // Agrupar serviços por categoria
-  const servicesByCategory = services.reduce((acc, service) => {
-    const categoryName = service.category?.name || 'Sem Categoria';
-    if (!acc[categoryName]) {
-      acc[categoryName] = [];
-    }
-    acc[categoryName].push(service);
-    return acc;
-  }, {} as Record<string, Service[]>);
-
-  // Agrupar serviços por tipo de checkout
-  const servicesByCheckoutType = services.reduce((acc, service) => {
-    let checkoutType = 'Não definido';
-    
-    // Verificar se o serviço tem tipo de checkout definido
-    if (service.checkout_type_id) {
-      // Mapear IDs para nomes mais amigáveis
-      if (service.checkout_type_id === '1') {
-        checkoutType = 'Mostrar Posts';
-      } else if (service.checkout_type_id === '2') {
-        checkoutType = 'Apenas Link do Usuário';
-      }
-    }
-    
-    if (!acc[checkoutType]) {
-      acc[checkoutType] = [];
-    }
-    acc[checkoutType].push(service);
-    return acc;
-  }, {} as Record<string, Service[]>);
-
-  // Filtrar serviços com base nos filtros selecionados
+  // Filtrar serviços com base na pesquisa
   const filteredServices = services.filter(service => {
-    // Filtro por rede social
-    if (selectedSocial && service.category?.social?.name !== selectedSocial) {
-      return false;
-    }
-    
-    // Filtro por provedor
-    if (selectedProviderFilter && service.provider?.name !== selectedProviderFilter) {
-      return false;
-    }
-    
-    // Filtro por categoria
-    if (selectedCategoryFilter && service.category?.name !== selectedCategoryFilter) {
-      return false;
-    }
-    
-    // Filtro por tipo de checkout
-    if (selectedCheckoutType) {
-      let serviceCheckoutType = 'Não definido';
-      if (service.checkout_type_id === '1') {
-        serviceCheckoutType = 'Mostrar Posts';
-      } else if (service.checkout_type_id === '2') {
-        serviceCheckoutType = 'Apenas Link do Usuário';
-      }
-      
-      if (serviceCheckoutType !== selectedCheckoutType) {
-        return false;
-      }
-    }
-    
-    // Filtro por status (ativo/inativo)
-    if (!showInactiveServices && !service.status) {
-      return false;
-    }
-    
-    // Filtro por termo de busca
+    // Filtro por termo de pesquisa
     if (searchTerm) {
-      const term = searchTerm.toLowerCase();
+      const searchTermLower = searchTerm.toLowerCase();
       return (
-        service.name.toLowerCase().includes(term) ||
-        service.descricao?.toLowerCase().includes(term) ||
-        service.categoria?.toLowerCase().includes(term) ||
-        service.provider?.name?.toLowerCase().includes(term) ||
-        service.external_id?.toLowerCase().includes(term)
+        service.name.toLowerCase().includes(searchTermLower) ||
+        service.id.toLowerCase().includes(searchTermLower) ||
+        (service.external_id && service.external_id.toLowerCase().includes(searchTermLower)) ||
+        (service.provider?.name && service.provider.name.toLowerCase().includes(searchTermLower)) ||
+        (service.category?.name && service.category.name.toLowerCase().includes(searchTermLower))
       );
     }
     
@@ -630,128 +547,6 @@ export default function ServicosV1Page() {
               ✕
             </button>
           )}
-        </div>
-      </div>
-
-      {/* Seção de filtros */}
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <h2 className="text-lg font-semibold mb-3">Filtros</h2>
-        
-        {/* Filtro de redes sociais */}
-        <div className="mb-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Rede Social</h3>
-          <div className="flex flex-wrap gap-2">
-            <Button 
-              size="sm"
-              variant={selectedSocial === null ? 'default' : 'outline'}
-              onClick={() => setSelectedSocial(null)}
-            >
-              Todas
-            </Button>
-            {Object.keys(servicesBySocial).map((socialName) => (
-              <Button 
-                key={socialName}
-                size="sm"
-                variant={selectedSocial === socialName ? 'default' : 'outline'}
-                onClick={() => setSelectedSocial(socialName)}
-              >
-                {socialName}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        {/* Filtro de provedores */}
-        <div className="mb-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Provedor</h3>
-          <div className="flex flex-wrap gap-2">
-            <Button 
-              size="sm"
-              variant={selectedProviderFilter === null ? 'default' : 'outline'}
-              onClick={() => setSelectedProviderFilter(null)}
-            >
-              Todos
-            </Button>
-            {Object.keys(servicesByProvider).map((providerName) => (
-              <Button 
-                key={providerName}
-                size="sm"
-                variant={selectedProviderFilter === providerName ? 'default' : 'outline'}
-                onClick={() => setSelectedProviderFilter(providerName)}
-              >
-                {providerName}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        {/* Filtro de categorias */}
-        <div className="mb-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Categoria</h3>
-          <div className="flex flex-wrap gap-2">
-            <Button 
-              size="sm"
-              variant={selectedCategoryFilter === null ? 'default' : 'outline'}
-              onClick={() => setSelectedCategoryFilter(null)}
-            >
-              Todas
-            </Button>
-            {Object.keys(servicesByCategory).map((categoryName) => (
-              <Button 
-                key={categoryName}
-                size="sm"
-                variant={selectedCategoryFilter === categoryName ? 'default' : 'outline'}
-                onClick={() => setSelectedCategoryFilter(categoryName)}
-              >
-                {categoryName}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        {/* Filtro de tipo de checkout */}
-        <div className="mb-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Tipo de Checkout</h3>
-          <div className="flex flex-wrap gap-2">
-            <Button 
-              size="sm"
-              variant={selectedCheckoutType === null ? 'default' : 'outline'}
-              onClick={() => setSelectedCheckoutType(null)}
-            >
-              Todos
-            </Button>
-            {Object.keys(servicesByCheckoutType).map((checkoutType) => (
-              <Button 
-                key={checkoutType}
-                size="sm"
-                variant={selectedCheckoutType === checkoutType ? 'default' : 'outline'}
-                onClick={() => setSelectedCheckoutType(checkoutType)}
-              >
-                {checkoutType}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        {/* Filtro de status */}
-        <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Status</h3>
-          <div className="flex gap-2">
-            <Button 
-              size="sm"
-              variant={!showInactiveServices ? 'default' : 'outline'}
-              onClick={() => setShowInactiveServices(false)}
-            >
-              Ativos
-            </Button>
-            <Button 
-              size="sm"
-              variant={showInactiveServices ? 'default' : 'outline'}
-              onClick={() => setShowInactiveServices(true)}
-            >
-              Todos (incluir inativos)
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -801,7 +596,7 @@ export default function ServicosV1Page() {
                     <div className="mt-2 bg-gray-50 p-2 rounded text-xs">
                       <div className="font-medium text-gray-600">Provedor</div>
                       <div className="font-semibold text-purple-700">
-                        {service.provider?.name || (service.provider_id ? `ID: ${service.provider_id}` : 'Sem provedor')}
+                        {providersMap[service.provider_id]?.name || 'Provedor não encontrado'}
                       </div>
                     </div>
 
