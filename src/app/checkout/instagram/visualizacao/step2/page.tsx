@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSupabase } from '@/lib/hooks/useSupabase';
+import { supabase } from '@/lib/hooks/useSupabase';
 import { toast } from 'sonner';
 import { PostSelector } from '@/components/instagram/visualizacao/PostSelector';
 import { ReelSelector } from '@/components/instagram/visualizacao/ReelSelector';
@@ -68,8 +68,6 @@ export default function Step2Page() {
   const [finalAmount, setFinalAmount] = useState<number | null>(null);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
 
-  const supabase = useSupabase();
-
   useEffect(() => {
     // Carregar dados do localStorage
     const checkoutData = localStorage.getItem('checkoutProfileData');
@@ -109,8 +107,6 @@ export default function Step2Page() {
     console.log('Buscando serviço com ID:', externalId);
     
     try {
-      const supabase = useSupabase();
-      
       // Verificar se temos uma quantidade específica no localStorage
       const checkoutData = localStorage.getItem('checkoutProfileData');
       let quantity = null;
@@ -365,7 +361,7 @@ export default function Step2Page() {
       };
 
       // Criar transação
-      const { data: transaction, error: transactionError } = await supabase.client
+      const { data: transaction, error: transactionError } = await supabase
         .from('transactions')
         .insert({
           type: 'payment',
@@ -402,7 +398,7 @@ export default function Step2Page() {
       const paymentDataResponse = await response.json();
       
       // Atualizar transação com dados do pagamento
-      const { error: updateError } = await supabase.client
+      const { error: updateError } = await supabase
         .from('transactions')
         .update({
           payment_id: paymentDataResponse.id,
