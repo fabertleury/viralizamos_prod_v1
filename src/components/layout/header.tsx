@@ -8,8 +8,6 @@ import { SocialIcon } from '@/components/ui/social-icon';
 import { useSupabase } from '@/lib/hooks/useSupabase';
 import { Menu, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { BrazilFlag, USAFlag, SpainFlag } from '@/components/ui/flags';
-import { FaLanguage } from 'react-icons/fa';
 
 interface Social {
   id: string;
@@ -38,7 +36,7 @@ export function Header() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isSticky, setIsSticky] = useState(false);
   const supabase = useSupabase();
-  const { language, translations, changeLanguage } = useLanguage();
+  const { language, translations } = useLanguage();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -74,47 +72,6 @@ export function Header() {
 
     fetchData();
   }, [supabase]);
-
-  const renderLanguageSelector = () => {
-    const languages = [
-      { code: 'pt', flag: <BrazilFlag />, name: 'Português' },
-      { code: 'en', flag: <USAFlag />, name: 'English' },
-      { code: 'es', flag: <SpainFlag />, name: 'Español' }
-    ];
-
-    return (
-      <div className="flex space-x-2 ml-4">
-        {languages.map((lang) => (
-          <button
-            key={lang.code}
-            onClick={() => changeLanguage(lang.code as any)}
-            className={`
-              p-1 rounded-full transition-all duration-300 
-              ${language === lang.code 
-                ? 'bg-[#FF00CE] text-white scale-110' 
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }
-            `}
-            title={lang.name}
-          >
-            {lang.flag}
-          </button>
-        ))}
-      </div>
-    );
-  };
-
-  const languageFlags = [
-    { code: 'pt-BR', name: 'Português', flag: '/images/flags/brasil.png' },
-    { code: 'es', name: 'Español', flag: '/images/flags/espanha.png' },
-    { code: 'en', name: 'English', flag: '/images/flags/estados-unidos.png' }
-  ];
-
-  const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
-
-  const toggleLanguageMenu = () => {
-    setIsLanguageMenuOpen(!isLanguageMenuOpen);
-  };
 
   return (
     <header 
@@ -183,9 +140,6 @@ export function Header() {
               </div>
             )}
 
-            {/* Seletores de Idioma */}
-            {renderLanguageSelector()}
-
             {/* Mobile Menu Button */}
             <button
               className="md:hidden p-2 z-50"
@@ -231,11 +185,6 @@ export function Header() {
                         </Link>
                       </Button>
                     )}
-
-                    {/* Seletores de Idioma no Menu Mobile */}
-                    <div className="flex space-x-2">
-                      {renderLanguageSelector()}
-                    </div>
                   </div>
                 </div>
               </div>
