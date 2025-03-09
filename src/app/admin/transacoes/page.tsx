@@ -52,8 +52,7 @@ export default function TransacoesPage() {
       .from('transactions')
       .select(`
         *,
-        services:service_id (*),
-        orders:orders(*)
+        services:service_id (*)
       `)
       .order('created_at', { ascending: false });
 
@@ -62,7 +61,24 @@ export default function TransacoesPage() {
       return;
     }
 
-    setTransactions(transactions);
+    // Buscar os pedidos separadamente para cada transação
+    const transactionsWithOrders = await Promise.all(
+      transactions.map(async (transaction) => {
+        const { data: orders, error: ordersError } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('transaction_id', transaction.id);
+        
+        if (ordersError) {
+          console.error(`Error fetching orders for transaction ${transaction.id}:`, ordersError);
+          return { ...transaction, orders: [] };
+        }
+        
+        return { ...transaction, orders: orders || [] };
+      })
+    );
+
+    setTransactions(transactionsWithOrders);
   }, [supabase]);
 
   const handleCheckPayment = useCallback(async (transaction: any) => {
