@@ -171,54 +171,80 @@ export default function Step2Page() {
   };
 
   // Função para buscar dados do serviço
-  const fetchServiceData = async (serviceId: string, quantity?: string) => {
+  const fetchServiceData = async (externalId: string, quantity?: string) => {
+    console.log('Buscando serviço com ID:', externalId);
+    
     try {
-      console.log('Buscando dados do serviço:', serviceId);
-      const { data, error } = await supabase
+      const supabase = createClient();
+      
+      // Verificar se temos uma quantidade específica no localStorage
+      const checkoutData = localStorage.getItem('checkoutProfileData');
+      let quantity = null;
+      
+      if (checkoutData) {
+        const parsedData = JSON.parse(checkoutData);
+        quantity = parsedData.quantity;
+        console.log('Quantidade encontrada no localStorage:', quantity);
+      }
+
+      // Limpar o externalId para garantir que não tenha aspas extras
+      const cleanExternalId = externalId ? externalId.replace(/"/g, '') : '';
+      console.log('External ID limpo:', cleanExternalId);
+      
+      // Buscar primeiro pelo external_id
+      let { data, error } = await supabase
         .from('services')
         .select('*')
-        .eq('id', serviceId)
-        .single();
-
-      if (error) throw error;
-      if (!data) throw new Error('Serviço não encontrado');
-
-      console.log('Dados do serviço recebidos:', data);
+        .eq('external_id', cleanExternalId);
       
-      // Se tiver quantidade especificada, buscar a variação correspondente
-      if (quantity && data.service_variations && data.service_variations.length > 0) {
-        const selectedVariation = data.service_variations.find(
-          (v: any) => v.quantidade === parseInt(quantity)
-        );
+      // Se não encontrar pelo external_id, tentar pelo id
+      if (!data || data.length === 0) {
+        console.log('Serviço não encontrado pelo external_id, tentando pelo id');
+        const result = await supabase
+          .from('services')
+          .select('*')
+          .eq('id', cleanExternalId);
+          
+        data = result.data;
+        error = result.error;
+      }
+      
+      // Verificar se encontramos o serviço
+      if (error) {
+        console.error('Erro ao buscar serviço:', error);
+        return null;
+      }
+      
+      if (!data || data.length === 0) {
+        console.error('Nenhum serviço encontrado');
+        return null;
+      }
+      
+      // Pegar o primeiro serviço encontrado
+      const serviceData = data[0];
+      console.log('Serviço encontrado:', serviceData);
+      
+      // Se temos uma quantidade específica, atualizar o serviço
+      if (quantity) {
+        console.log('Atualizando quantidade do serviço para:', quantity);
+        serviceData.quantidade = parseInt(quantity);
         
-        if (selectedVariation) {
-          setService({
-            id: data.id,
-            name: data.name,
-            quantidade: selectedVariation.quantidade,
-            preco: selectedVariation.preco,
-            metadata: data.metadata,
-            service_details: data.metadata?.service_details,
-            checkout: data.checkout,
-            provider_id: data.provider_id
-          });
-          return;
+        // Atualizar o preço se houver variações de preço
+        if (serviceData.service_variations && serviceData.service_variations.length > 0) {
+          const selectedVariation = serviceData.service_variations.find(
+            (v: any) => v.quantidade === parseInt(quantity)
+          );
+          
+          if (selectedVariation) {
+            console.log('Variação de preço encontrada:', selectedVariation);
+            serviceData.preco = selectedVariation.preco;
+          }
         }
       }
       
-      // Caso não tenha variação ou quantidade, usar os valores padrão
-      setService({
-        id: data.id,
-        name: data.name,
-        quantidade: data.quantidade,
-        preco: data.preco,
-        metadata: data.metadata,
-        service_details: data.metadata?.service_details,
-        checkout: data.checkout,
-        provider_id: data.provider_id
-      });
+      setService(serviceData);
     } catch (error) {
-      console.error('Erro ao buscar dados do serviço:', error);
+      console.error('Erro ao buscar serviço:', error);
       toast.error('Erro ao carregar dados do serviço');
     }
   };

@@ -24,6 +24,7 @@ interface Service {
     name: string;
     slug: string;
   };
+  external_id: string;
 }
 
 interface FormData {
@@ -127,6 +128,16 @@ export default function Step1Page() {
       
       // Perfil está público, redirecionar para a próxima etapa
       setLoadingStage('done');
+      
+      // Armazenar dados do perfil e do serviço no localStorage para a próxima etapa
+      const checkoutData = {
+        profileData: profileInfo,
+        serviceId: serviceId,
+        external_id: service?.external_id || serviceId, // Armazenar tanto o serviceId quanto o external_id
+        quantity: quantity || service?.quantidade
+      };
+      localStorage.setItem('checkoutProfileData', JSON.stringify(checkoutData));
+      
       router.push(`/checkout/instagram/visualizacao/step2?username=${encodeURIComponent(usernameToCheck)}`);
     } catch (error: any) {
       console.error('Erro ao verificar perfil:', error);

@@ -296,8 +296,10 @@ export default function Step2Page() {
   };
 
   const fetchService = async (externalId: string) => {
+    console.log('Buscando serviço com ID:', externalId);
+    
     try {
-      console.log('Buscando serviço com ID:', externalId);
+      const supabase = createClient();
       
       // Verificar se temos uma quantidade específica no localStorage
       const checkoutData = localStorage.getItem('checkoutProfileData');
@@ -309,71 +311,64 @@ export default function Step2Page() {
         console.log('Quantidade encontrada no localStorage:', quantity);
       }
 
-      // Tentar várias formas de buscar o serviço
-      const searchMethods = [
-        () => supabase
+      // Limpar o externalId para garantir que não tenha aspas extras
+      const cleanExternalId = externalId ? externalId.replace(/"/g, '') : '';
+      console.log('External ID limpo:', cleanExternalId);
+      
+      // Buscar primeiro pelo external_id
+      let { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .eq('external_id', cleanExternalId);
+      
+      // Se não encontrar pelo external_id, tentar pelo id
+      if (!data || data.length === 0) {
+        console.log('Serviço não encontrado pelo external_id, tentando pelo id');
+        const result = await supabase
           .from('services')
           .select('*')
-          .eq('external_id', externalId)
-          .single(),
-        
-        () => supabase
-          .from('services')
-          .select('*')
-          .eq('external_id', externalId.replace(/"/g, ''))
-          .single(),
-        
-        () => supabase
-          .from('services')
-          .select('*')
-          .eq('id', externalId)
-          .single(),
-        
-        () => supabase
-          .from('services')
-          .select('*')
-          .eq('id', externalId.replace(/"/g, ''))
-          .single()
-      ];
-
-      for (const searchMethod of searchMethods) {
-        const { data, error } = await searchMethod();
-
-        if (data) {
-          console.log('Serviço encontrado:', data);
+          .eq('id', cleanExternalId);
           
-          // Se temos uma quantidade específica, atualizar o serviço
-          if (quantity) {
-            console.log('Atualizando quantidade do serviço para:', quantity);
-            data.quantidade = parseInt(quantity);
-            
-            // Atualizar o preço se houver variações de preço
-            if (data.service_variations && data.service_variations.length > 0) {
-              const variation = data.service_variations.find((v: any) => v.quantidade === parseInt(quantity));
-              if (variation) {
-                console.log('Encontrada variação de preço:', variation);
-                data.preco = variation.preco;
-              }
-            }
+        data = result.data;
+        error = result.error;
+      }
+      
+      // Verificar se encontramos o serviço
+      if (error) {
+        console.error('Erro ao buscar serviço:', error);
+        return null;
+      }
+      
+      if (!data || data.length === 0) {
+        console.error('Nenhum serviço encontrado');
+        return null;
+      }
+      
+      // Pegar o primeiro serviço encontrado
+      const serviceData = data[0];
+      console.log('Serviço encontrado:', serviceData);
+      
+      // Se temos uma quantidade específica, atualizar o serviço
+      if (quantity) {
+        console.log('Atualizando quantidade do serviço para:', quantity);
+        serviceData.quantidade = parseInt(quantity);
+        
+        // Atualizar o preço se houver variações de preço
+        if (serviceData.service_variations && serviceData.service_variations.length > 0) {
+          const selectedVariation = serviceData.service_variations.find(
+            (v: any) => v.quantidade === parseInt(quantity)
+          );
+          
+          if (selectedVariation) {
+            console.log('Variação de preço encontrada:', selectedVariation);
+            serviceData.preco = selectedVariation.preco;
           }
-          
-          // Definir o ID do provedor padrão
-          data.provider_id = '1'; // Usar provider_id do serviço
-          setService(data);
-          return data;
-        }
-
-        if (error) {
-          console.warn('Erro na busca:', error);
         }
       }
-
-      console.error('Não foi possível encontrar o serviço');
-      toast.error('Serviço não encontrado');
-      return null;
+      
+      return serviceData;
     } catch (error) {
-      console.error('Erro inesperado ao buscar serviço:', error);
-      toast.error('Erro ao carregar o serviço');
+      console.error('Erro ao buscar serviço:', error);
       return null;
     }
   };
@@ -389,8 +384,8 @@ export default function Step2Page() {
 
         // Recuperar o external_id com mais flexibilidade
         const externalId = 
-          parsedCheckoutData.serviceId || 
           parsedCheckoutData.external_id || 
+          parsedCheckoutData.serviceId || 
           localStorage.getItem('serviceId') || 
           localStorage.getItem('external_id');
 
@@ -427,17 +422,30 @@ export default function Step2Page() {
             fetchInstagramPosts(profileData.username)
           ]).then(([serviceData, postsData]) => {
             if (serviceData) {
+              // Definir o ID do provedor padrão se não estiver presente
+              if (!serviceData.provider_id) {
+                serviceData.provider_id = '1';
+              }
               setService(serviceData);
+            } else {
+              console.error('Serviço não encontrado');
+              toast.error('Serviço não encontrado. Por favor, tente novamente.');
             }
-            if (postsData) {
-              setInstagramPosts(postsData);
-              setPostsLoaded(true);
-            }
+          }).catch(error => {
+            console.error('Erro ao buscar dados:', error);
+            toast.error('Erro ao carregar dados. Por favor, tente novamente.');
           });
+        } else {
+          console.error('Dados insuficientes para buscar serviço e posts');
+          toast.error('Dados insuficientes. Por favor, volte à etapa anterior.');
         }
+      } else {
+        console.error('Nenhum dado de checkout encontrado');
+        toast.error('Nenhum dado de checkout encontrado. Por favor, volte à etapa anterior.');
       }
     } catch (error) {
       console.error('Erro ao processar dados de checkout:', error);
+      toast.error('Erro ao processar dados. Por favor, tente novamente.');
     }
   }, []);
 
