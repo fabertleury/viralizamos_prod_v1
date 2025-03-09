@@ -44,7 +44,9 @@ interface Order {
   service?: {
     name: string;
     type: string;
-    refill?: boolean;
+    service_details?: {
+      refill?: boolean;
+    };
   };
   provider?: {
     name: string;
@@ -188,7 +190,7 @@ export default function AcompanharPedidoPage() {
             service:service_id (
               name,
               type,
-              refill
+              service_details
             ),
             refills (
               id,
@@ -257,7 +259,7 @@ export default function AcompanharPedidoPage() {
               service:service_id (
                 name,
                 type,
-                refill
+                service_details
               ),
               refills (
                 id,
@@ -286,7 +288,7 @@ export default function AcompanharPedidoPage() {
               service:service_id (
                 name,
                 type,
-                refill
+                service_details
               ),
               refills (
                 id,
@@ -314,7 +316,7 @@ export default function AcompanharPedidoPage() {
             service:service_id (
               name,
               type,
-              refill
+              service_details
             ),
             refills (
               id,
@@ -461,7 +463,7 @@ export default function AcompanharPedidoPage() {
           service:service_id (
             name,
             type,
-            refill
+            service_details
           )
         `)
         .eq('id', orderId)
@@ -834,7 +836,8 @@ export default function AcompanharPedidoPage() {
                           )}
                           
                           <div className="flex flex-col space-y-2">
-                            {isWithin30Days(order.created_at) && (!order.refills || order.refills.length === 0) && order.service?.refill && (
+                            {isWithin30Days(order.created_at) && (!order.refills || order.refills.length === 0) && 
+                              order.service?.service_details?.refill && (
                               <div>
                                 <div className="text-xs text-gray-500 mb-1 text-center">
                                   Reposição disponível: {getDaysRemaining(order.created_at)} dias restantes
