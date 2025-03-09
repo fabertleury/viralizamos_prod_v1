@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/hooks/useSupabase';
 import { toast } from 'sonner';
-import { PostSelector } from '../../components/PostSelector';
+import { PostSelector } from '@/components/instagram/visualizacao/PostSelector';
+import { ReelSelector } from '@/components/instagram/visualizacao/ReelSelector';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,6 +14,7 @@ import { Loader2 } from 'lucide-react';
 import { getProxiedImageUrl } from '../../utils/proxy-image';
 import { PaymentPixModal } from '@/components/payment/PaymentPixModal';
 import { CouponInput } from '@/components/checkout/CouponInput';
+import axios from 'axios';
 
 interface ProfileData {
   username: string;
@@ -38,6 +40,8 @@ interface Post {
   shortcode: string;
   image_url: string;
   caption: string;
+  selected?: boolean;
+  displayName?: string;
 }
 
 export default function Step2Page() {
@@ -45,7 +49,15 @@ export default function Step2Page() {
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [service, setService] = useState<Service | null>(null);
   const [selectedPosts, setSelectedPosts] = useState<Post[]>([]);
+  const [selectedReels, setSelectedReels] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [loadingReels, setLoadingReels] = useState(false);
+  const [instagramPosts, setInstagramPosts] = useState<Post[] | null>(null);
+  const [instagramReels, setInstagramReels] = useState<Post[] | null>(null);
+  const [postsLoaded, setPostsLoaded] = useState(false);
+  const [reelsLoaded, setReelsLoaded] = useState(false);
+  const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('posts');
   const [formData, setFormData] = useState({
     email: '',
     name: '',
@@ -171,6 +183,134 @@ export default function Step2Page() {
     }
   };
 
+  // Calcular o número de visualizações por item
+  const maxTotalItems = 10; // Máximo de itens que podem ser selecionados
+  const selectedItemsCount = selectedPosts.length + selectedReels.length;
+  const visualizacoesPerItem = selectedItemsCount > 0 
+    ? Math.floor(service?.quantidade || 0 / selectedItemsCount) 
+    : 0;
+
+  // Buscar posts do Instagram
+  const fetchInstagramPosts = async (username: string) => {
+    if (!username) return;
+    
+    try {
+      setLoadingPosts(true);
+      
+      // Configurar a requisição para a API do RapidAPI
+      const options = {
+        method: 'GET',
+        url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/user/posts',
+        params: { username },
+        headers: {
+          'X-RapidAPI-Key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY || '',
+          'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com'
+        }
+      };
+
+      console.log('Buscando posts para:', username);
+      const response = await axios.request(options);
+      const posts = response.data.data?.items || response.data.items || [];
+      
+      console.log(`Encontrados ${posts.length} posts para ${username}`);
+      
+      // Filtrar para remover reels e vídeos
+      const filteredPosts = posts.filter((post: any) => {
+        return !post.is_video && !post.product_type?.includes('reel');
+      });
+      
+      console.log(`${filteredPosts.length} posts após filtrar (sem reels/vídeos)`);
+      
+      // Mapear os dados para o formato esperado
+      const formattedPosts = filteredPosts.map((post: any) => {
+        // Extrair a URL da imagem
+        const imageUrl = 
+          post.image_versions2?.candidates?.[0]?.url || 
+          post.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url ||
+          post.image_url ||
+          '';
+        
+        return {
+          id: post.id || `post_${Math.random().toString(36).substring(2, 11)}`,
+          code: post.code || post.shortcode,
+          shortcode: post.shortcode || post.code,
+          image_url: imageUrl,
+          display_url: imageUrl,
+          thumbnail_url: imageUrl,
+          caption: post.caption?.text || post.caption || '',
+          like_count: post.like_count || 0,
+          comment_count: post.comment_count || 0
+        };
+      });
+      
+      setInstagramPosts(formattedPosts);
+      setPostsLoaded(true);
+    } catch (error) {
+      console.error('Erro ao buscar posts:', error);
+      toast.error('Não foi possível carregar os posts. Tente novamente.');
+    } finally {
+      setLoadingPosts(false);
+    }
+  };
+
+  // Buscar reels do Instagram
+  const fetchInstagramReels = async (username: string) => {
+    if (!username) return;
+    
+    try {
+      setLoadingReels(true);
+      
+      // Configurar a requisição para a API do RapidAPI
+      const options = {
+        method: 'GET',
+        url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/user/reels',
+        params: { username },
+        headers: {
+          'X-RapidAPI-Key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY || '',
+          'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com'
+        }
+      };
+
+      console.log('Buscando reels para:', username);
+      const response = await axios.request(options);
+      const reels = response.data.data?.items || response.data.items || [];
+      
+      console.log(`Encontrados ${reels.length} reels para ${username}`);
+      
+      // Mapear os dados para o formato esperado
+      const formattedReels = reels.map((reel: any) => {
+        // Extrair a URL da imagem de thumbnail
+        const thumbnailUrl = 
+          reel.image_versions2?.candidates?.[0]?.url || 
+          reel.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url ||
+          reel.thumbnail_url ||
+          '';
+        
+        return {
+          id: reel.id || `reel_${Math.random().toString(36).substring(2, 11)}`,
+          code: reel.code || reel.shortcode,
+          shortcode: reel.shortcode || reel.code,
+          thumbnail_url: thumbnailUrl,
+          image_url: thumbnailUrl,
+          display_url: thumbnailUrl,
+          caption: reel.caption?.text || reel.caption || '',
+          like_count: reel.like_count || 0,
+          comment_count: reel.comment_count || 0,
+          views_count: reel.view_count || reel.play_count || 0,
+          play_count: reel.play_count || reel.view_count || 0
+        };
+      });
+      
+      setInstagramReels(formattedReels);
+      setReelsLoaded(true);
+    } catch (error) {
+      console.error('Erro ao buscar reels:', error);
+      toast.error('Não foi possível carregar os reels. Tente novamente.');
+    } finally {
+      setLoadingReels(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -184,8 +324,8 @@ export default function Step2Page() {
       return;
     }
     
-    if (selectedPosts.length === 0) {
-      toast.error('Selecione pelo menos um post');
+    if (selectedPosts.length === 0 && selectedReels.length === 0) {
+      toast.error('Selecione pelo menos um post ou reel');
       return;
     }
     
@@ -199,7 +339,7 @@ export default function Step2Page() {
         original_amount: service.preco,
         discount_amount: discountAmount,
         coupon_code: appliedCoupon,
-        description: `${service.quantidade} visualizações para ${selectedPosts.length} posts`,
+        description: `${service.quantidade} visualizações para ${selectedPosts.length + selectedReels.length} itens`,
         service: {
           id: service.id,
           name: service.name,
@@ -215,9 +355,9 @@ export default function Step2Page() {
           email: formData.email,
           phone: formData.whatsapp
         },
-        posts: selectedPosts.map(post => ({
+        posts: [...selectedPosts, ...selectedReels].map(post => ({
           id: post.id,
-          code: post.shortcode,
+          code: post.code || post.shortcode,
           image_url: post.image_url,
           caption: post.caption,
           link: `https://instagram.com/p/${post.shortcode}`
@@ -293,6 +433,62 @@ export default function Step2Page() {
     }
   };
 
+  // Preparar dados da transação para o backend
+  const prepareTransactionData = (paymentData: any) => {
+    return {
+      user_id: formData.name || null,
+      order_id: paymentData.paymentId,
+      type: service?.type, // Usar o tipo do serviço
+      amount: service?.preco,
+      status: 'pending',
+      payment_method: 'pix',
+      payment_data: {
+        qr_code: paymentData.qrCodeText,
+        payment_id: paymentData.paymentId
+      },
+      metadata: {
+        profile: profileData?.username,
+        posts: [...selectedPosts, ...selectedReels].map(post => ({
+          id: post.id,
+          code: post.code || post.shortcode,
+          caption: post.caption
+        }))
+      }
+    };
+  };
+
+  // Função para lidar com a seleção de posts
+  const handlePostSelect = (post: Post) => {
+    console.log('Post selecionado/desselecionado:', post);
+    
+    // Verificar se o post já está selecionado
+    const isSelected = selectedPosts.some(selectedPost => selectedPost.id === post.id);
+    
+    if (isSelected) {
+      // Remover post da seleção
+      setSelectedPosts(prev => prev.filter(item => item.id !== post.id));
+    } else {
+      // Adicionar post à seleção
+      setSelectedPosts(prev => [...prev, post]);
+    }
+  };
+
+  // Função para lidar com a seleção de reels
+  const handleReelSelect = (reel: Post) => {
+    console.log('Reel selecionado/desselecionado:', reel);
+    
+    // Verificar se o reel já está selecionado
+    const isSelected = selectedReels.some(selectedReel => selectedReel.id === reel.id);
+    
+    if (isSelected) {
+      // Remover reel da seleção
+      setSelectedReels(prev => prev.filter(item => item.id !== reel.id));
+    } else {
+      // Adicionar reel à seleção
+      setSelectedReels(prev => [...prev, reel]);
+    }
+  };
+
   if (!profileData || !service) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -302,107 +498,183 @@ export default function Step2Page() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div>
       <Header />
       
-      <main className="py-12">
-        <div className="container mx-auto px-4">
-          {/* Card do Serviço */}
-          <div className="max-w-xl mx-auto mb-8">
-            <div className="bg-white shadow-sm rounded-lg p-6">
-              <div className="flex items-center justify-between">
+      <main className="container mx-auto px-4 py-8">
+        {profileData && service && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Seleção de Posts e Reels */}
+            <Card className="p-6 order-1 md:order-none">
+              <div className="flex items-center space-x-4 mb-6">
+                <div className="w-12 h-12 rounded-full overflow-hidden">
+                  <img 
+                    src={getProxiedImageUrl(profileData.profile_pic_url)} 
+                    alt={profileData.username}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900">{service.name}</h2>
-                  <p className="text-sm text-gray-500 mt-1">Quantidade: {service.quantidade}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-pink-600">
-                    R$ {service.preco.toFixed(2)}
-                  </p>
+                  <h3 className="font-semibold">{profileData.username}</h3>
+                  <p className="text-sm text-gray-500">{profileData.follower_count.toLocaleString()} seguidores</p>
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Seletor de Posts */}
-          <div className="max-w-xl mx-auto">
-            <PostSelector
-              username={profileData.username}
-              onSelect={(selectedPosts) => {
-                // Salvar os posts completos no estado
-                setSelectedPosts(selectedPosts.map(post => ({
-                  id: post.id,
-                  shortcode: post.shortcode,
-                  image_url: post.image_url,
-                  caption: post.caption
-                })));
-              }}
-              selected={selectedPosts.map(post => post.id)}
-              maxPosts={12}
-              showReels={true}
-              showPosts={true}
-              reelsCount={12}
-              postsCount={12}
-            />
-          </div>
-
-          {/* Botão de Continuar */}
-          <div className="max-w-xl mx-auto mt-8">
-            <Button
-              onClick={handleSubmit}
-              disabled={loading || selectedPosts.length === 0}
-              className="w-full"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processando...
-                </>
-              ) : (
-                'Continuar'
-              )}
-            </Button>
-          </div>
-
-          <div className="max-w-xl mx-auto mt-8">
-            <div className="flex justify-between text-lg font-semibold mt-4 pt-2 border-t">
-              <span>Valor total:</span>
-              <span>R$ {(finalAmount || service.preco).toFixed(2)}</span>
-            </div>
-
-            {discountAmount > 0 && (
-              <div className="flex justify-between text-sm text-gray-600 mt-1">
-                <span>Valor original:</span>
-                <span className="line-through">R$ {service.preco.toFixed(2)}</span>
+              
+              {/* Tabs de navegação */}
+              <div className="flex items-center justify-center space-x-4 mb-6">
+                <button 
+                  onClick={() => {
+                    setActiveTab('posts');
+                    // Garantir que os posts estejam carregados
+                    if (!postsLoaded && profileData?.username) {
+                      fetchInstagramPosts(profileData.username);
+                    }
+                  }}
+                  className={`
+                    px-6 py-3 rounded-full font-bold text-sm uppercase tracking-wider 
+                    transition-all duration-300 ease-in-out transform 
+                    ${activeTab === 'posts' 
+                      ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-105 shadow-lg' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800'}
+                  `}
+                >
+                  <span className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                    </svg>
+                    Posts ({instagramPosts?.length || 0})
+                  </span>
+                </button>
+                <button 
+                  onClick={() => {
+                    setActiveTab('reels');
+                    // Carregar reels se ainda não foram carregados
+                    if (!reelsLoaded && profileData?.username) {
+                      fetchInstagramReels(profileData.username);
+                    }
+                  }}
+                  className={`
+                    px-6 py-3 rounded-full font-bold text-sm uppercase tracking-wider 
+                    transition-all duration-300 ease-in-out transform 
+                    ${activeTab === 'reels' 
+                      ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-105 shadow-lg' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800'}
+                  `}
+                >
+                  <span className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Reels ({instagramReels?.length || 0})
+                  </span>
+                </button>
               </div>
-            )}
 
-            <CouponInput 
-              serviceId={service.id}
-              originalAmount={service.preco}
-              onCouponApplied={(discount, final, code) => {
-                setDiscountAmount(discount);
-                setFinalAmount(final);
-                setAppliedCoupon(code || null);
-              }}
-            />
-            
-            <Button
-              onClick={handleSubmit}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white mt-4"
-              disabled={loading || selectedPosts.length === 0 || !formData.email || !formData.name}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processando...
-                </>
+              {activeTab === 'posts' ? (
+                <PostSelector 
+                  username={profileData.username}
+                  onPostSelect={handlePostSelect}
+                  selectedPosts={selectedPosts}
+                  selectedReels={selectedReels}
+                  maxPosts={maxTotalItems}
+                  service={service}
+                  posts={instagramPosts}
+                  totalViews={service?.quantidade || 100}
+                  loading={loadingPosts}
+                />
               ) : (
-                'Pagar com PIX'
+                <ReelSelector 
+                  username={profileData.username}
+                  onSelectReels={handleReelSelect}
+                  selectedReels={selectedReels}
+                  selectedPosts={selectedPosts}
+                  maxReels={maxTotalItems}
+                  totalViews={service?.quantidade || 100}
+                  loading={loadingReels}
+                />
               )}
-            </Button>
+            </Card>
+
+            {/* Informações do Pedido */}
+            <div className="space-y-6 order-2 md:order-none">
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-1">Informações do Pedido</h3>
+                <div className="space-y-4">
+                  <Input
+                    placeholder="Nome completo"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  />
+                  <Input
+                    placeholder="E-mail"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Telefone"
+                    value={formData.whatsapp}
+                    onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
+                  />
+                  
+                  <div className="pt-4 border-t space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Quantidade de visualizações:</span>
+                      <span>{service.quantidade.toLocaleString()}</span>
+                    </div>
+                    {(selectedPosts.length + selectedReels.length) > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span>Visualizações por item:</span>
+                        <span>{visualizacoesPerItem.toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm">
+                      <span>Itens selecionados:</span>
+                      <span>{selectedItemsCount} / {maxTotalItems}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between text-lg font-semibold mt-4 pt-2 border-t">
+                    <span>Valor total:</span>
+                    <span>R$ {(finalAmount || service.preco).toFixed(2)}</span>
+                  </div>
+
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-sm text-gray-600 mt-1">
+                      <span>Valor original:</span>
+                      <span className="line-through">R$ {service.preco.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  <CouponInput 
+                    serviceId={service.id}
+                    originalAmount={service.preco}
+                    onCouponApplied={(discount, final, code) => {
+                      setDiscountAmount(discount);
+                      setFinalAmount(final);
+                      setAppliedCoupon(code || null);
+                    }}
+                  />
+                  
+                  <Button
+                    onClick={handleSubmit}
+                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white mt-4"
+                    disabled={loading || selectedPosts.length === 0 && selectedReels.length === 0 || !formData.email || !formData.name}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processando...
+                      </>
+                    ) : (
+                      'Pagar com PIX'
+                    )}
+                  </Button>
+                </div>
+              </Card>
+            </div>
           </div>
-        </div>
+        )}
       </main>
 
       {/* Modal de Pagamento */}

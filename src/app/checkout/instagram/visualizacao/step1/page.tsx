@@ -3,43 +3,59 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
-import { useSupabase } from '../../../../../../src/lib/hooks/useSupabase';
+import { useInstagramAPI } from '@/hooks/useInstagramAPI';
 import { LoadingProfileModal } from '../../components/LoadingProfileModal';
 import { toast } from 'sonner';
 import { Header } from '@/components/layout/header';
 import { useForm } from 'react-hook-form';
-import Image from 'next/image';
+import { fetchInstagramProfile } from '@/lib/services/instagram-profile';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { 
+  faCoffee, faLemon, faCar, faHeart, faStar, faClock, faCheck, 
+  faShield, faRocket, faGlobe, faUsers, faThumbsUp, faEye, faComment, 
+  faBolt, faMedal, faTrophy, faGem, faCrown, faFire, faSmile, faLock, faUnlock 
+} from '@fortawesome/free-solid-svg-icons';
+import { supabase } from '@/lib/hooks/useSupabase';
+
+interface ServiceDetail {
+  title: string;
+  emoji: string;
+}
+
+interface QuantidadePreco {
+  quantidade: number;
+  preco: number;
+}
 
 interface Service {
   id: string;
   name: string;
   description: string;
   preco: number;
-  icon: string;
-  checkout_type_id: string;
   quantidade: number;
-  checkout: {
-    id: string;
-    name: string;
-    slug: string;
+  service_variations?: QuantidadePreco[];
+  service_details?: ServiceDetail[];
+  metadata?: {
+    quantidade_preco?: QuantidadePreco[];
+    serviceDetails?: ServiceDetail[];
   };
-  external_id: string;
+  external_id?: string;
 }
 
 interface FormData {
   instagram_username: string;
-  whatsapp: string;
-  email: string;
   is_public_confirmed: boolean;
 }
 
-const messages = [
-  "Estamos buscando seu perfil...",
-  "Encontramos o seu perfil...",
-  "Estamos verificando se o perfil é público...",
-  "Perfil verificado"
-];
+interface ProfileData {
+  username: string;
+  full_name?: string;
+  profile_pic_url?: string;
+  follower_count?: number;
+  following_count?: number;
+  media_count?: number;
+  is_private: boolean;
+}
 
 export default function Step1Page() {
   const [username, setUsername] = useState('');
@@ -47,45 +63,80 @@ export default function Step1Page() {
   const [error, setError] = useState<string | null>(null);
   const [profileData, setProfileData] = useState<any>(null);
   const [showModal, setShowModal] = useState(false);
-  const [loadingStage, setLoadingStage] = useState<'searching' | 'checking' | 'loading' | 'done' | 'error'>('searching');
+  const [loadingStage, setLoadingStage] = useState<'loading' | 'error' | 'done'>('loading');
   const [service, setService] = useState<Service | null>(null);
+  const [loadingStageService, setLoadingStageService] = useState<'searching' | 'checking' | 'loading' | 'done' | 'error'>('searching');
 
   const router = useRouter();
+  const { fetchInstagramProfileInfo } = useInstagramAPI();
   const searchParams = useSearchParams();
   const serviceId = searchParams.get('service_id');
   const quantity = searchParams.get('quantity');
 
-  const supabase = useSupabase();
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>();
+  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+    defaultValues: {
+      is_public_confirmed: false
+    }
+  });
 
   useEffect(() => {
-    const fetchService = async () => {
-      if (!serviceId) return;
+    const fetchServiceData = async () => {
+      if (!serviceId) {
+        toast.error('ID do serviço não encontrado');
+        return;
+      }
 
       try {
-        const { data, error } = await supabase.client
+        setLoadingStageService('searching');
+        
+        // Buscar serviço pelo ID - Atualizado para usar o nome correto da tabela 'services'
+        const { data, error } = await supabase
           .from('services')
           .select('*')
           .eq('id', serviceId)
           .single();
-
+        
         if (error) {
-          console.error('Erro ao buscar serviço:', error);
-          toast.error('Erro ao carregar informações do serviço');
+          console.error('Erro ao buscar detalhes do serviço:', error);
+          toast.error('Erro ao buscar detalhes do serviço');
+          setLoadingStageService('error');
+          return;
+        }
+        
+        if (!data) {
+          toast.error('Serviço não encontrado');
+          setLoadingStageService('error');
           return;
         }
 
-        if (data) {
-          setService(data);
+        // Definir o serviço com todos os dados
+        setService(data);
+        setLoadingStageService('done');
+
+        // Verificar preço com base na quantidade escolhida
+        const variations = data.service_variations || data.metadata?.quantidade_preco || [];
+        const selectedVariation = variations.find(
+          (v: QuantidadePreco) => v.quantidade === parseInt(quantity || '0')
+        );
+        if (selectedVariation) {
+          setService(prevService => {
+            if (prevService) {
+              return { ...prevService, preco: selectedVariation.preco };
+            }
+            return prevService;
+          });
+        } else {
+          toast.error('Variação de quantidade não encontrada');
         }
-      } catch (error) {
-        console.error('Erro ao buscar serviço:', error);
-        toast.error('Erro ao carregar informações do serviço');
+      } catch (error: any) {
+        console.error('Erro ao buscar detalhes do serviço:', error);
+        toast.error('Erro ao buscar detalhes do serviço');
+        setLoadingStageService('error');
       }
     };
 
-    fetchService();
-  }, [serviceId, supabase.client]);
+    fetchServiceData();
+  }, [serviceId, quantity]);
 
   // Função para verificar o perfil do Instagram usando a API em cascata
   const checkProfile = async (usernameToCheck: string) => {
@@ -148,155 +199,187 @@ export default function Step1Page() {
     }
   };
 
-  const onSubmit = async (data: FormData) => {
-    const usernameToCheck = data.instagram_username.replace('@', '');
-    checkProfile(usernameToCheck);
+  // Função para tentar novamente após o usuário tornar o perfil público
+  const handleRetryAfterPrivate = async () => {
+    if (profileData?.username) {
+      await checkProfile(profileData.username);
+    }
   };
 
-  if (!service) {
-    return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-500" />
-      </div>
-    );
-  }
+  const onSubmit = async (formData: FormData) => {
+    if (!formData.is_public_confirmed) {
+      toast.error('Confirme que seu perfil é público');
+      return;
+    }
+
+    await checkProfile(formData.instagram_username);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
       
-      <main className="py-12">
-        <div className="container mx-auto px-4">
-          {/* Card do Serviço */}
-          <div className="max-w-xl mx-auto mb-8">
-            <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-100">
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center">
-                    <svg width="24" height="24" viewBox="0 0 24 24" className="text-pink-600">
-                      <g stroke="currentColor" strokeWidth="2" fill="none" fillRule="evenodd" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                      </g>
-                    </svg>
-                  </div>
+      <main className="container mx-auto px-4 py-8 flex flex-col items-center justify-center">
+        <div className="w-full max-w-4xl">
+          {/* Passos para Comprar */}
+          <div className="mb-8 bg-white shadow-md rounded-xl p-6">
+            <h3 className="text-xl font-bold text-center mb-6 text-gray-800">Como Comprar Visualizações</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="flex flex-col items-center">
+                <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-xl font-bold mb-3">
+                  1
                 </div>
-                <div className="flex-grow">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h2 className="text-xl font-semibold text-gray-900">{service.name}</h2>
-                      <p className="text-sm text-gray-500 mt-1">{service.description}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                        R$ {service.preco.toFixed(2)}
-                      </p>
-                      <div className="flex items-center justify-end mt-1 space-x-1">
-                        <span className="text-sm font-medium text-gray-900">{service.quantidade}</span>
-                        <span className="text-sm text-gray-500">visualizações</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <div className="flex justify-between text-sm">
-                      <div className="flex items-center text-green-600">
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span>Entrega Imediata</span>
-                      </div>
-                      <div className="flex items-center text-blue-600">
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                        <span>Perfil Seguro</span>
-                      </div>
-                    </div>
-                  </div>
+                <h4 className="font-semibold text-gray-700 text-center">Verificar Perfil</h4>
+                <p className="text-sm text-gray-500 text-center mt-2">
+                  Insira seu perfil do Instagram
+                </p>
+              </div>
+              <div className="flex flex-col items-center">
+                <div className="w-12 h-12 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-xl font-bold mb-3">
+                  2
                 </div>
+                <h4 className="font-semibold text-gray-700 text-center">Escolher Posts</h4>
+                <p className="text-sm text-gray-500 text-center mt-2">
+                  Selecione os posts para visualizações
+                </p>
+              </div>
+              <div className="flex flex-col items-center">
+                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xl font-bold mb-3">
+                  3
+                </div>
+                <h4 className="font-semibold text-gray-700 text-center">Finalizar Compra</h4>
+                <p className="text-sm text-gray-500 text-center mt-2">
+                  Pague e receba visualizações
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Formulário */}
-          <div className="max-w-xl mx-auto">
-            <div className="bg-white shadow rounded-lg p-6">
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                <div>
-                  <label htmlFor="instagram_username" className="block text-sm font-medium text-gray-700">
-                    Perfil do Instagram
-                  </label>
-                  <div className="mt-1">
-                    <input
-                      {...register('instagram_username', { required: true })}
-                      type="text"
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-pink-500 focus:ring-pink-500 sm:text-sm"
-                      placeholder="@seu.perfil"
-                    />
-                    {errors.instagram_username && (
-                      <p className="mt-1 text-sm text-red-600">Campo obrigatório</p>
-                    )}
-                  </div>
+          {/* Card do Serviço */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="flex items-center mb-4">
+                <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center mr-4">
+                  <FontAwesomeIcon icon={faEye} className="text-purple-600" />
                 </div>
-
+                <h2 className="text-xl font-bold text-gray-800">{service?.name}</h2>
+              </div>
+              <p className="text-gray-600 mb-4">{service?.description}</p>
+              <div className="flex justify-between items-center">
                 <div>
-                  <label htmlFor="whatsapp" className="block text-sm font-medium text-gray-700">
-                    WhatsApp
-                  </label>
-                  <div className="mt-1">
-                    <input
-                      {...register('whatsapp', { required: true })}
-                      type="text"
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-pink-500 focus:ring-pink-500 sm:text-sm"
-                      placeholder="(00) 00000-0000"
-                    />
-                    {errors.whatsapp && (
-                      <p className="mt-1 text-sm text-red-600">Campo obrigatório</p>
-                    )}
-                  </div>
+                  <span className="text-sm text-gray-500">Quantidade</span>
+                  <p className="text-lg font-semibold text-gray-800">{quantity} visualizações</p>
                 </div>
-
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                    E-mail
-                  </label>
-                  <div className="mt-1">
-                    <input
-                      {...register('email', { required: true })}
-                      type="email"
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-pink-500 focus:ring-pink-500 sm:text-sm"
-                      placeholder="seu@email.com"
-                    />
-                    {errors.email && (
-                      <p className="mt-1 text-sm text-red-600">Campo obrigatório</p>
-                    )}
-                  </div>
+                <div className="text-right">
+                  <span className="text-sm text-gray-500">Preço</span>
+                  <p className="text-2xl font-bold text-purple-600">
+                    R$ {service?.preco?.toFixed(2)}
+                  </p>
                 </div>
-
-                <div>
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-pink-600 hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 disabled:opacity-50"
-                  >
-                    {isLoading ? 'Verificando...' : 'Verificar Perfil'}
-                  </button>
-                </div>
-              </form>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Detalhes do Serviço</h3>
+                <p>{service?.description}</p>
+                <ul className="space-y-2 mt-2">
+                  {service?.service_details || service?.metadata?.serviceDetails ? (
+                    (service.service_details || service.metadata?.serviceDetails || []).map((detail, index) => {
+                      return (
+                        <li key={index} className="flex items-center">
+                          <span className="mr-2">{detail.emoji}</span>
+                          <span className="font-semibold text-gray-800">{detail.title}</span>
+                        </li>
+                      );
+                    })
+                  ) : (
+                    <li className="text-gray-500">Nenhum detalhe disponível</li>
+                  )}
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
-      </main>
 
-      <LoadingProfileModal
-        open={showModal}
-        onOpenChange={setShowModal}
-        loadingStage={loadingStage}
-        error={error || undefined}
-        profileData={profileData}
-        serviceId={serviceId || ''}
-        checkoutSlug="visualizacao"
-      />
+          {/* Formulário de Verificação */}
+          <div className="bg-white shadow-md rounded-lg p-8">
+            <h2 className="text-2xl font-bold mb-6 text-center">
+              Verificar Perfil do Instagram
+            </h2>
+
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              <div>
+                <label htmlFor="instagram_username" className="block mb-2">Perfil do Instagram</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500 sm:text-sm">@</span>
+                  </div>
+                  <input 
+                    type="text" 
+                    id="instagram_username"
+                    placeholder="seuperfil" 
+                    className="pl-8 w-full py-3 border-2 border-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all duration-300 rounded-lg"
+                    {...register('instagram_username', { 
+                      required: 'Informe seu perfil do Instagram',
+                      pattern: {
+                        value: /^[a-zA-Z0-9._]+$/,
+                        message: 'Formato de usuário inválido'
+                      }
+                    })}
+                  />
+                </div>
+                {errors.instagram_username && (
+                  <p className="text-red-500 text-sm mt-2 flex items-center space-x-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <span>{errors.instagram_username.message}</span>
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <input 
+                  type="checkbox" 
+                  id="is_public_confirmed"
+                  {...register('is_public_confirmed', {
+                    required: 'Confirme que o perfil é público'
+                  })}
+                />
+                <label 
+                  htmlFor="is_public_confirmed" 
+                  className="text-sm text-gray-700"
+                >
+                  Confirmo que meu perfil é público
+                </label>
+              </div>
+              {errors.is_public_confirmed && (
+                <p className="text-red-500 text-sm mt-1">
+                  {errors.is_public_confirmed.message}
+                </p>
+              )}
+
+              <button 
+                type="submit" 
+                className="w-full py-3 text-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transition-all duration-300 ease-in-out transform hover:scale-105"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Verificando...' : 'Verificar Perfil'}
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <LoadingProfileModal 
+          open={showModal}
+          onOpenChange={setShowModal}
+          loadingStage={loadingStage}
+          profileData={profileData}
+          error={error}
+          checkoutSlug="visualizacao"
+          onRetryAfterPrivate={handleRetryAfterPrivate}
+        />
+      </main>
     </div>
   );
 }
