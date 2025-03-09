@@ -43,8 +43,10 @@ export async function POST(request: NextRequest) {
       .from('orders')
       .select(`
         *,
-        service:service_id (*),
-        provider:provider_id (*)
+        service:service_id (
+          *,
+          provider:provider_id (*)
+        )
       `)
       .eq('id', order_id)
       .single();
@@ -78,17 +80,17 @@ async function processOrderStatus(supabase: any, order: any) {
     let providerResponse;
     
     // Verificar se o pedido tem um provedor associado (em qualquer um dos campos possíveis)
-    if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name) {
+    if (!order.service?.provider && !order.metadata?.provider && !order.metadata?.provider_name) {
       throw new Error('Pedido não tem provedor associado');
     }
     
-    if (order.provider) {
-      // Usar o provedor associado ao pedido
+    if (order.service?.provider) {
+      // Usar o provedor associado ao serviço do pedido
       providerResponse = await checkOrderStatus(
-        order.provider.id,
+        order.service.provider.id,
         order.external_order_id,
-        order.provider.api_url,
-        order.provider.api_key
+        order.service.provider.api_url,
+        order.service.provider.api_key
       );
     } else if (order.metadata?.provider) {
       // Usar o provedor dos metadados

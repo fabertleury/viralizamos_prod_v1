@@ -48,6 +48,7 @@ interface Order {
     service_details?: {
       refill?: boolean;
     };
+    provider_id?: string;
   };
   provider?: {
     name: string;
@@ -116,7 +117,7 @@ export default function AcompanharPedidoPage() {
     for (const order of pendingOrders) {
       try {
         // Verificar se o pedido tem um provedor associado
-        if (!order.metadata?.provider && !order.metadata?.provider_name && !order.provider_id) {
+        if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name && !order.service?.provider_id) {
           console.error(`Pedido ${order.external_order_id} não tem provedor associado`);
           continue; // Pular para o próximo pedido
         }
@@ -190,8 +191,10 @@ export default function AcompanharPedidoPage() {
             service:service_id (
               name,
               type,
-              service_details
+              service_details,
+              provider:provider_id (*)
             ),
+            provider:provider_id (*),
             refills (
               id,
               status,
@@ -259,8 +262,10 @@ export default function AcompanharPedidoPage() {
               service:service_id (
                 name,
                 type,
-                service_details
+                service_details,
+                provider:provider_id (*)
               ),
+              provider:provider_id (*),
               refills (
                 id,
                 status,
@@ -288,8 +293,10 @@ export default function AcompanharPedidoPage() {
               service:service_id (
                 name,
                 type,
-                service_details
+                service_details,
+                provider:provider_id (*)
               ),
+              provider:provider_id (*),
               refills (
                 id,
                 status,
@@ -316,8 +323,10 @@ export default function AcompanharPedidoPage() {
             service:service_id (
               name,
               type,
-              service_details
+              service_details,
+              provider:provider_id (*)
             ),
+            provider:provider_id (*),
             refills (
               id,
               status,
@@ -408,16 +417,12 @@ export default function AcompanharPedidoPage() {
 
   const checkOrderStatus = async (order: Order) => {
     try {
-      if (!order || !order.id) {
-        console.error('ID do pedido não fornecido');
-        toast.error('ID do pedido é obrigatório');
-        return;
-      }
-
       setCheckingStatus(prev => ({ ...prev, [order.id]: true }));
       
-      // Verificar se o pedido tem um provedor associado
-      if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name) {
+      // Verificar se o pedido tem um serviço com provedor associado
+      const hasProvider = order.service?.provider_id || order.provider_id || order.metadata?.provider || order.metadata?.provider_name;
+      
+      if (!hasProvider) {
         console.error(`Pedido ${order.external_order_id || order.id} não tem provedor associado`);
         toast.error('Este pedido não possui um provedor associado');
         return;
@@ -433,11 +438,12 @@ export default function AcompanharPedidoPage() {
         body: JSON.stringify({ order_id: order.id }),
       });
       
-      const result = await response.json();
-      
       if (!response.ok) {
-        throw new Error(result.error || 'Erro ao verificar status do pedido');
+        const result = await response.json();
+        throw new Error(result.error || `Erro ao verificar status do pedido: ${response.status}`);
       }
+      
+      const result = await response.json();
       
       toast.success('Status do pedido atualizado com sucesso');
       
@@ -476,7 +482,8 @@ export default function AcompanharPedidoPage() {
           service:service_id (
             name,
             type,
-            service_details
+            service_details,
+            provider:provider_id (*)
           )
         `)
         .eq('id', orderId)
@@ -634,7 +641,7 @@ export default function AcompanharPedidoPage() {
     try {
       for (const order of orders) {
         // Verificar se o pedido tem um provedor associado
-        if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name) {
+        if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name && !order.service?.provider_id) {
           console.error(`Pedido ${order.external_order_id} não tem provedor associado`);
           continue; // Pular para o próximo pedido
         }
@@ -828,16 +835,6 @@ export default function AcompanharPedidoPage() {
                                     <span className="text-xs font-medium ml-1">{order.metadata.provider_status.start_count}</span>
                                   </div>
                                 )}
-                                
-                                {order.metadata.provider_status.charge && (
-                                  <div>
-                                    <span className="text-xs text-gray-500">Valor:</span>
-                                    <span className="text-xs font-medium ml-1">
-                                      {order.metadata.provider_status.charge} 
-                                      {order.metadata.provider_status.currency && ` ${order.metadata.provider_status.currency}`}
-                                    </span>
-                                  </div>
-                                )}
                               </div>
                               
                               <div className="text-xs text-gray-400 mt-1">
@@ -950,16 +947,6 @@ export default function AcompanharPedidoPage() {
                                 <div>
                                   <h4 className="text-xs text-gray-500 mb-1">Restantes</h4>
                                   <p className="text-sm font-medium">{order.metadata.provider_status.remains}</p>
-                                </div>
-                              )}
-                              
-                              {order.metadata.provider_status.charge && (
-                                <div>
-                                  <h4 className="text-xs text-gray-500 mb-1">Valor do Provedor</h4>
-                                  <p className="text-sm font-medium">
-                                    {order.metadata.provider_status.charge} 
-                                    {order.metadata.provider_status.currency && ` ${order.metadata.provider_status.currency}`}
-                                  </p>
                                 </div>
                               )}
                               
