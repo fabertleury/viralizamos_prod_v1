@@ -52,7 +52,8 @@ export default function TransacoesPage() {
       .from('transactions')
       .select(`
         *,
-        services:service_id (*)
+        services:service_id (*),
+        orders:orders(*)
       `)
       .order('created_at', { ascending: false });
 
@@ -63,15 +64,6 @@ export default function TransacoesPage() {
 
     setTransactions(transactions);
   }, [supabase]);
-
-  useEffect(() => {
-    fetchTransactions();
-    
-    // Atualizar a cada 30 segundos
-    const intervalId = setInterval(fetchTransactions, 30000);
-    
-    return () => clearInterval(intervalId);
-  }, [fetchTransactions]);
 
   const handleCheckPayment = useCallback(async (transaction: any) => {
     if (loadingPayment) return;
@@ -112,6 +104,137 @@ export default function TransacoesPage() {
       setLoadingPayment(null);
     }
   }, [loadingPayment, fetchTransactions]);
+
+  const handleMarkDelivered = useCallback(async (transaction: any) => {
+    if (markingDelivered) return;
+    
+    try {
+      setMarkingDelivered(transaction.id);
+      
+      const response = await fetch('/api/transactions/check-delivery-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transactionId: transaction.id
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao verificar status de entrega');
+      }
+      
+      await fetchTransactions();
+      
+      if (data.status === 'success') {
+        toast.success('Serviço marcado como entregue com sucesso!', {
+          description: 'Todos os pedidos foram verificados e estão completos.'
+        });
+      } else if (data.status === 'pending') {
+        toast.warning('Nem todos os pedidos estão completos', {
+          description: 'Verifique o status dos pedidos para mais detalhes.'
+        });
+      } else if (data.status === 'partial_success') {
+        toast.warning('Pedidos verificados, mas houve erro ao marcar transação como entregue', {
+          description: data.error || 'Tente novamente mais tarde.'
+        });
+      } else {
+        toast.info('Status dos pedidos verificado', {
+          description: data.message || 'Verifique a tabela para mais detalhes.'
+        });
+      }
+    } catch (error: any) {
+      console.error('Error checking delivery status:', error);
+      toast.error(error.message || 'Erro ao verificar status de entrega');
+    } finally {
+      setMarkingDelivered(null);
+    }
+  }, [markingDelivered, fetchTransactions]);
+
+  const checkPendingDeliveryStatus = useCallback(async () => {
+    // Filtra apenas transações aprovadas mas não entregues
+    const pendingDeliveryTransactions = transactions.filter(transaction => 
+      transaction.status === 'approved' && !transaction.delivered
+    );
+    
+    if (pendingDeliveryTransactions.length === 0) return;
+    
+    // Verificar o status de entrega de cada transação
+    for (const transaction of pendingDeliveryTransactions) {
+      try {
+        // Verificar se a transação tem pedidos associados
+        if (!transaction.orders || transaction.orders.length === 0) {
+          console.error(`Transação ${transaction.id} não tem pedidos associados`);
+          
+          // Se não houver pedidos, marcar a transação como entregue para evitar verificações futuras
+          try {
+            await supabase
+              .from('transactions')
+              .update({ delivered: true })
+              .eq('id', transaction.id);
+            
+            console.log(`Transação ${transaction.id} marcada como entregue (sem pedidos)`);
+          } catch (updateError) {
+            console.error(`Erro ao marcar transação ${transaction.id} como entregue:`, updateError);
+          }
+          
+          continue; // Pular para a próxima transação
+        }
+        
+        // Verificar se pelo menos um pedido tem provedor associado
+        const hasValidProvider = transaction.orders.some(order => 
+          order.provider_id || order.metadata?.provider || order.metadata?.provider_name
+        );
+        
+        if (!hasValidProvider) {
+          console.error(`Transação ${transaction.id} não tem pedidos com provedores válidos`);
+          
+          // Se não houver provedores válidos, marcar a transação como entregue para evitar verificações futuras
+          try {
+            await supabase
+              .from('transactions')
+              .update({ delivered: true })
+              .eq('id', transaction.id);
+            
+            console.log(`Transação ${transaction.id} marcada como entregue (sem provedores válidos)`);
+          } catch (updateError) {
+            console.error(`Erro ao marcar transação ${transaction.id} como entregue:`, updateError);
+          }
+          
+          continue; // Pular para a próxima transação
+        }
+        
+        await handleMarkDelivered(transaction);
+        // Pequena pausa entre as verificações para não sobrecarregar a API
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error: any) {
+        console.error(`Erro ao verificar status de entrega da transação ${transaction.id}:`, error);
+      }
+    }
+  }, [transactions, handleMarkDelivered, supabase]);
+
+  useEffect(() => {
+    fetchTransactions();
+    
+    // Atualizar a cada 4 minutos (240000ms)
+    const intervalId = setInterval(fetchTransactions, 240000);
+    
+    // Verificar status de entrega das transações aprovadas a cada 4 minutos
+    const deliveryStatusInterval = setInterval(checkPendingDeliveryStatus, 240000);
+    
+    // Executar uma verificação inicial ao carregar a página
+    setTimeout(() => {
+      checkPendingDeliveryStatus();
+    }, 1000);
+    
+    return () => {
+      clearInterval(intervalId);
+      clearInterval(deliveryStatusInterval);
+    };
+  }, [fetchTransactions, checkPendingDeliveryStatus]);
 
   const handleProcessOrder = useCallback(async (transaction: any) => {
     if (processingOrder) return;
@@ -223,55 +346,6 @@ export default function TransacoesPage() {
     }
   }, [processingOrder, fetchTransactions]);
 
-  const handleMarkDelivered = useCallback(async (transaction: any) => {
-    if (markingDelivered) return;
-    
-    try {
-      setMarkingDelivered(transaction.id);
-      
-      const response = await fetch('/api/transactions/check-delivery-status', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          transactionId: transaction.id
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao verificar status de entrega');
-      }
-      
-      await fetchTransactions();
-      
-      if (data.status === 'success') {
-        toast.success('Serviço marcado como entregue com sucesso!', {
-          description: 'Todos os pedidos foram verificados e estão completos.'
-        });
-      } else if (data.status === 'pending') {
-        toast.warning('Nem todos os pedidos estão completos', {
-          description: 'Verifique o status dos pedidos para mais detalhes.'
-        });
-      } else if (data.status === 'partial_success') {
-        toast.warning('Pedidos verificados, mas houve erro ao marcar transação como entregue', {
-          description: data.error || 'Tente novamente mais tarde.'
-        });
-      } else {
-        toast.info('Status dos pedidos verificado', {
-          description: data.message || 'Verifique a tabela para mais detalhes.'
-        });
-      }
-    } catch (error: any) {
-      console.error('Error checking delivery status:', error);
-      toast.error(error.message || 'Erro ao verificar status de entrega');
-    } finally {
-      setMarkingDelivered(null);
-    }
-  }, [markingDelivered, fetchTransactions]);
-
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
@@ -279,6 +353,9 @@ export default function TransacoesPage() {
           <h1 className="text-2xl font-semibold text-gray-900">Transações</h1>
           <p className="mt-1 text-sm text-gray-600">
             Gerencie todas as transações do sistema
+          </p>
+          <p className="text-sm text-gray-500">
+            O status das transações e pedidos é atualizado automaticamente a cada 4 minutos.
           </p>
         </div>
       </div>

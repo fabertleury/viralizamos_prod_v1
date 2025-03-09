@@ -18,6 +18,8 @@ interface Order {
   status: string;
   amount: number;
   quantity: number;
+  discount_amount?: number;
+  final_amount?: number;
   metadata: {
     link: string;
     username?: string;
@@ -32,20 +34,28 @@ interface Order {
       updated_at: string;
     };
     email?: string;
+    provider?: {
+      id: string;
+      name: string;
+    };
+    provider_name?: string;
   };
   created_at: string;
   service?: {
     name: string;
     type: string;
+    refill?: boolean;
   };
   provider?: {
     name: string;
     id: string;
   };
+  provider_id?: string;
   refills?: {
     id: string;
     status: string;
     created_at: string;
+    external_refill_id?: string;
   }[];
 }
 
@@ -56,6 +66,7 @@ export default function AcompanharPedidoPage() {
   const [searched, setSearched] = useState(false);
   const [processingRefill, setProcessingRefill] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState<{ [key: string]: boolean }>({});
+  const [checkingAllStatus, setCheckingAllStatus] = useState(false);
   const [userProfile, setUserProfile] = useState<{ email: string; name: string } | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -72,6 +83,50 @@ export default function AcompanharPedidoPage() {
       handleSearchOrders(emailFromQuery);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (orders.length === 0) return;
+    
+    // Verificar status de pedidos pendentes/em processamento a cada 4 minutos
+    const statusInterval = setInterval(checkPendingOrdersStatus, 240000);
+    
+    // Executar uma verificação inicial ao carregar os pedidos
+    checkPendingOrdersStatus();
+    
+    return () => {
+      clearInterval(statusInterval);
+    };
+  }, [orders]);
+
+  const checkPendingOrdersStatus = async () => {
+    if (!email) return;
+    
+    // Filtra apenas pedidos pendentes ou em processamento
+    const pendingOrders = orders.filter(order => 
+      order.status.toLowerCase() === 'pending' || 
+      order.status.toLowerCase() === 'processing' || 
+      order.status.toLowerCase() === 'in progress'
+    );
+    
+    if (pendingOrders.length === 0) return;
+    
+    // Atualiza o status de cada pedido pendente
+    for (const order of pendingOrders) {
+      try {
+        // Verificar se o pedido tem um provedor associado
+        if (!order.metadata?.provider && !order.metadata?.provider_name && !order.provider_id) {
+          console.error(`Pedido ${order.external_order_id} não tem provedor associado`);
+          continue; // Pular para o próximo pedido
+        }
+        
+        await checkOrderStatus(order);
+        // Pequena pausa entre as verificações para não sobrecarregar a API
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error: any) {
+        console.error(`Erro ao verificar status do pedido ${order.external_order_id}:`, error);
+      }
+    }
+  };
 
   // Verificar se o usuário está logado ao carregar a página
   useEffect(() => {
@@ -132,12 +187,14 @@ export default function AcompanharPedidoPage() {
             *,
             service:service_id (
               name,
-              type
+              type,
+              refill
             ),
             refills (
               id,
               status,
-              created_at
+              created_at,
+              external_refill_id
             )
           `)
           .eq('customer_id', customer.id)
@@ -199,12 +256,14 @@ export default function AcompanharPedidoPage() {
               *,
               service:service_id (
                 name,
-                type
+                type,
+                refill
               ),
               refills (
                 id,
                 status,
-                created_at
+                created_at,
+                external_refill_id
               )
             `)
             .eq('metadata->customer->email', emailToSearch)
@@ -226,12 +285,14 @@ export default function AcompanharPedidoPage() {
               *,
               service:service_id (
                 name,
-                type
+                type,
+                refill
               ),
               refills (
                 id,
                 status,
-                created_at
+                created_at,
+                external_refill_id
               )
             `)
             .eq('user_id', userId)
@@ -252,12 +313,14 @@ export default function AcompanharPedidoPage() {
             *,
             service:service_id (
               name,
-              type
+              type,
+              refill
             ),
             refills (
               id,
               status,
-              created_at
+              created_at,
+              external_refill_id
             )
           `)
           .eq('user_id', users.id)
@@ -341,18 +404,23 @@ export default function AcompanharPedidoPage() {
     return getDaysRemaining(date) > 0;
   };
 
-  const checkOrderStatus = async (orderId: string) => {
-    if (!orderId || !email) return;
-    
+  const checkOrderStatus = async (order: Order) => {
     try {
-      setCheckingStatus(prev => ({ ...prev, [orderId]: true }));
+      setCheckingStatus(prev => ({ ...prev, [order.id]: true }));
+      
+      // Verificar se o pedido tem um provedor associado
+      if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name) {
+        console.error(`Pedido ${order.external_order_id} não tem provedor associado`);
+        toast.error('Este pedido não possui um provedor associado');
+        return;
+      }
       
       const response = await fetch('/api/orders/check-status-public', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ orderId, email }),
+        body: JSON.stringify({ order_id: order.id }),
       });
       
       const result = await response.json();
@@ -365,13 +433,13 @@ export default function AcompanharPedidoPage() {
       
       // Atualizar o pedido na lista
       setOrders(orders.map(order => 
-        order.external_order_id === orderId ? result.data : order
+        order.id === result.data.id ? result.data : order
       ));
     } catch (error) {
       console.error('Erro ao verificar status do pedido:', error);
-      toast.error('Erro ao verificar status do pedido');
+      toast.error(error instanceof Error ? error.message : 'Erro ao verificar status do pedido');
     } finally {
-      setCheckingStatus(prev => ({ ...prev, [orderId]: false }));
+      setCheckingStatus(prev => ({ ...prev, [order.id]: false }));
     }
   };
 
@@ -392,7 +460,8 @@ export default function AcompanharPedidoPage() {
           *,
           service:service_id (
             name,
-            type
+            type,
+            refill
           )
         `)
         .eq('id', orderId)
@@ -511,21 +580,21 @@ export default function AcompanharPedidoPage() {
         
       // Atualizar a lista de pedidos com o novo status
       setOrders(orders.map(order => {
-        if (order.id === orderId && order.refills) {
-          return {
-            ...order,
-            refills: order.refills.map(refill => 
-              refill.external_refill_id === refillId 
-                ? { ...refill, status: data.status } 
-                : refill
-            )
-          };
+        if (order.id === orderId) {
+          const updatedRefills = (order.refills || []).map(refill => {
+            if (refill.external_refill_id === refillId) {
+              return { ...refill, status: data.status };
+            }
+            return refill;
+          });
+          return { ...order, refills: updatedRefills };
         }
         return order;
       }));
       
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Erro ao verificar status da reposição:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao verificar status da reposição');
     }
   };
 
@@ -541,6 +610,36 @@ export default function AcompanharPedidoPage() {
   const handleViewOrder = (order: Order) => {
     setSelectedOrderId(order.id);
     setOrder(order);
+  };
+
+  const handleCheckAllOrders = async () => {
+    if (orders.length === 0) {
+      toast.error('Nenhum pedido encontrado para verificar');
+      return;
+    }
+    
+    setCheckingAllStatus(true);
+    
+    try {
+      for (const order of orders) {
+        // Verificar se o pedido tem um provedor associado
+        if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name) {
+          console.error(`Pedido ${order.external_order_id} não tem provedor associado`);
+          continue; // Pular para o próximo pedido
+        }
+        
+        await checkOrderStatus(order);
+        // Pequena pausa entre as verificações para não sobrecarregar a API
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      toast.success('Status de todos os pedidos verificado com sucesso');
+    } catch (error) {
+      console.error('Erro ao verificar status de todos os pedidos:', error);
+      toast.error('Erro ao verificar status de todos os pedidos');
+    } finally {
+      setCheckingAllStatus(false);
+    }
   };
 
   return (
@@ -594,62 +693,50 @@ export default function AcompanharPedidoPage() {
               <div className="mt-8">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Seus Pedidos</h2>
                 
-                <div className="mb-6 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg shadow-md overflow-hidden">
-                  <div className="p-6 text-white">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h3 className="text-xl font-bold">Parabéns! 🎉</h3>
-                        <p className="text-white/90">Você acabou de ganhar um cupom de desconto!</p>
-                      </div>
-                      <div className="bg-white text-pink-600 font-bold py-2 px-4 rounded-full text-lg">
-                        CLIENTE10
-                      </div>
-                    </div>
-                    <p className="mb-4">Use este cupom para obter 10% de desconto em sua próxima compra. Válido para qualquer serviço!</p>
-                    <Button 
-                      className="bg-white text-pink-600 hover:bg-gray-100 transition-colors"
-                      onClick={() => {
-                        navigator.clipboard.writeText('CLIENTE10');
-                        toast.success('Cupom copiado para a área de transferência!');
-                      }}
-                    >
-                      Copiar Cupom
-                    </Button>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold">Seus Pedidos</h2>
+                    {userProfile && (
+                      <p className="text-sm text-gray-600">
+                        Olá, {userProfile.name || userProfile.email}
+                      </p>
+                    )}
+                    <p className="text-sm text-gray-600 mt-1">
+                      O status dos pedidos é atualizado automaticamente a cada 4 minutos.
+                    </p>
                   </div>
-                </div>
-                
-                <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div className="flex-1">
-                      <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
-                        Buscar pedido
-                      </label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative">
                       <Input
-                        id="search"
                         type="text"
-                        placeholder="Buscar por serviço ou número do pedido"
+                        placeholder="Buscar pedidos..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full"
+                        className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-auto"
                       />
                     </div>
-                    <div className="w-full md:w-48">
-                      <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">
-                        Status
-                      </label>
-                      <select
-                        id="status"
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                        className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                      >
-                        <option value="all">Todos</option>
-                        <option value="pending">Pendente</option>
-                        <option value="processing">Processando</option>
-                        <option value="completed">Concluído</option>
-                        <option value="canceled">Cancelado</option>
-                      </select>
-                    </div>
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="all">Todos os status</option>
+                      <option value="pending">Pendente</option>
+                      <option value="processing">Processando</option>
+                      <option value="completed">Concluído</option>
+                      <option value="partial">Parcial</option>
+                      <option value="failed">Falhou</option>
+                      <option value="canceled">Cancelado</option>
+                    </select>
+                    <Button
+                      onClick={handleCheckAllOrders}
+                      disabled={checkingAllStatus}
+                      variant="default"
+                      size="sm"
+                      className="w-full bg-pink-600 hover:bg-pink-700"
+                    >
+                      {checkingAllStatus ? 'Verificando...' : 'Verificar Todos'}
+                    </Button>
                   </div>
                 </div>
                 
@@ -747,7 +834,7 @@ export default function AcompanharPedidoPage() {
                           )}
                           
                           <div className="flex flex-col space-y-2">
-                            {isWithin30Days(order.created_at) && (!order.refills || order.refills.length === 0) && (
+                            {isWithin30Days(order.created_at) && (!order.refills || order.refills.length === 0) && order.service?.refill && (
                               <div>
                                 <div className="text-xs text-gray-500 mb-1 text-center">
                                   Reposição disponível: {getDaysRemaining(order.created_at)} dias restantes
