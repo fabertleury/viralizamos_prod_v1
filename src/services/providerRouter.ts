@@ -216,6 +216,17 @@ export async function checkOrderStatus(
   apiKey?: string
 ): Promise<any> {
   try {
+    // Validar parâmetros
+    if (!orderId) {
+      throw new Error('ID do pedido é obrigatório');
+    }
+
+    if (!providerId) {
+      throw new Error('ID do provedor é obrigatório');
+    }
+
+    console.log(`[ProviderRouter] Verificando status do pedido: ${orderId} no provedor: ${providerId}`);
+    
     // Construir o corpo da requisição
     const requestBody: any = {
       key: apiKey,
@@ -239,7 +250,7 @@ export async function checkOrderStatus(
       apiUrl = provider.api_url;
       apiKey = provider.api_key;
       
-      console.log(`Verificando status do pedido ${orderId} no provedor ${provider.name}`);
+      console.log(`[ProviderRouter] Usando provedor ${provider.name} (${apiUrl}) para verificar pedido ${orderId}`);
     }
     
     // Fazer a requisição diretamente para a API do provedor
@@ -252,10 +263,13 @@ export async function checkOrderStatus(
     });
     
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[ProviderRouter] Erro na API do provedor: ${response.status} ${response.statusText}`, errorText);
       throw new Error(`Erro na API do provedor: ${response.status} ${response.statusText}`);
     }
     
     const data = await response.json();
+    console.log(`[ProviderRouter] Resposta do provedor para pedido ${orderId}:`, data);
     
     // Normalizar a resposta do provedor
     const normalizedStatus = normalizeProviderStatus(data);
@@ -265,7 +279,7 @@ export async function checkOrderStatus(
       normalized_status: normalizedStatus
     };
   } catch (error) {
-    console.error('Erro ao verificar status do pedido:', error);
+    console.error('[ProviderRouter] Erro ao verificar status do pedido:', error);
     throw error;
   }
 }
@@ -280,6 +294,11 @@ export function normalizeProviderStatus(providerResponse: any): string {
   
   // Extrair o status da resposta do provedor
   const status = providerResponse.status || '';
+  
+  // Verificar se o status é "Partial" com P maiúsculo (como no exemplo da API)
+  if (status === 'Partial') {
+    return 'partial';
+  }
   
   // Mapear o status do provedor para o status do sistema
   switch (status.toLowerCase()) {
@@ -305,12 +324,14 @@ export function normalizeProviderStatus(providerResponse: any): string {
     case 'partially completed':
       return 'partial';
     
-    case 'refunded':
-    case 'refund':
-      return 'refunded';
+    case 'failed':
+    case 'error':
+    case 'rejected':
+      return 'failed';
     
     default:
-      return 'unknown';
+      console.log(`[ProviderRouter] Status desconhecido do provedor: "${status}"`);
+      return status.toLowerCase();
   }
 }
 

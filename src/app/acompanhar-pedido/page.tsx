@@ -32,6 +32,8 @@ interface Order {
       start_count: string;
       remains: string;
       updated_at: string;
+      charge?: string;
+      currency?: string;
     };
     email?: string;
     provider?: {
@@ -408,14 +410,22 @@ export default function AcompanharPedidoPage() {
 
   const checkOrderStatus = async (order: Order) => {
     try {
+      if (!order || !order.id) {
+        console.error('ID do pedido não fornecido');
+        toast.error('ID do pedido é obrigatório');
+        return;
+      }
+
       setCheckingStatus(prev => ({ ...prev, [order.id]: true }));
       
       // Verificar se o pedido tem um provedor associado
       if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name) {
-        console.error(`Pedido ${order.external_order_id} não tem provedor associado`);
+        console.error(`Pedido ${order.external_order_id || order.id} não tem provedor associado`);
         toast.error('Este pedido não possui um provedor associado');
         return;
       }
+      
+      console.log(`Verificando status do pedido: ${order.id}`);
       
       const response = await fetch('/api/orders/check-status-public', {
         method: 'POST',
@@ -434,9 +444,14 @@ export default function AcompanharPedidoPage() {
       toast.success('Status do pedido atualizado com sucesso');
       
       // Atualizar o pedido na lista
-      setOrders(orders.map(order => 
-        order.id === result.data.id ? result.data : order
+      setOrders(orders.map(o => 
+        o.id === result.data.id ? result.data : o
       ));
+      
+      // Se este é o pedido selecionado, atualizar também o estado do pedido selecionado
+      if (selectedOrderId === order.id) {
+        setOrder(result.data);
+      }
     } catch (error) {
       console.error('Erro ao verificar status do pedido:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao verificar status do pedido');
@@ -811,6 +826,26 @@ export default function AcompanharPedidoPage() {
                                   }}
                                 ></div>
                               </div>
+                              
+                              <div className="grid grid-cols-2 gap-2 mt-2">
+                                {order.metadata.provider_status.start_count && (
+                                  <div>
+                                    <span className="text-xs text-gray-500">Contagem inicial:</span>
+                                    <span className="text-xs font-medium ml-1">{order.metadata.provider_status.start_count}</span>
+                                  </div>
+                                )}
+                                
+                                {order.metadata.provider_status.charge && (
+                                  <div>
+                                    <span className="text-xs text-gray-500">Valor:</span>
+                                    <span className="text-xs font-medium ml-1">
+                                      {order.metadata.provider_status.charge} 
+                                      {order.metadata.provider_status.currency && ` ${order.metadata.provider_status.currency}`}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                              
                               <div className="text-xs text-gray-400 mt-1">
                                 Atualizado: {new Date(order.metadata.provider_status.updated_at).toLocaleString('pt-BR')}
                               </div>
@@ -913,6 +948,83 @@ export default function AcompanharPedidoPage() {
                       )}
 
                       {/* Detalhes específicos do serviço */}
+                      <div className="mt-6">
+                        <h3 className="text-sm font-medium text-gray-500 mb-3">Detalhes do Provedor</h3>
+                        
+                        {order.metadata?.provider_status ? (
+                          <div className="bg-gray-50 p-4 rounded-md">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                              <div>
+                                <h4 className="text-xs text-gray-500 mb-1">Status do Provedor</h4>
+                                <p className="text-sm font-medium">{order.metadata.provider_status.status}</p>
+                              </div>
+                              
+                              {order.metadata.provider_status.start_count && (
+                                <div>
+                                  <h4 className="text-xs text-gray-500 mb-1">Contagem Inicial</h4>
+                                  <p className="text-sm font-medium">{order.metadata.provider_status.start_count}</p>
+                                </div>
+                              )}
+                              
+                              {order.metadata.provider_status.remains && (
+                                <div>
+                                  <h4 className="text-xs text-gray-500 mb-1">Restantes</h4>
+                                  <p className="text-sm font-medium">{order.metadata.provider_status.remains}</p>
+                                </div>
+                              )}
+                              
+                              {order.metadata.provider_status.charge && (
+                                <div>
+                                  <h4 className="text-xs text-gray-500 mb-1">Valor do Provedor</h4>
+                                  <p className="text-sm font-medium">
+                                    {order.metadata.provider_status.charge} 
+                                    {order.metadata.provider_status.currency && ` ${order.metadata.provider_status.currency}`}
+                                  </p>
+                                </div>
+                              )}
+                              
+                              <div className="col-span-2 md:col-span-3">
+                                <h4 className="text-xs text-gray-500 mb-1">Progresso</h4>
+                                <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                                  <div 
+                                    className="bg-indigo-600 h-2 rounded-full" 
+                                    style={{ 
+                                      width: `${Math.max(0, Math.min(100, 100 - (parseInt(order.metadata.provider_status.remains) / order.quantity * 100)))}%` 
+                                    }}
+                                  ></div>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  Atualizado: {new Date(order.metadata.provider_status.updated_at).toLocaleString('pt-BR')}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            <div className="mt-4">
+                              <Button
+                                onClick={() => checkOrderStatus(order)}
+                                disabled={checkingStatus[order.id]}
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                              >
+                                {checkingStatus[order.id] ? 'Verificando...' : 'Verificar Status Atual'}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-4">
+                            <p className="text-gray-500 mb-3">Nenhuma informação de status disponível</p>
+                            <Button
+                              onClick={() => checkOrderStatus(order)}
+                              disabled={checkingStatus[order.id]}
+                              variant="outline"
+                              size="sm"
+                            >
+                              {checkingStatus[order.id] ? 'Verificando...' : 'Verificar Status'}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div className="text-gray-500 text-center">

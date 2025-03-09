@@ -1,92 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { checkOrderStatus, normalizeProviderStatus } from '@/services/providerRouter';
-import { getCustomerByEmail } from '@/services/customerService';
+
+// Função para traduzir o status do pedido para português
+function translateOrderStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    'pending': 'Pendente',
+    'processing': 'Processando',
+    'in progress': 'Processando',
+    'completed': 'Concluído',
+    'success': 'Concluído',
+    'failed': 'Falhou',
+    'rejected': 'Falhou',
+    'canceled': 'Cancelado',
+    'partial': 'Parcial'
+  };
+
+  // Converter para minúsculas para garantir a correspondência
+  const normalizedStatus = status?.toLowerCase();
+  return statusMap[normalizedStatus] || status;
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { orderId, email } = await request.json();
+    const body = await request.json();
+    const { order_id } = body;
     
-    if (!orderId) {
+    if (!order_id) {
+      console.error('[CheckOrderStatusPublic] ID do pedido não fornecido');
       return NextResponse.json(
         { error: 'Order ID is required' },
         { status: 400 }
       );
     }
 
-    if (!email) {
-      return NextResponse.json(
-        { error: 'Email is required' },
-        { status: 400 }
-      );
-    }
-
-    console.log('[CheckOrderStatusPublic] Verificando status do pedido:', orderId, 'para email:', email);
+    console.log('[CheckOrderStatusPublic] Verificando status do pedido:', order_id);
     
     const supabase = createClient();
 
-    // Verificar se o cliente existe usando o serviço de clientes
-    let customer = null;
-    try {
-      customer = await getCustomerByEmail(email);
-    } catch (error) {
-      // Se a tabela customers ainda não existe, ignorar o erro
-      console.log('[CheckOrderStatusPublic] Erro ao buscar cliente, possivelmente a tabela não existe:', error);
-    }
-    
-    if (!customer) {
-      // Verificar se o usuário existe em profiles como fallback
-      const { data: user, error: userError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email)
-        .single();
-
-      if (userError || !user) {
-        console.log('[CheckOrderStatusPublic] Cliente/Usuário não encontrado, continuando apenas com verificação por email');
-      }
-    }
-
-    // Buscar o pedido
-    let orderQuery = supabase
+    // Buscar o pedido diretamente pelo ID
+    const { data: order, error: orderError } = await supabase
       .from('orders')
       .select(`
         *,
         service:service_id (*),
         provider:provider_id (*)
       `)
-      .eq('external_order_id', orderId);
-      
-    // Filtrar por customer_id se tivermos um cliente
-    if (customer) {
-      orderQuery = orderQuery.eq('customer_id', customer.id);
-    }
-    
-    const { data: order, error: orderError } = await orderQuery.single();
+      .eq('id', order_id)
+      .single();
 
     if (orderError || !order) {
-      // Se não encontrou pelo customer_id, tenta buscar pelo email nos metadados
-      const { data: orderByEmail, error: orderByEmailError } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          service:service_id (*),
-          provider:provider_id (*)
-        `)
-        .eq('external_order_id', orderId)
-        .filter('metadata->email', 'eq', email)
-        .single();
-        
-      if (orderByEmailError || !orderByEmail) {
-        console.error('[CheckOrderStatusPublic] Pedido não encontrado:', orderError);
-        return NextResponse.json(
-          { error: 'Order not found or does not belong to this user' },
-          { status: 404 }
-        );
-      }
-      
-      // Se encontrou pelo email nos metadados, usa esse pedido
-      return await processOrderStatus(supabase, orderByEmail);
+      console.error('[CheckOrderStatusPublic] Pedido não encontrado:', orderError);
+      return NextResponse.json(
+        { error: 'Order not found', details: orderError?.message },
+        { status: 404 }
+      );
     }
 
     // Processar o status do pedido
@@ -109,6 +77,11 @@ async function processOrderStatus(supabase: any, order: any) {
     // Verificar o status no provedor usando o providerRouter
     let providerResponse;
     
+    // Verificar se o pedido tem um provedor associado (em qualquer um dos campos possíveis)
+    if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name) {
+      throw new Error('Pedido não tem provedor associado');
+    }
+    
     if (order.provider) {
       // Usar o provedor associado ao pedido
       providerResponse = await checkOrderStatus(
@@ -116,6 +89,42 @@ async function processOrderStatus(supabase: any, order: any) {
         order.external_order_id,
         order.provider.api_url,
         order.provider.api_key
+      );
+    } else if (order.metadata?.provider) {
+      // Usar o provedor dos metadados
+      const { data: metadataProvider, error: metadataProviderError } = await supabase
+        .from('providers')
+        .select('*')
+        .eq('id', order.metadata.provider.id)
+        .single();
+        
+      if (metadataProviderError) {
+        throw new Error('Provedor dos metadados não encontrado');
+      }
+      
+      providerResponse = await checkOrderStatus(
+        metadataProvider.id,
+        order.external_order_id,
+        metadataProvider.api_url,
+        metadataProvider.api_key
+      );
+    } else if (order.metadata?.provider_name) {
+      // Buscar o provedor pelo nome nos metadados
+      const { data: namedProvider, error: namedProviderError } = await supabase
+        .from('providers')
+        .select('*')
+        .eq('name', order.metadata.provider_name)
+        .single();
+        
+      if (namedProviderError) {
+        throw new Error(`Provedor ${order.metadata.provider_name} não encontrado`);
+      }
+      
+      providerResponse = await checkOrderStatus(
+        namedProvider.id,
+        order.external_order_id,
+        namedProvider.api_url,
+        namedProvider.api_key
       );
     } else {
       // Fallback para o provedor Fama nas Redes
@@ -147,7 +156,9 @@ async function processOrderStatus(supabase: any, order: any) {
       status: providerResponse.status,
       start_count: providerResponse.start_count,
       remains: providerResponse.remains,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      charge: providerResponse.charge,
+      currency: providerResponse.currency
     };
 
     const newMetadata = {
@@ -172,16 +183,23 @@ async function processOrderStatus(supabase: any, order: any) {
     if (updateError) {
       console.error('[CheckOrderStatusPublic] Erro ao atualizar pedido:', updateError);
       return NextResponse.json(
-        { error: 'Failed to update order status' },
+        { error: 'Failed to update order status', details: updateError.message },
         { status: 500 }
       );
     }
 
+    // Adicionar o status traduzido para o frontend
+    const translatedStatus = translateOrderStatus(normalizedStatus);
+    const responseData = {
+      ...updatedOrder,
+      translated_status: translatedStatus
+    };
+
     return NextResponse.json({
       status: 'success',
-      data: updatedOrder
+      data: responseData
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('[CheckOrderStatusPublic] Erro ao verificar status no provedor:', error);
     
     // Atualizar o metadata com o erro
@@ -189,7 +207,7 @@ async function processOrderStatus(supabase: any, order: any) {
       ...order.metadata,
       provider_status: {
         ...order.metadata.provider_status,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
         updated_at: new Date().toISOString()
       }
     };
@@ -200,11 +218,11 @@ async function processOrderStatus(supabase: any, order: any) {
         metadata: newMetadata
       })
       .eq('id', order.id);
-
+      
     return NextResponse.json(
       { 
-        error: 'Failed to check order status with provider',
-        details: error.message
+        error: 'Failed to check order status',
+        details: error instanceof Error ? error.message : 'Erro desconhecido'
       },
       { status: 500 }
     );
