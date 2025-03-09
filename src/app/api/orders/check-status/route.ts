@@ -25,17 +25,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
     }
     
-    if (!order.provider_id) {
-      return NextResponse.json({ error: 'Pedido não tem provedor associado' }, { status: 400 });
-    }
-    
+    // Verificar se o pedido tem um provedor associado (em qualquer um dos campos possíveis)
     if (!order.external_order_id) {
       return NextResponse.json({ error: 'Pedido não tem ID externo' }, { status: 400 });
     }
     
     try {
       // Verificar o status do pedido no provedor
-      const statusResponse = await checkOrderStatus(order.external_order_id, order.provider_id);
+      let providerId = order.provider_id;
+      
+      // Se não tiver provider_id direto, tentar pegar do metadata
+      if (!providerId && order.metadata?.provider?.id) {
+        providerId = order.metadata.provider.id;
+      }
+      
+      // Se ainda não tiver, tentar usar o provider_name como fallback
+      if (!providerId && order.metadata?.provider_name) {
+        providerId = order.metadata.provider_name;
+      }
+      
+      if (!providerId) {
+        return NextResponse.json({ 
+          error: 'Pedido não tem provedor associado válido',
+          order_id: order_id,
+          external_order_id: order.external_order_id
+        }, { status: 400 });
+      }
+      
+      const statusResponse = await checkOrderStatus(
+        order.external_order_id, // Manter como string, a função checkOrderStatus fará a conversão
+        providerId
+      );
       
       console.log('Status do pedido:', statusResponse);
       
