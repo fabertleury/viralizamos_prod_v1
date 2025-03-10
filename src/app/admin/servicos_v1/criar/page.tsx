@@ -96,6 +96,7 @@ export default function CriarServicoPage() {
     checkout_type_id: '',
     status: true,
     type: '', // Adicionado o campo type
+    social_id: '', // Adicionado o campo social_id
   });
   
   // Estado para refill (será usado apenas no metadata)
@@ -260,13 +261,28 @@ export default function CriarServicoPage() {
   // Efeito para sugerir automaticamente o tipo de checkout com base no tipo de serviço
   useEffect(() => {
     if (formData.type && checkoutTypes.length > 0) {
-      // Se o tipo for curtidas, sugerir "Mostrar Posts"
-      // Se o tipo for seguidores, sugerir "Apenas Link do Usuário"
-      const checkoutTypeToSuggest = formData.type === 'curtidas' 
-        ? checkoutTypes.find(ct => ct.name === 'Mostrar Posts')
-        : formData.type === 'seguidores'
-          ? checkoutTypes.find(ct => ct.name === 'Apenas Link do Usuário')
-          : null;
+      // Sugerir o tipo de checkout com base no tipo de serviço
+      let checkoutTypeToSuggest = null;
+      
+      switch (formData.type) {
+        case 'curtidas':
+          checkoutTypeToSuggest = checkoutTypes.find(ct => ct.name === 'Mostrar Posts');
+          break;
+        case 'seguidores':
+          checkoutTypeToSuggest = checkoutTypes.find(ct => ct.name === 'Apenas Link do Usuário');
+          break;
+        case 'visualizacoes':
+          checkoutTypeToSuggest = checkoutTypes.find(ct => ct.name === 'Mostrar Posts');
+          break;
+        case 'comentarios':
+          checkoutTypeToSuggest = checkoutTypes.find(ct => ct.name === 'Mostrar Posts');
+          break;
+        case 'reels':
+          checkoutTypeToSuggest = checkoutTypes.find(ct => ct.name === 'Mostrar Posts');
+          break;
+        default:
+          break;
+      }
       
       if (checkoutTypeToSuggest) {
         setFormData(prev => ({
@@ -367,7 +383,7 @@ export default function CriarServicoPage() {
       router.push('/admin/servicos_v1');
     } catch (error) {
       console.error('Erro ao criar serviço:', error);
-      toast.error(`Erro ao criar serviço: ${error.message}`);
+      toast.error(`Erro ao criar serviço: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     } finally {
       setLoading(false);
     }
@@ -526,6 +542,9 @@ export default function CriarServicoPage() {
               <SelectContent className="bg-white">
                 <SelectItem value="curtidas">Curtidas</SelectItem>
                 <SelectItem value="seguidores">Seguidores</SelectItem>
+                <SelectItem value="visualizacoes">Visualizações</SelectItem>
+                <SelectItem value="comentarios">Comentários</SelectItem>
+                <SelectItem value="reels">Reels</SelectItem>
               </SelectContent>
             </Select>
           </div>

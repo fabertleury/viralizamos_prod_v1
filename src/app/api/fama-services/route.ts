@@ -86,6 +86,11 @@ export async function POST(request: NextRequest) {
             );
           }
 
+          // Garantir que o external_id seja uma string
+          if (serviceDetails.service) {
+            serviceDetails.external_id = serviceDetails.service.toString();
+          }
+
           return NextResponse.json(serviceDetails);
         } catch (detailsError) {
           console.error('Erro ao buscar detalhes do serviço:', detailsError);

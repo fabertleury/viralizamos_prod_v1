@@ -1,6 +1,7 @@
 export interface InstagramPost {
   id: string;
   code: string;
+  shortcode?: string;
   image_versions?: {
     url: string;
     width: number;
@@ -10,11 +11,19 @@ export interface InstagramPost {
   comment_count: number;
   views_count?: number;
   is_video?: boolean;
-  caption?: {
+  is_reel?: boolean;
+  caption?: string | {
     text: string;
   };
   link: string;
-  media_type?: number;
+  media_type?: number | string;
   video_url?: string;
   video_duration?: number;
+  thumbnail_url?: string;
+  image_url?: string;
+  display_url?: string;
+  permalink?: string;
+  instagram_url?: string;
+  selected?: boolean;
+  displayName?: string;
 }

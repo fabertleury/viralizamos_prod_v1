@@ -85,22 +85,112 @@ export default function EditarServicoImportadoPage() {
   const [checkoutTypes, setCheckoutTypes] = useState<CheckoutType[]>([]);
 
   useEffect(() => {
-    // Buscar detalhes do serviço da API do Fama Redes
-    const fetchFamaService = async () => {
+    // Buscar detalhes do serviço do provedor correto
+    const fetchServiceDetails = async () => {
       try {
         setServiceId(serviceId);
         
-        const response = await axios.post('/api/fama-services', {
-          action: 'service_details',
-          service_id: serviceId
-        });
-
-        const service = response.data;
+        // Primeiro, verificar se o serviço já existe no banco de dados
+        const { data: existingServiceInDb, error: dbError } = await supabase
+          .from('services')
+          .select('*, provider:providers(*)')
+          .eq('id', serviceId)
+          .single();
+        
+        if (existingServiceInDb) {
+          console.log('Serviço encontrado no banco de dados:', existingServiceInDb);
+          
+          // Carregar os dados do serviço existente
+          setServiceId(existingServiceInDb.id || '');
+          setFamaServiceId(existingServiceInDb.external_id || '');
+          setName(existingServiceInDb.name || '');
+          setType(existingServiceInDb.type || '');
+          setCategory(existingServiceInDb.category_id || '');
+          setSubcategory(existingServiceInDb.subcategory_id || '');
+          setDescription(existingServiceInDb.descricao || '');
+          setMinOrder(existingServiceInDb.min_order?.toString() || '0');
+          setMaxOrder(existingServiceInDb.max_order?.toString() || '0');
+          setQuantidade(existingServiceInDb.quantidade?.toString() || '0');
+          setPreco(existingServiceInDb.preco?.toString() || '0');
+          setSuccessRate(existingServiceInDb.success_rate?.toString() || '0');
+          setCheckoutTypeId(existingServiceInDb.checkout_type_id || '');
+          setStatus(existingServiceInDb.status !== false);
+          setQuantityPrices(existingServiceInDb.service_variations || existingServiceInDb.metadata?.quantidade_preco || [{ quantidade: 50, preco: 10.00, preco_original: undefined }]);
+          setServiceDetails(existingServiceInDb.service_details || existingServiceInDb.metadata?.serviceDetails || [{ title: '', emoji: '' }]);
+          setRefill(existingServiceInDb.metadata?.refill || false);
+          
+          // Detectar o provedor a partir dos metadados ou da relação
+          if (existingServiceInDb.provider) {
+            setProviderName(existingServiceInDb.provider.name);
+          } else if (existingServiceInDb.metadata?.origem) {
+            const origem = existingServiceInDb.metadata.origem;
+            setProviderName(origem);
+          }
+          
+          return; // Não precisa buscar da API externa
+        }
+        
+        // Se não encontrou no banco, buscar da API do provedor
+        // Primeiro, precisamos descobrir qual provedor usar
+        const { data: providers } = await supabase
+          .from('providers')
+          .select('*')
+          .eq('status', true);
+        
+        // Tentar encontrar o provedor correto para este serviço
+        // Como estamos na página de edição, vamos tentar cada provedor até encontrar o serviço
+        let serviceData = null;
+        let providerUsed = null;
+        
+        for (const provider of providers || []) {
+          try {
+            console.log(`Tentando buscar serviço do provedor: ${provider.name}`);
+            
+            const response = await axios.post('/api/providers/services', {
+              provider,
+              action: 'service_details',
+              service_id: serviceId
+            });
+            
+            if (response.data && response.data.service) {
+              serviceData = response.data;
+              providerUsed = provider;
+              console.log(`Serviço encontrado no provedor: ${provider.name}`, serviceData);
+              break;
+            }
+          } catch (error) {
+            console.log(`Serviço não encontrado no provedor: ${provider.name}`);
+          }
+        }
+        
+        if (!serviceData || !providerUsed) {
+          // Como fallback, tentar a API específica do Fama Redes
+          console.log('Tentando API específica do Fama Redes como fallback');
+          const response = await axios.post('/api/fama-services', {
+            action: 'service_details',
+            service_id: serviceId
+          });
+          
+          serviceData = response.data;
+          setProviderName('Fama Redes');
+        } else {
+          setProviderName(providerUsed.name);
+        }
+        
+        if (!serviceData) {
+          toast.error('Não foi possível encontrar o serviço em nenhum provedor');
+          return;
+        }
+        
+        // Garantir que o external_id seja uma string e esteja limpo
+        const cleanExternalId = serviceData.service ? serviceData.service.toString().replace(/"/g, '') : '';
+        console.log('External ID limpo:', cleanExternalId);
+        
         // Verificar se o serviço já existe no banco de dados antes de carregar
         const { data: existingService } = await supabase
           .from('services')
           .select('*')
-          .eq('external_id', service.external_id)
+          .eq('external_id', cleanExternalId)
           .single();
 
         if (existingService) {
@@ -141,7 +231,7 @@ export default function EditarServicoImportadoPage() {
       }
     };
 
-    fetchFamaService();
+    fetchServiceDetails();
   }, [serviceId]);
 
   // Buscar dados de seleção
@@ -356,6 +446,9 @@ export default function EditarServicoImportadoPage() {
               <option value="">Selecione um tipo</option>
               <option value="curtidas">Curtidas</option>
               <option value="seguidores">Seguidores</option>
+              <option value="visualizacoes">Visualizações</option>
+              <option value="comentarios">Comentários</option>
+              <option value="reels">Reels</option>
             </select>
           </div>
 

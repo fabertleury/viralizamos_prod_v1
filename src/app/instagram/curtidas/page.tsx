@@ -30,12 +30,13 @@ interface Service {
     };
     [key: string]: any;
   };
+  type: string;
 }
 
 export default function CurtidasPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedServices, setSelectedServices] = useState<{[key: string]: number}>({});
+  const [selectedServices, setSelectedServices] = useState<Record<string, number>>({});
   const supabase = createClient();
 
   useEffect(() => {
@@ -58,7 +59,8 @@ export default function CurtidasPage() {
             status,
             metadata,
             service_variations,
-            checkout_type_id
+            checkout_type_id,
+            type
           `)
           .eq('status', true)
           .order('preco', { ascending: true });
@@ -77,7 +79,8 @@ export default function CurtidasPage() {
           return (
             categoria.includes('curtida') || 
             nome.includes('curtida') || 
-            nome.includes('like')
+            nome.includes('like') ||
+            service.type === 'curtidas'
           );
         }).map(service => {
           // Tratar metadata de forma segura
@@ -92,6 +95,13 @@ export default function CurtidasPage() {
 
           // Verificar se service_variations existe, senão usar metadata.quantidade_preco
           const variations = service.service_variations || (metadata.quantidade_preco as any[]) || [];
+          
+          // Garantir que as variações tenham o formato correto com preco_original
+          const formattedVariations = variations.map((v: any) => ({
+            quantidade: v.quantidade,
+            preco: v.preco,
+            preco_original: v.preco_original || null
+          }));
 
           return {
             id: service.id,
@@ -104,10 +114,11 @@ export default function CurtidasPage() {
             categoria: service.categoria,
             status: service.status,
             discount_price: metadata.discount_price,
-            quantidade_preco: variations,
+            quantidade_preco: formattedVariations,
             metadata: {
               service_details: metadata.service_details || {}
-            }
+            },
+            type: service.type
           };
         });
 
@@ -148,17 +159,27 @@ export default function CurtidasPage() {
   };
 
   const getOriginalPrice = (service: Service) => {
-    const quantity = selectedServices[service.id] || 0;
-    const variation = service.quantidade_preco.find(variation => variation.quantidade === quantity);
-    return variation?.preco_original ? variation.preco_original.toFixed(2) : null;
+    if (service.discount_price !== undefined) return service.price;
+    
+    // Obter preço original da variação selecionada
+    const quantity = selectedServices[service.id];
+    const variation = service.quantidade_preco.find(v => v.quantidade === quantity);
+    
+    return variation && variation.preco_original ? variation.preco_original : service.price;
   };
 
   const hasDiscount = (service: Service) => {
-    return getOriginalPrice(service) !== null;
+    if (service.discount_price !== undefined) return true;
+    
+    // Verificar se existe preço promocional nas variações
+    const quantity = selectedServices[service.id];
+    const variation = service.quantidade_preco.find(v => v.quantidade === quantity);
+    
+    return variation && variation.preco_original && variation.preco_original > variation.preco;
   };
 
-  const isServiceSelected = (serviceId: string) => {
-    return selectedServices[serviceId] && selectedServices[serviceId] > 0;
+  const isServiceSelected = (serviceId: string): boolean => {
+    return selectedServices[serviceId] !== undefined;
   };
 
   const getServiceDetails = (service: Service) => {

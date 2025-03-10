@@ -103,7 +103,7 @@ function ReelSelector({
       instagram_url: `https://instagram.com/reel/${reel.code || reel.shortcode || id}`
     };
     
-    console.log('🔍 Reel processado:', {
+    console.log('📈 Reel processado:', {
       id: processedReel.id,
       code: processedReel.code,
       views: processedReel.views_count,
@@ -124,7 +124,7 @@ function ReelSelector({
     const totalSelectedItems = selectedPosts.length + selectedReels.length;
     const isAlreadySelected = selectedReels.some(selectedReel => selectedReel.id === reel.id);
     
-    console.log('🔍 Reel selecionado - dados completos:', {
+    console.log('👉 Reel selecionado - dados completos:', {
       id: reel.id,
       code: reel.code,
       shortcode: reel.shortcode,
@@ -147,10 +147,10 @@ function ReelSelector({
     const selectedReel = {
       ...reel,
       selected: true,
-      displayName: `❤️ ${reel.caption || 'Reel sem legenda'}`
+      displayName: `👉 ${typeof reel.caption === 'string' ? reel.caption : 'Reel sem legenda'}`
     };
 
-    console.log('✅ Reel adicionado à seleção:', {
+    console.log('📈 Reel adicionado à seleção:', {
       id: selectedReel.id,
       code: selectedReel.code,
       url: `https://instagram.com/reel/${selectedReel.code}`
@@ -167,7 +167,7 @@ function ReelSelector({
       if (!username) return;
       
       if (reelsCache[username]) {
-        console.log(`📊 Usando cache para reels de ${username}`);
+        console.log(`📁 Usando cache para reels de ${username}`);
         setReels(reelsCache[username]);
         return;
       }
@@ -191,7 +191,7 @@ function ReelSelector({
           }
           
           const data = await response.json();
-          console.log(`📊 Recebidos ${data.length} reels para ${username}`);
+          console.log(`📈 Recebidos ${data.length} reels para ${username}`);
           
           const processedReels = data.map(processReelData);
           
@@ -204,7 +204,7 @@ function ReelSelector({
           
           if (retryCount < MAX_RETRIES) {
             retryCount++;
-            console.log(`Tentando novamente (${retryCount}/${MAX_RETRIES})...`);
+            console.log(`🔄 Tentando novamente (${retryCount}/${MAX_RETRIES})...`);
             setTimeout(fetchWithRetry, 2000); 
           } else {
             setError('Não foi possível carregar os reels. Por favor, tente novamente mais tarde.');
@@ -219,7 +219,7 @@ function ReelSelector({
     loadReels();
   }, [username]);
 
-  const getProxiedImageUrl = (url: string): string => {
+  const getProxiedImageUrl = (url: string | undefined): string => {
     if (!url || url.includes('placeholder')) {
       return '/images/placeholder-post.svg';
     }
@@ -284,7 +284,7 @@ function ReelSelector({
                     <div className="aspect-square relative">
                       <Image
                         src={imageUrl}
-                        alt={reel.caption || 'Instagram reel'}
+                        alt={typeof reel.caption === 'string' ? reel.caption : 'Instagram reel'}
                         fill
                         sizes="(max-width: 768px) 50vw, 33vw"
                         className="object-cover"
@@ -312,7 +312,7 @@ function ReelSelector({
                     </div>
                     
                     <div className="p-2 bg-white">
-                      <p className="text-xs truncate">{reel.caption || 'Sem legenda'}</p>
+                      <p className="text-xs truncate">{typeof reel.caption === 'string' ? reel.caption : 'Sem legenda'}</p>
                       <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
                         <span>{formatNumber(reel.views_count || 0)} 👁️</span>
                         <span>{formatNumber(reel.comment_count || 0)} 💬</span>

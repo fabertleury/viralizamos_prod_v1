@@ -63,31 +63,53 @@ export async function GET(
     console.log('Dados dos reels recebidos:', JSON.stringify(reelsData, null, 2));
 
     // Processar reels
-    const processedReels = reelsData.data.items.map(reel => ({
-      id: reel.id,
-      code: reel.code,
-      image_versions: reel.image_versions?.items || [],
-      like_count: reel.like_count || 0,
-      comment_count: reel.comment_count || 0,
-      views_count: reel.play_count || 
+    const processedReels = reelsData.data.items.map(reel => {
+      // Obter a URL da thumbnail do reel
+      let thumbnailUrl = '';
+      
+      if (reel.image_versions && reel.image_versions.items && reel.image_versions.items.length > 0) {
+        thumbnailUrl = reel.image_versions.items[0].url;
+      } else if (reel.thumbnail_url) {
+        thumbnailUrl = reel.thumbnail_url;
+      } else if (reel.thumbnail_src) {
+        thumbnailUrl = reel.thumbnail_src;
+      } else if (reel.display_url) {
+        thumbnailUrl = reel.display_url;
+      } else if (reel.image_url) {
+        thumbnailUrl = reel.image_url;
+      }
+      
+      console.log(`Thumbnail para reel ${reel.id}: ${thumbnailUrl}`);
+      
+      return {
+        id: reel.id,
+        code: reel.code,
+        image_versions: reel.image_versions?.items || [],
+        like_count: reel.like_count || 0,
+        comment_count: reel.comment_count || 0,
+        views_count: reel.play_count || 
                    reel.view_count || 
                    reel.views_count || 
                    reel.video_view_count || 
                    reel.ig_play_count || 
                    0,
-      caption: { 
-        text: reel.caption 
-          ? (typeof reel.caption === 'object' 
-            ? reel.caption.text || 'Sem legenda'
-            : String(reel.caption)) 
-          : 'Sem legenda'
-      },
-      link: `https://www.instagram.com/reel/${reel.code}/`,
-      media_type: reel.media_type,
-      is_video: reel.is_video,
-      video_url: reel.video_url,
-      video_duration: reel.video_duration
-    }));
+        caption: { 
+          text: reel.caption 
+            ? (typeof reel.caption === 'object' 
+              ? reel.caption.text || 'Sem legenda'
+              : String(reel.caption)) 
+            : 'Sem legenda'
+        },
+        link: `https://www.instagram.com/reel/${reel.code}/`,
+        media_type: reel.media_type,
+        is_video: reel.is_video,
+        video_url: reel.video_url,
+        video_duration: reel.video_duration,
+        thumbnail_url: thumbnailUrl,
+        image_url: thumbnailUrl,
+        display_url: thumbnailUrl
+      };
+    });
 
     console.log('Reels processados:', processedReels.map(reel => ({
       id: reel.id,

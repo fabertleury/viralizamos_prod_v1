@@ -29,6 +29,7 @@ interface Service {
     };
     [key: string]: any;
   };
+  type: string;
 }
 
 export default function SeguidoresPage() {
@@ -57,7 +58,8 @@ export default function SeguidoresPage() {
             status,
             metadata,
             service_variations,
-            checkout_type_id
+            checkout_type_id,
+            type
           `)
           .eq('status', true)
           .order('preco', { ascending: true });
@@ -76,7 +78,8 @@ export default function SeguidoresPage() {
           return (
             categoria.includes('seguidor') || 
             nome.includes('seguidor') || 
-            nome.includes('follower')
+            nome.includes('follower') ||
+            service.type === 'seguidores'
           );
         }).map(service => {
           // Tratar metadata de forma segura
@@ -91,6 +94,13 @@ export default function SeguidoresPage() {
 
           // Verificar se service_variations existe, senão usar metadata.quantidade_preco
           const variations = service.service_variations || (metadata.quantidade_preco as any[]) || [];
+          
+          // Garantir que as variações tenham o formato correto com preco_original
+          const formattedVariations = variations.map(v => ({
+            quantidade: v.quantidade,
+            preco: v.preco,
+            preco_original: v.preco_original || null
+          }));
 
           return {
             id: service.id,
@@ -103,10 +113,11 @@ export default function SeguidoresPage() {
             categoria: service.categoria,
             status: service.status,
             discount_price: metadata.discount_price,
-            quantidade_preco: variations,
+            quantidade_preco: formattedVariations,
             metadata: {
               service_details: metadata.service_details || {}
-            }
+            },
+            type: service.type
           };
         });
 
@@ -147,13 +158,23 @@ export default function SeguidoresPage() {
   };
 
   const getOriginalPrice = (service: Service) => {
-    const quantity = selectedServices[service.id] || 0;
-    const variation = service.quantidade_preco.find(variation => variation.quantidade === quantity);
-    return variation?.preco_original ? variation.preco_original.toFixed(2) : null;
+    if (service.discount_price !== undefined) return service.price;
+    
+    // Obter preço original da variação selecionada
+    const quantity = selectedServices[service.id];
+    const variation = service.quantidade_preco.find(v => v.quantidade === quantity);
+    
+    return variation && variation.preco_original ? variation.preco_original : service.price;
   };
 
   const hasDiscount = (service: Service) => {
-    return getOriginalPrice(service) !== null;
+    if (service.discount_price !== undefined) return true;
+    
+    // Verificar se existe preço promocional nas variações
+    const quantity = selectedServices[service.id];
+    const variation = service.quantidade_preco.find(v => v.quantidade === quantity);
+    
+    return variation && variation.preco_original && variation.preco_original > variation.preco;
   };
 
   const isServiceSelected = (serviceId: string) => {
@@ -236,9 +257,6 @@ export default function SeguidoresPage() {
                             <h3 className="text-2xl font-bold text-gray-900 break-words">
                               {service.name}
                             </h3>
-                            <p className="text-sm font-medium text-purple-600 mt-1 bg-purple-50 py-1 px-2 rounded-md mx-auto inline-block">
-                              Divida em até 5 posts diferentes!
-                            </p>
                           </div>
 
                           {/* Detalhes adicionais do serviço */}

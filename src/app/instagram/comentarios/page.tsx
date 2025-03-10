@@ -19,7 +19,7 @@ interface Service {
   categoria: string;
   status: boolean;
   discount_price?: number;
-  quantidade_preco: { quantidade: number; preco: number }[];
+  quantidade_preco: { quantidade: number; preco: number; preco_original?: number }[];
   metadata?: {
     service_details?: {
       global_reach?: boolean;
@@ -29,6 +29,7 @@ interface Service {
     };
     [key: string]: any;
   };
+  type: string;
 }
 
 export default function ComentariosPage() {
@@ -56,7 +57,8 @@ export default function ComentariosPage() {
             status,
             metadata,
             service_variations,
-            checkout_type_id
+            checkout_type_id,
+            type
           `)
           .eq('status', true)
           .order('preco', { ascending: true });
@@ -75,7 +77,8 @@ export default function ComentariosPage() {
             categoria.includes('comentario') || 
             categoria.includes('comentário') || 
             nome.includes('comentario') || 
-            nome.includes('comentário')
+            nome.includes('comentário') ||
+            service.type === 'comentarios'
           );
         }).map(service => {
           let metadata: Record<string, any> = {};
@@ -88,6 +91,13 @@ export default function ComentariosPage() {
           }
 
           const variations = service.service_variations || (metadata.quantidade_preco as any[]) || [];
+          
+          // Garantir que as variações tenham o formato correto com preco_original
+          const formattedVariations = variations.map(v => ({
+            quantidade: v.quantidade,
+            preco: v.preco,
+            preco_original: v.preco_original || null
+          }));
 
           return {
             id: service.id,
@@ -100,10 +110,11 @@ export default function ComentariosPage() {
             categoria: service.categoria,
             status: service.status,
             discount_price: metadata.discount_price,
-            quantidade_preco: variations,
+            quantidade_preco: formattedVariations,
             metadata: {
               service_details: metadata.service_details || {}
-            }
+            },
+            type: service.type
           };
         });
 
@@ -142,11 +153,23 @@ export default function ComentariosPage() {
   };
 
   const hasDiscount = (service: Service) => {
-    return service.discount_price !== undefined;
+    if (service.discount_price !== undefined) return true;
+    
+    // Verificar se existe preço promocional nas variações
+    const quantity = selectedServices[service.id];
+    const variation = service.quantidade_preco.find(v => v.quantidade === quantity);
+    
+    return variation && variation.preco_original && variation.preco_original > variation.preco;
   };
 
   const getOriginalPrice = (service: Service) => {
-    return service.price;
+    if (service.discount_price !== undefined) return service.price;
+    
+    // Obter preço original da variação selecionada
+    const quantity = selectedServices[service.id];
+    const variation = service.quantidade_preco.find(v => v.quantidade === quantity);
+    
+    return variation && variation.preco_original ? variation.preco_original : service.price;
   };
 
   const calculateTotalPrice = (service: Service) => {

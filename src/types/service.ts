@@ -1,7 +1,7 @@
 export interface Service {
   id: string;
   name: string;
-  type: 'curtidas' | 'seguidores' | 'visualizacoes';
+  type: 'curtidas' | 'seguidores' | 'visualizacoes' | 'comentarios' | 'reels';
   quantidade: number;
   preco: number;
   descricao: string;
