@@ -69,17 +69,21 @@ interface Service {
   }
 }
 
+// Interface para o provedor
 interface Provider {
   id: string;
   name: string;
-  slug: string;
-  description: string;
-  api_key: string;
-  api_url: string;
+  api_key?: string;
+  api_url?: string;
   status: boolean;
-  metadata: any;
-  created_at: string;
-  updated_at: string;
+  metadata?: {
+    last_check?: string;
+    balance?: number;
+    currency?: string;
+    api_status?: 'online' | 'inactive' | 'error' | 'checking' | 'active';
+    api_error?: string;
+  };
+  created_at?: string;
 }
 
 export default function ServicosV1Page() {
@@ -107,6 +111,61 @@ export default function ServicosV1Page() {
 
   // Estado para armazenar o mapa de provedores
   const [providersMap, setProvidersMap] = useState<Record<string, Provider>>({});
+
+  // Função para buscar provedores
+  const fetchProviders = async () => {
+    try {
+      const { data: providersData, error: providersError } = await supabase
+        .from('providers')
+        .select('*');
+        
+      if (providersError) {
+        console.error('Erro ao buscar provedores:', providersError);
+        throw providersError;
+      }
+      
+      // Criar um mapa de provedores para fácil acesso por ID
+      const providersMap = (providersData || []).reduce((map, provider) => {
+        map[provider.id] = provider;
+        return map;
+      }, {});
+
+      setProvidersMap(providersMap);
+      
+      console.log('Provedores carregados:', providersData?.length);
+      if (providersData?.length > 0) {
+        console.log('Exemplo de provedor:', providersData[0]);
+      }
+      
+      return providersMap;
+    } catch (error) {
+      console.error('Erro ao buscar provedores:', error);
+      toast.error('Erro ao carregar provedores');
+      return {};
+    }
+  };
+
+  // Função para obter o nome do provedor
+  const getProviderName = (providerId: string) => {
+    // Primeiro tenta buscar do mapa de provedores carregado do banco
+    if (providersMap[providerId]) {
+      return providersMap[providerId].name;
+    }
+    
+    // Se não encontrar, assume que está ativo
+    return `Provedor ${providerId.substring(0, 8)}`;
+  };
+
+  // Função para obter o status do provedor
+  const getProviderStatus = (providerId: string) => {
+    // Primeiro tenta buscar do mapa de provedores carregado do banco
+    if (providersMap[providerId]) {
+      return providersMap[providerId].status;
+    }
+    
+    // Se não encontrar, assume que está ativo
+    return true;
+  };
 
   // Função para alternar a expansão das variações de um serviço
   const toggleServiceVariations = (serviceId: string) => {
@@ -349,57 +408,50 @@ export default function ServicosV1Page() {
               name,
               icon
             )
+          ),
+          provider:provider_id(
+            id,
+            name,
+            api_key,
+            api_url,
+            status,
+            metadata
           )
         `)
         .order('name');
 
       if (servicesError) throw servicesError;
 
-      // Buscar todos os provedores para ter uma referência completa
-      const { data: providersData, error: providersError } = await supabase
-        .from('providers')
-        .select('*');
-        
-      if (providersError) {
-        console.error('Erro ao buscar provedores:', providersError);
-        throw providersError;
-      }
-      
-      // Criar um mapa de provedores para fácil acesso por ID
-      const providersMap = (providersData || []).reduce((map, provider) => {
-        map[provider.id] = provider;
-        return map;
-      }, {});
-
-      setProvidersMap(providersMap);
-      
-      console.log('Provedores carregados:', providersData?.length);
-      if (providersData?.length > 0) {
-        console.log('Exemplo de provedor:', providersData[0]);
-      }
+      // Buscar provedores para backup
+      const providersMap = await fetchProviders();
 
       // Adicionar informações completas do provedor aos serviços
-      const enhancedServices = (servicesData || []).map(service => {
-        // Se não tem provedor carregado mas tem provider_id, buscar do mapa
-        if (service.provider_id && providersMap[service.provider_id]) {
-          return {
-            ...service,
-            provider: providersMap[service.provider_id]
-          };
+      const servicesWithProviders = (servicesData || []).map(service => {
+        // Se o provedor já foi carregado via join, usar essa informação
+        if (service.provider) {
+          return service;
         }
         
-        // Caso contrário, manter como está
-        return service;
+        // Caso contrário, tentar buscar do mapa de provedores
+        const providerId = service.provider_id;
+        const provider = providerId ? providersMap[providerId] : null;
+        
+        return {
+          ...service,
+          provider: provider || {
+            name: providerId ? `Provedor ID: ${providerId.substring(0, 8)}...` : 'Sem provedor',
+            status: true
+          }
+        };
       });
 
-      console.log('Serviços carregados:', enhancedServices?.length);
-      if (enhancedServices?.length > 0) {
-        console.log('Exemplo de serviço:', enhancedServices[0]);
-        console.log('Provider ID:', enhancedServices[0]?.provider_id);
-        console.log('Provider:', enhancedServices[0]?.provider);
+      setServices(servicesWithProviders);
+      console.log('Serviços carregados:', servicesWithProviders.length);
+      if (servicesWithProviders.length > 0) {
+        console.log('Exemplo de serviço:', servicesWithProviders[0]);
+        console.log('Provider ID:', servicesWithProviders[0].provider_id);
+        console.log('Provider:', servicesWithProviders[0].provider);
       }
-      
-      setServices(enhancedServices || []);
     } catch (error) {
       console.error('Erro ao buscar serviços:', error);
       toast.error('Erro ao carregar serviços');
@@ -600,12 +652,7 @@ export default function ServicosV1Page() {
                         <span className="mr-1">
                           <FontAwesomeIcon icon={faServer} className="text-purple-500" />
                         </span>
-                        {providersMap[service.provider_id]?.name || 'Provedor não encontrado'}
-                        {providersMap[service.provider_id]?.status === false && (
-                          <span className="ml-2 px-1.5 py-0.5 bg-red-100 text-red-800 rounded-full text-xs">
-                            Inativo
-                          </span>
-                        )}
+                        {service.provider?.name || (service.provider_id ? `ID: ${service.provider_id.substring(0, 8)}...` : 'Sem provedor')}
                       </div>
                     </div>
 

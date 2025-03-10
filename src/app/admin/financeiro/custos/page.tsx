@@ -60,8 +60,9 @@ export default function CustosServicosPage() {
   useEffect(() => {
     if (selectedServiceId) {
       const selectedService = services.find(service => service.id === selectedServiceId);
-      if (selectedService && selectedService.price) {
-        setCostPer1000(selectedService.price.toString());
+      if (selectedService) {
+        // Usar o preço base do serviço como custo inicial
+        setCostPer1000(selectedService.preco?.toString() || '');
       }
     }
   }, [selectedServiceId, services]);

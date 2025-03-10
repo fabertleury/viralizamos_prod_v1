@@ -3,24 +3,19 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import { useInstagramAPI } from '@/hooks/useInstagramAPI';
 import { LoadingProfileModal } from '../../components/LoadingProfileModal';
 import { toast } from 'sonner';
 import { Header } from '@/components/layout/header';
 import { useForm } from 'react-hook-form';
 import { fetchInstagramProfile } from '@/lib/services/instagram-profile';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { maskPhone } from '@/lib/utils/mask';
 import { 
   faCoffee, faLemon, faCar, faHeart, faStar, faClock, faCheck, 
   faShield, faRocket, faGlobe, faUsers, faThumbsUp, faEye, faComment, 
   faBolt, faMedal, faTrophy, faGem, faCrown, faFire, faSmile, faLock, faUnlock 
 } from '@fortawesome/free-solid-svg-icons';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+import { createClient } from '@/lib/supabase/client';
 
 interface ServiceDetail {
   title: string;
@@ -44,18 +39,11 @@ interface Service {
     quantidade_preco?: QuantidadePreco[];
     serviceDetails?: ServiceDetail[];
   };
-  checkout: {
-    id: string;
-    name: string;
-    slug: string;
-  };
   external_id?: string;
 }
 
 interface FormData {
   instagram_username: string;
-  whatsapp: string;
-  email: string;
   is_public_confirmed: boolean;
 }
 
@@ -65,27 +53,27 @@ interface ProfileData {
   profile_pic_url?: string;
   follower_count?: number;
   following_count?: number;
-  is_private?: boolean;
-  is_verified?: boolean;
-  source?: string;
-  email: string;
-  whatsapp: string;
+  media_count?: number;
+  is_private: boolean;
 }
 
 export default function Step1Page() {
+  const [username, setUsername] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [profileData, setProfileData] = useState<any>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [loadingStage, setLoadingStage] = useState<'loading' | 'error' | 'done'>('loading');
   const [service, setService] = useState<Service | null>(null);
-  const [loadingStage, setLoadingStage] = useState<'searching' | 'checking' | 'loading' | 'done' | 'error'>('searching');
-  const [profileData, setProfileData] = useState<ProfileData | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
-  
+  const [loadingStageService, setLoadingStageService] = useState<'searching' | 'checking' | 'loading' | 'done' | 'error'>('searching');
+
   const router = useRouter();
+  const { fetchInstagramProfileInfo } = useInstagramAPI();
   const searchParams = useSearchParams();
   const serviceId = searchParams.get('service_id');
   const quantity = searchParams.get('quantity');
 
-  const { register, handleSubmit, formState: { errors }, setValue } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     defaultValues: {
       is_public_confirmed: false
     }
@@ -98,71 +86,73 @@ export default function Step1Page() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('services')
-        .select(`
-          *,
-          checkout:checkout_type_id(
-            id,
-            name,
-            slug
-          )
-        `)
-        .eq('id', serviceId)
-        .single();
+      try {
+        setLoadingStageService('searching');
+        
+        // Criar cliente do Supabase
+        const supabase = createClient();
+        
+        // Buscar serviço pelo ID - Atualizado para usar o nome correto da tabela 'services'
+        const { data, error } = await supabase
+          .from('services')
+          .select('*')
+          .eq('id', serviceId)
+          .single();
+        
+        if (error) {
+          console.error('Erro ao buscar detalhes do serviço:', error);
+          toast.error('Erro ao buscar detalhes do serviço');
+          setLoadingStageService('error');
+          return;
+        }
+        
+        if (!data) {
+          toast.error('Serviço não encontrado');
+          setLoadingStageService('error');
+          return;
+        }
 
-      if (error) {
+        // Definir o serviço com todos os dados
+        setService(data);
+        setLoadingStageService('done');
+
+        // Verificar preço com base na quantidade escolhida
+        const variations = data.service_variations || data.metadata?.quantidade_preco || [];
+        const selectedVariation = variations.find(
+          (v: QuantidadePreco) => v.quantidade === parseInt(quantity || '0')
+        );
+        if (selectedVariation) {
+          setService(prevService => {
+            if (prevService) {
+              return { ...prevService, preco: selectedVariation.preco };
+            }
+            return prevService;
+          });
+        } else {
+          toast.error('Variação de quantidade não encontrada');
+        }
+      } catch (error: any) {
+        console.error('Erro ao buscar detalhes do serviço:', error);
         toast.error('Erro ao buscar detalhes do serviço');
-        return;
-      }
-
-      // Definir o serviço com todos os dados
-      setService(data);
-
-      // Verificar preço com base na quantidade escolhida
-      const variations = data.service_variations || data.metadata?.quantidade_preco || [];
-      const selectedVariation = variations.find(
-        (v: QuantidadePreco) => v.quantidade === parseInt(quantity || '0')
-      );
-      if (selectedVariation) {
-        setService(prevService => {
-          if (prevService) {
-            return { ...prevService, preco: selectedVariation.preco };
-          }
-          return prevService;
-        });
-      } else {
-        toast.error('Variação de quantidade não encontrada');
+        setLoadingStageService('error');
       }
     };
 
     fetchServiceData();
-  }, [serviceId, quantity, supabase]);
+  }, [serviceId, quantity]);
 
-  const onSubmit = async (formData: FormData) => {
-    if (!formData.is_public_confirmed) {
-      toast.error('Confirme que seu perfil é público');
-      return;
-    }
-
-    // Formatar o WhatsApp
-    const formattedWhatsApp = formData.whatsapp.replace(/\D/g, '');
-    if (formattedWhatsApp.length < 10) {
-      toast.error('WhatsApp inválido');
-      return;
-    }
-
+  // Função para verificar o perfil do Instagram usando a API em cascata
+  const checkProfile = async (usernameToCheck: string) => {
     setIsLoading(true);
-    setIsModalOpen(true);
-    setLoadingStage('searching');
-    setError(undefined);
-
+    setError(null);
+    setShowModal(true);
+    setLoadingStage('loading');
+    
     try {
-      // Usar a API em cascata para verificar o perfil
-      const username = formData.instagram_username.replace('@', '');
+      console.log(`Verificando perfil: ${usernameToCheck}`);
       
-      setLoadingStage('loading');
-      const response = await fetch(`/api/instagram/graphql-check?username=${username}`);
+      // Usar a API em cascata para verificar o perfil
+      const response = await fetch(`/api/instagram/graphql-check?username=${usernameToCheck}`);
       const data = await response.json();
       
       if (!response.ok) {
@@ -178,52 +168,59 @@ export default function Step1Page() {
         following_count: data.following_count,
         is_private: data.is_private,
         is_verified: data.is_verified,
-        source: data.source,
-        // Adicionar os dados do formulário
-        email: formData.email,
-        whatsapp: formattedWhatsApp
+        source: data.source
       };
       
+      console.log('Dados do perfil:', profileInfo);
       setProfileData(profileInfo);
       
       if (profileInfo.is_private) {
+        console.log('Perfil privado detectado:', profileInfo);
         setLoadingStage('error');
-        setError('Perfil privado');
         return;
       }
       
+      // Perfil está público, redirecionar para a próxima etapa
       setLoadingStage('done');
       
       // Armazenar dados do perfil e do serviço no localStorage para a próxima etapa
       const checkoutData = {
-        profileData: profileInfo,
+        profileData: {
+          ...profileInfo,
+          email: '',
+          whatsapp: ''
+        },
         serviceId: serviceId,
-        external_id: service?.external_id || serviceId, // Armazenar tanto o serviceId quanto o external_id
-        quantity: quantity || service?.quantidade
+        external_id: service?.external_id || serviceId, 
+        quantity: quantity || service?.quantidade,
+        timestamp: new Date().getTime() 
       };
       localStorage.setItem('checkoutProfileData', JSON.stringify(checkoutData));
       
-      router.push(`/checkout/instagram/seguidores/step2?username=${encodeURIComponent(username)}`);
+      router.push(`/checkout/instagram/seguidores/step2?username=${encodeURIComponent(usernameToCheck)}&service_id=${serviceId}`);
     } catch (error: any) {
+      console.error('Erro ao verificar perfil:', error);
+      setError(error.message || 'Erro ao verificar o perfil');
       setLoadingStage('error');
-      setError(error.message || 'Erro ao verificar perfil');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleContinue = () => {
-    if (!profileData || !serviceId) return;
-    
-    // Redirecionar para o step2 com os dados
-    const params = new URLSearchParams({
-      username: profileData.username,
-      whatsapp: profileData.whatsapp,
-      email: profileData.email,
-      service_id: serviceId,
-    });
+  // Função para tentar novamente após o usuário tornar o perfil público
+  const handleRetryAfterPrivate = async () => {
+    if (profileData?.username) {
+      await checkProfile(profileData.username);
+    }
+  };
 
-    router.push(`/checkout/instagram/seguidores/step2?${params.toString()}`);
+  const onSubmit = async (formData: FormData) => {
+    if (!formData.is_public_confirmed) {
+      toast.error('Confirme que seu perfil é público');
+      return;
+    }
+
+    await checkProfile(formData.instagram_username);
   };
 
   return (
@@ -249,9 +246,9 @@ export default function Step1Page() {
                 <div className="w-12 h-12 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-xl font-bold mb-3">
                   2
                 </div>
-                <h4 className="font-semibold text-gray-700 text-center">Confirmar Perfil</h4>
+                <h4 className="font-semibold text-gray-700 text-center">Escolher Posts</h4>
                 <p className="text-sm text-gray-500 text-center mt-2">
-                  Confirme seu perfil para seguidores
+                  Selecione os posts para seguidores
                 </p>
               </div>
               <div className="flex flex-col items-center">
@@ -365,60 +362,6 @@ export default function Step1Page() {
                 )}
               </div>
 
-              <div>
-                <label htmlFor="whatsapp" className="block mb-2">WhatsApp</label>
-                <input 
-                  type="text" 
-                  id="whatsapp"
-                  placeholder="(00) 00000-0000" 
-                  className="w-full py-3 border-2 border-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all duration-300 rounded-lg"
-                  {...register('whatsapp', { 
-                    required: 'Informe seu WhatsApp',
-                    pattern: {
-                      value: /^\([0-9]{2}\) [0-9]{4,5}-[0-9]{4}$/,
-                      message: 'Formato de WhatsApp inválido'
-                    }
-                  })}
-                  onChange={(e) => {
-                    const maskedValue = maskPhone(e.target.value);
-                    e.target.value = maskedValue;
-                  }}
-                />
-                {errors.whatsapp && (
-                  <p className="text-red-500 text-sm mt-2 flex items-center space-x-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                    </svg>
-                    <span>{errors.whatsapp.message}</span>
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="email" className="block mb-2">E-mail</label>
-                <input 
-                  type="email" 
-                  id="email"
-                  placeholder="seu@email.com" 
-                  className="w-full py-3 border-2 border-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all duration-300 rounded-lg"
-                  {...register('email', { 
-                    required: 'Informe seu e-mail',
-                    pattern: {
-                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: 'Formato de e-mail inválido'
-                    }
-                  })}
-                />
-                {errors.email && (
-                  <p className="text-red-500 text-sm mt-2 flex items-center space-x-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                    </svg>
-                    <span>{errors.email.message}</span>
-                  </p>
-                )}
-              </div>
-
               <div className="flex items-center space-x-2">
                 <input 
                   type="checkbox" 
@@ -452,22 +395,13 @@ export default function Step1Page() {
         </div>
 
         <LoadingProfileModal 
-          open={isModalOpen}
-          onOpenChange={setIsModalOpen}
+          open={showModal}
+          onOpenChange={setShowModal}
           loadingStage={loadingStage}
+          profileData={profileData}
           error={error}
-          profileData={{
-            username: profileData?.username || '',
-            full_name: profileData?.full_name || '',
-            profile_pic_url: profileData?.profile_pic_url || '',
-            follower_count: profileData?.follower_count || 0,
-            following_count: profileData?.following_count || 0,
-            is_private: profileData?.is_private || false,
-            email: profileData?.email || '',
-            phone: profileData?.whatsapp || ''
-          }}
-          handleContinue={handleContinue}
-          serviceId={serviceId || ''}
+          checkoutSlug="seguidores"
+          onRetryAfterPrivate={handleRetryAfterPrivate}
         />
       </main>
     </div>

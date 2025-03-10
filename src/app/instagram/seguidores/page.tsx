@@ -19,7 +19,7 @@ interface Service {
   categoria: string;
   status: boolean;
   discount_price?: number;
-  quantidade_preco: { quantidade: number; preco: number }[];
+  quantidade_preco: { quantidade: number; preco: number; preco_original?: number }[];
   metadata?: {
     service_details?: {
       global_reach?: boolean;
@@ -40,8 +40,10 @@ export default function SeguidoresPage() {
   useEffect(() => {
     const fetchServices = async () => {
       try {
+        // Log para debug
         console.log('Buscando serviços de seguidores...');
 
+        // Buscar todos os serviços ativos e depois filtrar
         const { data, error } = await supabase
           .from('services')
           .select(`
@@ -54,21 +56,30 @@ export default function SeguidoresPage() {
             categoria,
             status,
             metadata,
-            service_variations
+            service_variations,
+            checkout_type_id
           `)
-          .or(`categoria.ilike.%seguidor%,name.ilike.%seguidor%`)
           .eq('status', true)
           .order('preco', { ascending: true });
 
+        // Log adicional para verificar dados
         console.log('Dados retornados:', data);
         console.log('Erro retornado:', error);
 
         if (error) throw error;
 
-        const seguidoresServices = (data || []).filter(service => 
-          service.categoria?.toLowerCase().includes('seguidor') || 
-          service.name.toLowerCase().includes('seguidor')
-        ).map(service => {
+        // Filtrar serviços de seguidores de forma mais abrangente
+        const seguidoresServices = (data || []).filter(service => {
+          const categoria = service.categoria?.toLowerCase() || '';
+          const nome = service.name?.toLowerCase() || '';
+          
+          return (
+            categoria.includes('seguidor') || 
+            nome.includes('seguidor') || 
+            nome.includes('follower')
+          );
+        }).map(service => {
+          // Tratar metadata de forma segura
           let metadata: Record<string, any> = {};
           try {
             metadata = service.metadata && typeof service.metadata === 'string' 
@@ -78,6 +89,7 @@ export default function SeguidoresPage() {
             console.error('Erro ao parsear metadata:', parseError);
           }
 
+          // Verificar se service_variations existe, senão usar metadata.quantidade_preco
           const variations = service.service_variations || (metadata.quantidade_preco as any[]) || [];
 
           return {
@@ -132,6 +144,16 @@ export default function SeguidoresPage() {
     const price = variation ? variation.preco : service.price;
 
     return price.toFixed(2);
+  };
+
+  const getOriginalPrice = (service: Service) => {
+    const quantity = selectedServices[service.id] || 0;
+    const variation = service.quantidade_preco.find(variation => variation.quantidade === quantity);
+    return variation?.preco_original ? variation.preco_original.toFixed(2) : null;
+  };
+
+  const hasDiscount = (service: Service) => {
+    return getOriginalPrice(service) !== null;
   };
 
   const isServiceSelected = (serviceId: string) => {
@@ -201,6 +223,7 @@ export default function SeguidoresPage() {
                         key={service.id} 
                         className="flex flex-col p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 ease-in-out relative"
                       >
+                        {/* Badge de Mais Vendido */}
                         {index === 0 && (
                           <div className="absolute top-0 right-0 m-2 px-3 py-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-xs font-bold rounded-full shadow-md z-10">
                             Mais Vendido
@@ -208,12 +231,17 @@ export default function SeguidoresPage() {
                         )}
 
                         <div className="flex-grow flex flex-col">
+                          {/* Título do Serviço */}
                           <div className="mb-4 text-center">
                             <h3 className="text-2xl font-bold text-gray-900 break-words">
                               {service.name}
                             </h3>
+                            <p className="text-sm font-medium text-purple-600 mt-1 bg-purple-50 py-1 px-2 rounded-md mx-auto inline-block">
+                              Divida em até 5 posts diferentes!
+                            </p>
                           </div>
 
+                          {/* Detalhes adicionais do serviço */}
                           <div className="flex justify-between mb-4">
                             {getServiceDetails(service).map((detail, idx) => (
                               <div 
@@ -251,9 +279,23 @@ export default function SeguidoresPage() {
 
                           {isServiceSelected(service.id) && (
                             <div className="text-center mb-4">
-                              <p className="text-2xl font-bold text-purple-600">
-                                Por: R$ {calculateTotalPrice(service)}
-                              </p>
+                              {hasDiscount(service) ? (
+                                <>
+                                  <p className="text-gray-500 line-through text-lg">
+                                    De: R$ {getOriginalPrice(service)}
+                                  </p>
+                                  <p className="text-2xl font-bold text-purple-600">
+                                    Por: R$ {calculateTotalPrice(service)}
+                                  </p>
+                                  <p className="text-xs text-green-600 font-medium mt-1 bg-green-50 py-1 px-2 rounded-md inline-block">
+                                    Promoção!
+                                  </p>
+                                </>
+                              ) : (
+                                <p className="text-2xl font-bold text-purple-600">
+                                  Por: R$ {calculateTotalPrice(service)}
+                                </p>
+                              )}
                             </div>
                           )}
 

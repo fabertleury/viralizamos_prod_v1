@@ -1,10 +1,10 @@
-import { createClient } from '@supabase/auth-helpers-nextjs';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { providerRouter } from '@/services/providerRouter';
 
 export async function POST(request: Request) {
   try {
-    const supabase = createClient();
+    const supabase = createClientComponentClient();
     const cookieStore = cookies();
 
     // Verificar sessão
@@ -77,6 +77,7 @@ export async function POST(request: Request) {
       .insert({
         order_id: orderId,
         user_id: session?.user?.id || null,
+        customer_id: order.customer_id || null,
         external_refill_id: refillResponse.refill || refillResponse.id || refillResponse.refillId,
         status: 'pending',
         metadata: {

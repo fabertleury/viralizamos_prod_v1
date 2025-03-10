@@ -53,6 +53,8 @@ interface Order {
   provider?: {
     name: string;
     id: string;
+    api_url?: string;
+    api_key?: string;
   };
   provider_id?: string;
   refills?: {
@@ -71,6 +73,7 @@ export default function AcompanharPedidoPage() {
   const [processingRefill, setProcessingRefill] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState<{ [key: string]: boolean }>({});
   const [checkingAllStatus, setCheckingAllStatus] = useState(false);
+  const [checkingRefillStatus, setCheckingRefillStatus] = useState<{ [key: string]: boolean }>({});
   const [userProfile, setUserProfile] = useState<{ email: string; name: string } | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -93,8 +96,8 @@ export default function AcompanharPedidoPage() {
     // Verificar status de pedidos pendentes/em processamento a cada 4 minutos
     const statusInterval = setInterval(checkPendingOrdersStatus, 240000);
     
-    // Executar uma verificação inicial ao carregar os pedidos
-    checkPendingOrdersStatus();
+    // Removendo a verificação inicial automática para evitar loops
+    // checkPendingOrdersStatus();
     
     return () => {
       clearInterval(statusInterval);
@@ -113,16 +116,29 @@ export default function AcompanharPedidoPage() {
     
     if (pendingOrders.length === 0) return;
     
+    // Limitar a verificação a apenas um pedido por vez para evitar sobrecarga
+    let processedCount = 0;
+    
     // Atualiza o status de cada pedido pendente
     for (const order of pendingOrders) {
       try {
+        // Limitar o número de verificações simultâneas para evitar sobrecarga
+        if (processedCount >= 2) break;
+        
         // Verificar se o pedido tem um provedor associado
         if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name && !order.service?.provider_id) {
           console.error(`Pedido ${order.external_order_id} não tem provedor associado`);
           continue; // Pular para o próximo pedido
         }
         
+        // Verificar se já estamos verificando este pedido
+        if (checkingStatus[order.id]) {
+          continue; // Pular para o próximo pedido
+        }
+        
         await checkOrderStatus(order);
+        processedCount++;
+        
         // Pequena pausa entre as verificações para não sobrecarregar a API
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error: any) {
@@ -169,6 +185,8 @@ export default function AcompanharPedidoPage() {
     
     setLoading(true);
     setSearched(true);
+    // Limpar os pedidos existentes antes de buscar novos
+    setOrders([]);
     
     try {
       const supabase = createClientComponentClient();
@@ -416,6 +434,11 @@ export default function AcompanharPedidoPage() {
   };
 
   const checkOrderStatus = async (order: Order) => {
+    // Evitar verificar o mesmo pedido simultaneamente
+    if (checkingStatus[order.id]) {
+      return;
+    }
+    
     try {
       setCheckingStatus(prev => ({ ...prev, [order.id]: true }));
       
@@ -445,17 +468,27 @@ export default function AcompanharPedidoPage() {
       
       const result = await response.json();
       
-      toast.success('Status do pedido atualizado com sucesso');
-      
-      // Atualizar o pedido na lista
-      setOrders(orders.map(o => 
-        o.id === result.data.id ? result.data : o
-      ));
+      // Atualizar o pedido na lista sem causar duplicação
+      setOrders(prevOrders => {
+        // Verificar se o pedido já existe na lista
+        const orderExists = prevOrders.some(o => o.id === result.data.id);
+        
+        if (orderExists) {
+          // Atualizar o pedido existente
+          return prevOrders.map(o => o.id === result.data.id ? result.data : o);
+        } else {
+          // Não adicionar novos pedidos aqui para evitar duplicação
+          console.warn('Pedido não encontrado na lista atual:', result.data.id);
+          return prevOrders;
+        }
+      });
       
       // Se este é o pedido selecionado, atualizar também o estado do pedido selecionado
       if (selectedOrderId === order.id) {
         setOrder(result.data);
       }
+      
+      toast.success('Status do pedido atualizado com sucesso');
     } catch (error) {
       console.error('Erro ao verificar status do pedido:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao verificar status do pedido');
@@ -573,15 +606,58 @@ export default function AcompanharPedidoPage() {
     }
   };
   
-  const checkRefillStatus = async (refillId: string, apiUrl: string, apiKey: string, orderId: string) => {
+  const checkRefillStatus = async (refillId: string, apiUrl?: string, apiKey?: string, orderId?: string) => {
+    if (!refillId) {
+      toast.error('ID de reposição não encontrado');
+      return;
+    }
+    
     try {
-      const response = await fetch(apiUrl, {
+      setCheckingRefillStatus(prev => ({ ...prev, [refillId]: true }));
+      
+      // Se não temos a URL e chave da API, precisamos buscá-las
+      let providerApiUrl = apiUrl;
+      let providerApiKey = apiKey;
+      
+      if (!providerApiUrl || !providerApiKey) {
+        if (!orderId) {
+          throw new Error('Não foi possível verificar o status: informações do provedor não disponíveis');
+        }
+        
+        // Buscar as informações do provedor do pedido
+        const supabase = createClientComponentClient();
+        const { data: orderData, error: orderError } = await supabase
+          .from('orders')
+          .select(`
+            provider_id,
+            provider:provider_id (
+              api_url,
+              api_key
+            )
+          `)
+          .eq('id', orderId)
+          .single();
+          
+        if (orderError || !orderData || !orderData.provider) {
+          throw new Error('Não foi possível obter as informações do provedor');
+        }
+        
+        providerApiUrl = orderData.provider.api_url;
+        providerApiKey = orderData.provider.api_key;
+      }
+      
+      if (!providerApiUrl || !providerApiKey) {
+        throw new Error('URL ou chave da API do provedor não encontrada');
+      }
+      
+      // Enviar solicitação para verificar o status da reposição
+      const response = await fetch(providerApiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          key: apiKey,
+          key: providerApiKey,
           action: 'refill_status',
           refill: refillId
         })
@@ -613,10 +689,27 @@ export default function AcompanharPedidoPage() {
         }
         return order;
       }));
+
+      toast.success('Status da reposição atualizado com sucesso');
+      
+      // Se este é o pedido selecionado, atualizar também o estado do pedido selecionado
+      if (selectedOrderId === orderId && order) {
+        setOrder({
+          ...order,
+          refills: (order.refills || []).map(refill => {
+            if (refill.external_refill_id === refillId) {
+              return { ...refill, status: data.status };
+            }
+            return refill;
+          })
+        });
+      }
       
     } catch (error: unknown) {
       console.error('Erro ao verificar status da reposição:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao verificar status da reposição');
+    } finally {
+      setCheckingRefillStatus(prev => ({ ...prev, [refillId]: false }));
     }
   };
 
@@ -630,28 +723,54 @@ export default function AcompanharPedidoPage() {
     setOrder(order);
   };
 
-  const handleCheckAllOrders = async () => {
+  const checkAllOrdersStatus = async () => {
     if (orders.length === 0) {
-      toast.error('Nenhum pedido encontrado para verificar');
+      toast.info('Não há pedidos para verificar');
+      return;
+    }
+    
+    if (checkingAllStatus) {
+      toast.info('Já existe uma verificação em andamento, aguarde...');
       return;
     }
     
     setCheckingAllStatus(true);
     
     try {
+      // Limitar a verificação a apenas alguns pedidos por vez
+      let processedCount = 0;
+      const maxProcessedOrders = 3; // Limite máximo de pedidos para verificar de uma vez
+      
       for (const order of orders) {
+        // Limitar o número de verificações para evitar sobrecarga
+        if (processedCount >= maxProcessedOrders) {
+          toast.info(`Verificados ${processedCount} pedidos. Para verificar mais, aguarde e tente novamente.`);
+          break;
+        }
+        
         // Verificar se o pedido tem um provedor associado
         if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name && !order.service?.provider_id) {
           console.error(`Pedido ${order.external_order_id} não tem provedor associado`);
           continue; // Pular para o próximo pedido
         }
         
+        // Verificar se já estamos verificando este pedido
+        if (checkingStatus[order.id]) {
+          continue; // Pular para o próximo pedido
+        }
+        
         await checkOrderStatus(order);
+        processedCount++;
+        
         // Pequena pausa entre as verificações para não sobrecarregar a API
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
-      toast.success('Status de todos os pedidos verificado com sucesso');
+      if (processedCount > 0) {
+        toast.success(`Status de ${processedCount} pedidos verificado com sucesso`);
+      } else {
+        toast.info('Nenhum pedido foi verificado');
+      }
     } catch (error) {
       console.error('Erro ao verificar status de todos os pedidos:', error);
       toast.error('Erro ao verificar status de todos os pedidos');
@@ -747,7 +866,7 @@ export default function AcompanharPedidoPage() {
                       <option value="canceled">Cancelado</option>
                     </select>
                     <Button
-                      onClick={handleCheckAllOrders}
+                      onClick={checkAllOrdersStatus}
                       disabled={checkingAllStatus}
                       variant="default"
                       size="sm"
@@ -848,13 +967,34 @@ export default function AcompanharPedidoPage() {
                               <p className="text-xs text-gray-500 mb-2">Reposições:</p>
                               <div className="space-y-2">
                                 {order.refills.map((refill) => (
-                                  <div key={refill.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-md">
-                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${getStatusColor(refill.status)}`}>
-                                      {getOrderStatusBadge(refill.status)}
-                                    </span>
-                                    <span className="text-xs text-gray-500">
-                                      {formatDateToBrasilia(refill.created_at)}
-                                    </span>
+                                  <div key={refill.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-md">
+                                    <div className="flex flex-col">
+                                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${getStatusColor(refill.status)}`}>
+                                        {getOrderStatusBadge(refill.status)}
+                                      </span>
+                                      <span className="text-xs text-gray-500 mt-1">
+                                        {formatDateToBrasilia(refill.created_at)}
+                                      </span>
+                                    </div>
+                                    <Button
+                                      onClick={() => checkRefillStatus(refill.external_refill_id, order.provider?.api_url, order.provider?.api_key, order.id)}
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-xs"
+                                      disabled={checkingRefillStatus[refill.external_refill_id]}
+                                    >
+                                      {checkingRefillStatus[refill.external_refill_id] ? (
+                                        <>
+                                          <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                          Atualizando...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <RefreshCw className="h-3 w-3 mr-1" />
+                                          Atualizar
+                                        </>
+                                      )}
+                                    </Button>
                                   </div>
                                 ))}
                               </div>
@@ -966,7 +1106,7 @@ export default function AcompanharPedidoPage() {
                               </div>
                             </div>
                             
-                            <div className="mt-4">
+                            <div className="mt-4 flex flex-col space-y-2">
                               <Button
                                 onClick={() => checkOrderStatus(order)}
                                 disabled={checkingStatus[order.id]}
@@ -976,22 +1116,107 @@ export default function AcompanharPedidoPage() {
                               >
                                 {checkingStatus[order.id] ? 'Verificando...' : 'Verificar Status Atual'}
                               </Button>
+                              
+                              {isWithin30Days(order.created_at) && (!order.refills || order.refills.length === 0) && 
+                                order.service?.service_details?.refill && (
+                                <div className="mt-2">
+                                  <div className="text-xs text-gray-500 mb-1 text-center">
+                                    Reposição disponível: {getDaysRemaining(order.created_at)} dias restantes
+                                  </div>
+                                  <Button
+                                    onClick={() => handleRefill(order.id)}
+                                    disabled={processingRefill === order.id}
+                                    variant="default"
+                                    size="sm"
+                                    className="w-full bg-pink-600 hover:bg-pink-700"
+                                  >
+                                    {processingRefill === order.id ? 'Processando...' : 'Solicitar Reposição'}
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         ) : (
                           <div className="text-center py-4">
                             <p className="text-gray-500 mb-3">Nenhuma informação de status disponível</p>
-                            <Button
-                              onClick={() => checkOrderStatus(order)}
-                              disabled={checkingStatus[order.id]}
-                              variant="outline"
-                              size="sm"
-                            >
-                              {checkingStatus[order.id] ? 'Verificando...' : 'Verificar Status'}
-                            </Button>
+                            <div className="flex flex-col space-y-2">
+                              <Button
+                                onClick={() => checkOrderStatus(order)}
+                                disabled={checkingStatus[order.id]}
+                                variant="outline"
+                                size="sm"
+                              >
+                                {checkingStatus[order.id] ? 'Verificando...' : 'Verificar Status'}
+                              </Button>
+                              
+                              {isWithin30Days(order.created_at) && (!order.refills || order.refills.length === 0) && 
+                                order.service?.service_details?.refill && (
+                                <div className="mt-2">
+                                  <div className="text-xs text-gray-500 mb-1 text-center">
+                                    Reposição disponível: {getDaysRemaining(order.created_at)} dias restantes
+                                  </div>
+                                  <Button
+                                    onClick={() => handleRefill(order.id)}
+                                    disabled={processingRefill === order.id}
+                                    variant="default"
+                                    size="sm"
+                                    className="w-full bg-pink-600 hover:bg-pink-700"
+                                  >
+                                    {processingRefill === order.id ? 'Processando...' : 'Solicitar Reposição'}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
+                      
+                      {/* Histórico de Reposições */}
+                      {order.refills && order.refills.length > 0 && (
+                        <div className="mt-6">
+                          <h3 className="text-sm font-medium text-gray-500 mb-3">Histórico de Reposições</h3>
+                          <div className="bg-gray-50 p-4 rounded-md">
+                            <div className="space-y-3">
+                              {order.refills.map((refill) => (
+                                <div key={refill.id} className="flex justify-between items-center p-3 bg-white rounded-md shadow-sm">
+                                  <div className="flex flex-col">
+                                    <div className="flex items-center">
+                                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${getStatusColor(refill.status)}`}>
+                                        {getOrderStatusBadge(refill.status)}
+                                      </span>
+                                      <span className="text-xs text-gray-500 ml-2">
+                                        ID: {refill.external_refill_id || 'N/A'}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs text-gray-500 mt-1">
+                                      Solicitado em: {formatDateToBrasilia(refill.created_at)}
+                                    </span>
+                                  </div>
+                                  <Button
+                                    onClick={() => checkRefillStatus(refill.external_refill_id, order.provider?.api_url, order.provider?.api_key, order.id)}
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-xs"
+                                    disabled={checkingRefillStatus[refill.external_refill_id]}
+                                  >
+                                    {checkingRefillStatus[refill.external_refill_id] ? (
+                                      <>
+                                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                        Atualizando...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <RefreshCw className="h-3 w-3 mr-1" />
+                                        Atualizar Status
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-gray-500 text-center">
