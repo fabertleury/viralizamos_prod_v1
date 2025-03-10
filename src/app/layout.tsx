@@ -81,7 +81,7 @@ export default async function RootLayout({
             <LanguageProvider>
               <main className="flex-grow">{children}</main>
             </LanguageProvider>
-            <Footer />
+            {!pathname.startsWith('/admin') && <Footer />}
             <Toaster richColors position="top-right" />
           </div>
         </body>
@@ -147,7 +147,7 @@ export default async function RootLayout({
           <LanguageProvider>
             <main className="flex-grow">{children}</main>
           </LanguageProvider>
-          <Footer />
+          {!pathname.startsWith('/admin') && <Footer />}
           <Toaster richColors position="top-right" />
         </div>
       </body>

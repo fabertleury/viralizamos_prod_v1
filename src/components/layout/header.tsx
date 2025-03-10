@@ -97,6 +97,14 @@ export function Header() {
             />
           </Link>
 
+          {/* Mobile Menu Button */}
+          <button
+            className="block md:hidden p-2 z-50"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6">
             <Link href="/" className="text-gray-700 hover:text-primary">
@@ -113,6 +121,11 @@ export function Header() {
                 <span>{social.name}</span>
               </Link>
             ))}
+            
+            {/* FAQ Link */}
+            <Link href="/faq" className="text-gray-700 hover:text-primary">
+              FAQ
+            </Link>
             
             {/* Action Buttons */}
             <Button asChild variant="ghost" className="font-medium bg-[#C43582] text-white hover:bg-[#a62c6c]">
@@ -139,47 +152,70 @@ export function Header() {
                 </div>
               </div>
             )}
+          </nav>
 
-            {/* Mobile Menu Button */}
-            <button
-              className="md:hidden p-2 z-50"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-            >
-              {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
-
-            {/* Mobile Navigation */}
-            {isMenuOpen && (
-              <div className="fixed inset-0 bg-white z-40 md:hidden">
-                <div className="container mx-auto px-4 py-8">
-                  <div className="flex flex-col space-y-4">
-                    <Link href="/" className="text-gray-700 hover:text-primary">
-                      {translations.header.home}
+          {/* Mobile Navigation */}
+          {isMenuOpen && (
+            <div className="fixed inset-0 bg-white z-40 pt-20">
+              <div className="container mx-auto px-4 py-8">
+                <div className="flex flex-col space-y-4">
+                  <Link 
+                    href="/" 
+                    className="text-gray-700 hover:text-primary py-2 border-b"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    {translations.header.home}
+                  </Link>
+                  
+                  {socialNetworks.map((social) => (
+                    <Link
+                      key={social.id}
+                      href={social.url}
+                      className="text-gray-800 hover:text-[#FF00CE] transition-colors py-2 border-b"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <span>{social.name}</span>
                     </Link>
-                    
-                    {socialNetworks.map((social) => (
-                      <Link
-                        key={social.id}
-                        href={social.url}
-                        className="text-gray-800 hover:text-[#FF00CE] transition-colors"
-                      >
-                        <span>{social.name}</span>
-                      </Link>
-                    ))}
-                    
-                    <Button asChild variant="ghost" className="font-medium bg-[#FF00CE] text-white hover:bg-[#FF00CE]/90">
+                  ))}
+                  
+                  <Link 
+                    href="/faq" 
+                    className="text-gray-700 hover:text-primary py-2 border-b"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    FAQ
+                  </Link>
+                  
+                  <div className="pt-4">
+                    <Button 
+                      asChild 
+                      variant="ghost" 
+                      className="w-full font-medium bg-[#C43582] text-white hover:bg-[#a62c6c] mb-3"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
                       <Link href="/analisar-perfil">
                         {translations.header.analyzeProfile}
                       </Link>
                     </Button>
-                    <Button asChild variant="ghost" className="font-medium bg-[#FF00CE] text-white hover:bg-[#FF00CE]/90">
+                    
+                    <Button 
+                      asChild 
+                      variant="ghost" 
+                      className="w-full font-medium bg-[#C43582] text-white hover:bg-[#a62c6c] mb-3"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
                       <Link href="/acompanhar-pedido">
                         {translations.header.trackOrder}
                       </Link>
                     </Button>
                     
                     {isLoggedIn && (
-                      <Button asChild variant="ghost" className="font-medium bg-[#FF00CE] text-white hover:bg-[#FF00CE]/90">
+                      <Button 
+                        asChild 
+                        variant="ghost" 
+                        className="w-full font-medium bg-[#C43582] text-white hover:bg-[#a62c6c]"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
                         <Link href="/tickets">
                           {translations.header.tickets}
                         </Link>
@@ -188,8 +224,8 @@ export function Header() {
                   </div>
                 </div>
               </div>
-            )}
-          </nav>
+            </div>
+          )}
         </div>
       </div>
     </header>

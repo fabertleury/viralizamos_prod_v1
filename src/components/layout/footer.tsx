@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import packageJson from '../../../package.json';
+import Link from 'next/link';
+import { Instagram } from 'lucide-react';
 
 export function Footer() {
   const [productionVersion, setProductionVersion] = useState<string | null>(null);
@@ -28,18 +30,103 @@ export function Footer() {
   }, []);
 
   return (
-    <footer className="w-full py-2 text-center text-sm text-gray-500 border-t">
-      <div className="container mx-auto flex justify-between items-center px-4">
-        <div>
-          {new Date().getFullYear()} ViralizAI. Todos os direitos reservados.
+    <footer className="bg-gray-900 text-white py-8">
+      <div className="container mx-auto px-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* Logo e informações */}
+          <div className="flex flex-col">
+            <Link href="/" className="flex items-center mb-4">
+              <img src="/images/viralizamos-color.png" alt="Viralizamos.com" className="h-8" />
+            </Link>
+            <p className="text-gray-400 text-sm mb-4">
+              Impulsione sua presença no Instagram com nossos serviços de alta qualidade.
+            </p>
+            <div className="flex mt-2">
+              <a 
+                href="https://instagram.com/viralizamos" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-white hover:text-pink-500 transition-colors"
+              >
+                <Instagram className="w-6 h-6" />
+              </a>
+            </div>
+          </div>
+
+          {/* Menu */}
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Menu</h3>
+            <ul className="space-y-2">
+              <li>
+                <Link href="/" className="text-gray-400 hover:text-white transition-colors">
+                  Início
+                </Link>
+              </li>
+              <li>
+                <Link href="/acompanhar-pedido" className="text-gray-400 hover:text-white transition-colors">
+                  Acompanhar Pedido
+                </Link>
+              </li>
+              <li>
+                <Link href="/faq" className="text-gray-400 hover:text-white transition-colors">
+                  Dúvidas Frequentes
+                </Link>
+              </li>
+              <li>
+                <Link href="/suporte" className="text-gray-400 hover:text-white transition-colors">
+                  Suporte
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Serviços para Instagram */}
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Serviços para Instagram</h3>
+            <ul className="space-y-2">
+              <li>
+                <Link href="/instagram/curtidas" className="text-gray-400 hover:text-white transition-colors">
+                  Comprar Curtidas
+                </Link>
+              </li>
+              <li>
+                <Link href="/instagram/seguidores" className="text-gray-400 hover:text-white transition-colors">
+                  Comprar Seguidores
+                </Link>
+              </li>
+              <li>
+                <Link href="/instagram/visualizacoes" className="text-gray-400 hover:text-white transition-colors">
+                  Visualizações para Vídeos
+                </Link>
+              </li>
+              <li>
+                <Link href="/instagram/comentarios" className="text-gray-400 hover:text-white transition-colors">
+                  Comprar Comentários
+                </Link>
+              </li>
+            </ul>
+          </div>
         </div>
-        <div className="flex items-center space-x-2">
-          <span>v{localVersion}</span>
-          {productionVersion && productionVersion !== localVersion && (
-            <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-              prod: v{productionVersion}
-            </span>
-          )}
+
+        {/* Termos e Política */}
+        <div className="border-t border-gray-800 mt-8 pt-6 flex flex-col md:flex-row justify-between items-center">
+          <div className="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-4 mb-4 md:mb-0">
+            <Link href="/termos-de-uso" className="text-gray-400 hover:text-white transition-colors text-sm">
+              Termos de Uso
+            </Link>
+            <Link href="/politica-de-privacidade" className="text-gray-400 hover:text-white transition-colors text-sm">
+              Política de Privacidade
+            </Link>
+          </div>
+          <div className="text-gray-500 text-sm">
+            &copy; {new Date().getFullYear()} Viralizamos.com. Todos os direitos reservados.
+            {productionVersion && (
+              <span className="ml-2">v{productionVersion}</span>
+            )}
+            {!productionVersion && process.env.NODE_ENV !== 'production' && (
+              <span className="ml-2">v{localVersion} (dev)</span>
+            )}
+          </div>
         </div>
       </div>
     </footer>

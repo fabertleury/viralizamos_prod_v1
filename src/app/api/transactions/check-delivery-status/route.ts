@@ -67,80 +67,116 @@ export async function POST(request: NextRequest) {
 
       try {
         console.log(`[CheckDeliveryStatus] Verificando status do pedido ${order.external_order_id}`);
-        const statusResponse = await checkOrderStatus(order.external_order_id);
-        console.log(`[CheckDeliveryStatus] Status do pedido ${order.external_order_id}:`, JSON.stringify(statusResponse, null, 2));
-
-        // Atualizar o status no banco de dados
-        const providerStatus = {
-          status: statusResponse.data.status,
-          start_count: statusResponse.data.start_count,
-          remains: statusResponse.data.remains,
-          charge: statusResponse.data.charge,
-          currency: statusResponse.data.currency,
-          updated_at: new Date().toISOString()
-        };
-
-        const newMetadata = {
-          ...order.metadata,
-          provider_status: providerStatus
-        };
-
-        const { data: updatedOrder, error: updateError } = await supabase
-          .from('orders')
-          .update({
-            status: statusResponse.data.status === 'Completed' ? 'completed' : 
-                   statusResponse.data.status === 'In progress' ? 'processing' :
-                   statusResponse.data.status === 'Pending' ? 'pending' :
-                   statusResponse.data.status === 'Canceled' ? 'canceled' :
-                   statusResponse.data.status === 'Partial' ? 'partial' : order.status,
-            metadata: newMetadata
-          })
-          .eq('id', order.id)
-          .select()
-          .single();
-
-        if (updateError) {
-          console.error(`[CheckDeliveryStatus] Erro ao atualizar pedido ${order.id}:`, updateError);
-          allCompleted = false;
-        }
-
-        orderStatusResults.push({
-          order_id: order.id,
-          external_order_id: order.external_order_id,
-          status: statusResponse.data.status,
-          is_completed: statusResponse.data.status === 'Completed'
-        });
-
-        if (statusResponse.data.status !== 'Completed') {
-          allCompleted = false;
-        }
-      } catch (error) {
-        console.error(`[CheckDeliveryStatus] Erro ao verificar status do pedido ${order.external_order_id}:`, error);
-        allCompleted = false;
         
-        // Atualizar o metadata com o erro
-        const newMetadata = {
-          ...order.metadata,
-          provider_status: {
-            ...order.metadata.provider_status,
-            error: error.message,
-            updated_at: new Date().toISOString()
+        // Verificar se o pedido tem provider_id
+        if (!order.provider_id) {
+          console.log(`[CheckDeliveryStatus] Pedido ${order.id} não tem provider_id definido`);
+          
+          // Tentar obter o provider_id do metadata
+          const providerId = order.metadata?.provider || order.metadata?.provider_id || order.metadata?.provider_name;
+          
+          if (!providerId) {
+            console.log(`[CheckDeliveryStatus] Pedido ${order.id} não tem provider_id nem no metadata`);
+            
+            // Atualizar o status do pedido para completed para evitar verificações futuras
+            await supabase
+              .from('orders')
+              .update({ 
+                status: 'completed',
+                updated_at: new Date().toISOString(),
+                metadata: {
+                  ...order.metadata,
+                  auto_completed: true,
+                  auto_completed_reason: 'Sem provider_id definido'
+                }
+              })
+              .eq('id', order.id);
+              
+            orderStatusResults.push({
+              orderId: order.id,
+              externalOrderId: order.external_order_id,
+              status: 'completed',
+              message: 'Marcado como concluído automaticamente (sem provider_id)'
+            });
+            
+            continue;
           }
-        };
+          
+          // Usar o provider_id do metadata
+          const statusResponse = await checkOrderStatus(order.external_order_id, providerId);
+          console.log(`[CheckDeliveryStatus] Status do pedido ${order.external_order_id}:`, JSON.stringify(statusResponse, null, 2));
+        } else {
+          // Usar o provider_id do pedido
+          const statusResponse = await checkOrderStatus(order.external_order_id, order.provider_id);
+          console.log(`[CheckDeliveryStatus] Status do pedido ${order.external_order_id}:`, JSON.stringify(statusResponse, null, 2));
 
+          // Atualizar o status no banco de dados
+          const providerStatus = {
+            status: statusResponse.data.status,
+            start_count: statusResponse.data.start_count,
+            remains: statusResponse.data.remains,
+            charge: statusResponse.data.charge,
+            currency: statusResponse.data.currency,
+            updated_at: new Date().toISOString()
+          };
+
+          const newMetadata = {
+            ...order.metadata,
+            provider_status: providerStatus
+          };
+
+          const { data: updatedOrder, error: updateError } = await supabase
+            .from('orders')
+            .update({
+              status: statusResponse.data.status === 'Completed' ? 'completed' : 
+                     statusResponse.data.status === 'In progress' ? 'processing' :
+                     statusResponse.data.status === 'Pending' ? 'pending' :
+                     statusResponse.data.status === 'Canceled' ? 'canceled' :
+                     statusResponse.data.status === 'Partial' ? 'partial' : order.status,
+              metadata: newMetadata
+            })
+            .eq('id', order.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            console.error(`[CheckDeliveryStatus] Erro ao atualizar pedido ${order.id}:`, updateError);
+            allCompleted = false;
+          }
+
+          orderStatusResults.push({
+            orderId: order.id,
+            externalOrderId: order.external_order_id,
+            status: statusResponse.data.status,
+            isCompleted: statusResponse.data.status === 'Completed'
+          });
+
+          if (statusResponse.data.status !== 'Completed') {
+            allCompleted = false;
+          }
+        }
+      } catch (error: unknown) {
+        console.error(`[CheckDeliveryStatus] Erro ao verificar status do pedido ${order.external_order_id}:`, error);
+        
+        // Marcar o pedido como erro para evitar verificações futuras
         await supabase
           .from('orders')
           .update({
-            metadata: newMetadata
+            status: 'error',
+            metadata: {
+              ...order.metadata,
+              error: error instanceof Error ? error.message : 'Erro desconhecido',
+              error_timestamp: new Date().toISOString()
+            }
           })
           .eq('id', order.id);
 
         orderStatusResults.push({
-          order_id: order.id,
-          external_order_id: order.external_order_id,
+          orderId: order.id,
+          externalOrderId: order.external_order_id,
           status: 'error',
-          error: error.message,
-          is_completed: false
+          error: error instanceof Error ? error.message : 'Erro desconhecido',
+          isCompleted: false
         });
       }
     }

@@ -40,6 +40,7 @@ export default function EditarServicoImportadoPage() {
   // Estados para campos do serviço
   const [serviceIdState, setServiceId] = useState('');
   const [famaServiceId, setFamaServiceId] = useState('');
+  const [providerName, setProviderName] = useState('Fama Redes');
   const [name, setName] = useState('');
   const [type, setType] = useState('');
   const [category, setCategory] = useState('');
@@ -121,6 +122,16 @@ export default function EditarServicoImportadoPage() {
           setQuantityPrices(existingService.service_variations || existingService.metadata?.quantidade_preco || [{ quantidade: 50, preco: 10.00, preco_original: undefined }]);
           setServiceDetails(existingService.service_details || existingService.metadata?.serviceDetails || [{ title: '', emoji: '' }]);
           setRefill(existingService.metadata?.refill || false);
+          
+          // Detectar o provedor a partir dos metadados
+          if (existingService.metadata?.origem) {
+            const origem = existingService.metadata.origem;
+            if (origem === 'fama_redes') {
+              setProviderName('Fama Redes');
+            } else {
+              setProviderName(origem);
+            }
+          }
         } else {
           toast.error('Serviço não encontrado no banco de dados!');
         }
@@ -297,15 +308,26 @@ export default function EditarServicoImportadoPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* ID do Serviço Fama Redes */}
+          {/* ID do Serviço */}
           <div>
-            <label className="block mb-2">ID do Serviço Fama Redes</label>
+            <label className="block mb-2">ID do Serviço</label>
             <input
               type="text"
               value={famaServiceId}
               onChange={(e) => setFamaServiceId(e.target.value)}
               className="w-full p-2 border rounded"
               required
+              readOnly
+            />
+          </div>
+
+          {/* Provedor */}
+          <div>
+            <label className="block mb-2">Provedor</label>
+            <input
+              type="text"
+              value={providerName}
+              className="w-full p-2 border rounded"
               readOnly
             />
           </div>

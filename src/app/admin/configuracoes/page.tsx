@@ -475,149 +475,101 @@ export default function ConfiguracoesPage() {
   return (
     <div className="p-6">
       <h1 className="text-2xl font-semibold mb-6">Configurações do Sistema</h1>
-      
-      {/* Logo */}
-      <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Configurações de Logo</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {renderConfigGroup('logo')}
-            
-            <div className="mt-4">
-              <Label htmlFor="logo-upload">Upload de Logo</Label>
-              <Input 
-                id="logo-upload" 
-                type="file" 
-                accept="image/*"
-                onChange={handleLogoUpload}
-              />
-              {logoPreview && (
-                <div className="mt-4">
-                  <Image 
-                    src={logoPreview} 
-                    alt="Logo Preview" 
-                    width={200} 
-                    height={100} 
-                    className="object-contain"
-                  />
-                </div>
-              )}
-              {configurations['logo_url']?.value && (
-                <div className="mt-4">
-                  <Label>Logo Atual</Label>
-                  <img src="/images/viralizamos-color.png" alt="Logo" className="h-10" />
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="space-y-6">
+        <Tabs defaultValue="configuracoes" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
+            <TabsTrigger value="logs">Logs</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="configuracoes">
+            {/* Renderizar grupos de configurações */}
+            {['seo', 'comunicacao', 'mercadopago'].map(group => 
+              renderConfigGroup(group)
+            )}
 
-        {/* Renderizar grupos de configurações */}
-        {['seo', 'comunicacao', 'aparencia', 'sistema', 'mercadopago'].map(group => 
-          renderConfigGroup(group)
-        )}
+            {/* Instagram API */}
+            {renderConfigGroup('instagram_api')}
 
-        {/* Instagram API */}
-        {renderConfigGroup('instagram_api')}
-
-        {/* Compliance */}
-        {renderConfigGroup('compliance')}
-
-        {/* Logs de API */}
-        <Card className="mb-6">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-xl font-medium">Logs de Uso de APIs</CardTitle>
-            <Button 
-              variant="destructive" 
-              size="sm"
-              onClick={handleClearLogs}
-            >
-              Limpar Logs
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Página</TableHead>
-                  <TableHead>Nome da API</TableHead>
-                  <TableHead>Endpoint</TableHead>
-                  <TableHead className="text-right">Timestamp</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {apiLogs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
-                      Nenhum log de API encontrado
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  apiLogs.map((log, index) => (
-                    <TableRow key={index}>
-                      <TableCell>
-                        <Badge variant="secondary">{log.page}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <span className="truncate max-w-[150px] block">
-                                {log.apiName}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {log.apiName}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </TableCell>
-                      <TableCell>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <span className="truncate max-w-[200px] block">
-                                {log.endpoint}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {log.endpoint}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {new Date(log.timestamp).toLocaleString()}
-                      </TableCell>
+            {/* Legal - Termos de Uso e Política de Privacidade */}
+            {renderConfigGroup('legal')}
+          </TabsContent>
+          
+          <TabsContent value="logs">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xl font-medium">Logs de Uso de APIs</CardTitle>
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  onClick={handleClearLogs}
+                >
+                  Limpar Logs
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Página</TableHead>
+                      <TableHead>Nome da API</TableHead>
+                      <TableHead>Endpoint</TableHead>
+                      <TableHead className="text-right">Timestamp</TableHead>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl font-medium">Resumo de Uso</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-100 p-4 rounded">
-                <h3 className="text-lg font-semibold mb-2">Total de Logs</h3>
-                <p className="text-2xl font-bold">{apiLogs.length}</p>
-              </div>
-              <div className="bg-gray-100 p-4 rounded">
-                <h3 className="text-lg font-semibold mb-2">Páginas Únicas</h3>
-                <p className="text-2xl font-bold">
-                  {new Set(apiLogs.map(log => log.page)).size}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {apiLogs.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground">
+                          Nenhum log de API encontrado
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      apiLogs.map((log, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <Badge variant="secondary">{log.page}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <span className="truncate max-w-[150px] block">
+                                    {log.apiName}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {log.apiName}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </TableCell>
+                          <TableCell>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <span className="truncate max-w-[200px] block">
+                                    {log.endpoint}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {log.endpoint}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {new Date(log.timestamp).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

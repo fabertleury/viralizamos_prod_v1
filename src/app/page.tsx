@@ -146,7 +146,7 @@ const ServicosSection = () => {
         
         <div className="text-center mt-12">
           <a 
-            href="https://www.instagram.com/viralizamos.com" 
+            href="https:/viralizamos.com/instagram" 
             target="_blank"
             rel="noopener noreferrer"
             className="bg-[#C43582] text-white px-8 py-3 rounded-full text-xl font-bold hover:bg-[#a62c6c] transition"
@@ -249,7 +249,7 @@ const RedesSociaisSection = () => {
         
         <div className="text-center mt-12">
           <a 
-            href="https://www.instagram.com/viralizamos.com" 
+            href="https:/viralizamos.com/instagram" 
             target="_blank"
             rel="noopener noreferrer"
             className="bg-white text-[#C43582] px-8 py-3 rounded-full text-xl font-bold hover:bg-gray-100 transition"

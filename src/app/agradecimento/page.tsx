@@ -146,7 +146,7 @@ export default function AgradecimentoPage() {
         
         // Executar a consulta principal (apenas para o caso UUID)
         if (isUuid) {
-          const { data, error: fetchError } = await query.single();
+          const { data: transactionData, error: fetchError } = await query.single();
           
           if (fetchError) {
             console.error('Erro ao buscar transação:', fetchError);
@@ -155,17 +155,17 @@ export default function AgradecimentoPage() {
             return;
           }
           
-          if (!data) {
+          if (!transactionData) {
             setError('Transação não encontrada');
             setLoading(false);
             return;
           }
           
-          setTransaction(data);
+          setTransaction(transactionData);
           
           // Se a transação tem um cliente associado, definir o cliente
-          if (data.customers) {
-            setCustomer(data.customers);
+          if (transactionData.customers) {
+            setCustomer(transactionData.customers);
           }
           
           // Rastrear evento de conclusão de compra com Facebook Pixel
@@ -174,7 +174,7 @@ export default function AgradecimentoPage() {
               content_name: 'Compra finalizada',
               status: 'success',
               transaction_id: transactionId,
-              value: data.amount,
+              value: transactionData.amount,
               currency: 'BRL'
             });
           }
@@ -183,10 +183,10 @@ export default function AgradecimentoPage() {
           if (!emailParam) {
             let transactionEmail = null;
             
-            if (data.customers && data.customers.email) {
-              transactionEmail = data.customers.email;
-            } else if (data.customer_email || data.metadata?.customer?.email || data.metadata?.email) {
-              transactionEmail = data.customer_email || data.metadata?.customer?.email || data.metadata?.email;
+            if (transactionData.customers && transactionData.customers.email) {
+              transactionEmail = transactionData.customers.email;
+            } else if (transactionData.customer_email || transactionData.metadata?.customer?.email || transactionData.metadata?.email) {
+              transactionEmail = transactionData.customer_email || transactionData.metadata?.customer?.email || transactionData.metadata?.email;
             }
             
             if (transactionEmail) {
@@ -200,12 +200,19 @@ export default function AgradecimentoPage() {
         
         // Se temos um email, criar ou atualizar o perfil e o customer
         if (emailParam) {
+          // Verificar se temos dados da transação
+          if (!transaction) {
+            console.error('Dados da transação não disponíveis para criar perfil');
+            setLoading(false);
+            return;
+          }
+          
           // Extrair nome do usuário
-          const userName = data.customer_name || 
-                          data.metadata?.customer?.name || 
-                          data.metadata?.profile?.full_name || 
-                          data.metadata?.profile?.username || 
-                          (data.customers ? data.customers.name : null) || 
+          const userName = transaction.customer_name || 
+                          transaction.metadata?.customer?.name || 
+                          transaction.metadata?.profile?.full_name || 
+                          transaction.metadata?.profile?.username || 
+                          (transaction.customers ? transaction.customers.name : null) || 
                           emailParam.split('@')[0];
           
           // Verificar se o usuário já existe na tabela profiles
@@ -230,7 +237,7 @@ export default function AgradecimentoPage() {
           }
           
           // Se a transação não tem cliente associado, verificar se o cliente existe e associar
-          if (!data.customers) {
+          if (!transaction.customers) {
             // Verificar se o cliente já existe na tabela customers
             const { data: existingCustomer } = await supabase
               .from('customers')
@@ -243,20 +250,20 @@ export default function AgradecimentoPage() {
               email: emailParam,
               name: userName,
               metadata: {
-                ...data.metadata,
-                last_transaction_id: data.id,
-                last_transaction_date: data.created_at
+                ...transaction.metadata,
+                last_transaction_id: transaction.id,
+                last_transaction_date: transaction.created_at
               }
             };
             
             // Adicionar telefone se disponível
-            if (data.customer_phone || data.metadata?.customer?.phone || data.metadata?.phone) {
-              customerData.phone = data.customer_phone || data.metadata?.customer?.phone || data.metadata?.phone;
+            if (transaction.customer_phone || transaction.metadata?.customer?.phone || transaction.metadata?.phone) {
+              customerData.phone = transaction.customer_phone || transaction.metadata?.customer?.phone || transaction.metadata?.phone;
             }
             
             // Adicionar username do Instagram se disponível
-            if (data.metadata?.instagram_username || data.metadata?.customer?.instagram_username) {
-              customerData.instagram_username = data.metadata?.instagram_username || data.metadata?.customer?.instagram_username;
+            if (transaction.metadata?.instagram_username || transaction.metadata?.customer?.instagram_username) {
+              customerData.instagram_username = transaction.metadata?.instagram_username || transaction.metadata?.customer?.instagram_username;
             }
             
             let customerId;
@@ -289,7 +296,7 @@ export default function AgradecimentoPage() {
               await supabase
                 .from('transactions')
                 .update({ customer_id: customerId })
-                .eq('id', data.id);
+                .eq('id', transaction.id);
               
               console.log('Transação atualizada com customer_id');
             }

@@ -20,7 +20,8 @@ import {
   faTrash, // Adicionar ícone de lixeira
   faExternalLinkAlt,
   faChevronUp,
-  faChevronDown
+  faChevronDown,
+  faServer
 } from '@fortawesome/free-solid-svg-icons';
 import Swal from 'sweetalert2';
 import { SocialIcon } from '@/components/ui/social-icon';
@@ -593,10 +594,18 @@ export default function ServicosV1Page() {
                     </div>
 
                     {/* Informação do provedor */}
-                    <div className="mt-2 bg-gray-50 p-2 rounded text-xs">
+                    <div className="mt-2 bg-purple-50 p-2 rounded text-xs">
                       <div className="font-medium text-gray-600">Provedor</div>
-                      <div className="font-semibold text-purple-700">
+                      <div className="font-semibold text-purple-700 flex items-center">
+                        <span className="mr-1">
+                          <FontAwesomeIcon icon={faServer} className="text-purple-500" />
+                        </span>
                         {providersMap[service.provider_id]?.name || 'Provedor não encontrado'}
+                        {providersMap[service.provider_id]?.status === false && (
+                          <span className="ml-2 px-1.5 py-0.5 bg-red-100 text-red-800 rounded-full text-xs">
+                            Inativo
+                          </span>
+                        )}
                       </div>
                     </div>
 

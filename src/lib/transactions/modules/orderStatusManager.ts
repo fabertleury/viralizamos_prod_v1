@@ -13,7 +13,7 @@ export class OrderStatusManager {
    * @param providerId ID do provedor
    * @returns Status do pedido
    */
-  async checkOrderStatus(orderId: string, providerId: string): Promise<any> {
+  async checkOrderStatus(orderId: number, providerId: string): Promise<any> {
     try {
       // Buscar o provedor
       const { data: provider, error: providerError } = await this.supabase
@@ -30,7 +30,7 @@ export class OrderStatusManager {
       const socialMediaService = new SocialMediaService(provider);
       
       // Verificar o status do pedido
-      return await socialMediaService.checkOrderStatus(parseInt(orderId, 10), providerId);
+      return await socialMediaService.checkOrderStatus(orderId, providerId);
     } catch (error) {
       console.error('[OrderStatusManager] Erro ao verificar status do pedido:', error);
       throw error;

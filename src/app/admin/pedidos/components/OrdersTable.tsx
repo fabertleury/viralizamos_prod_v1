@@ -107,6 +107,7 @@ interface Order {
     id: string;
     email: string;
   };
+  provider_id?: string;
 }
 
 interface OrdersTableProps {
@@ -191,10 +192,42 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
   }, [orders]);
 
   useEffect(() => {
-    // Atualizar a cada 30 segundos
-    const interval = setInterval(fetchOrders, 30000);
-    return () => clearInterval(interval);
+    // Atualizar a cada 4 minutos (240000ms)
+    const interval = setInterval(fetchOrders, 240000);
+    
+    // Verificar status de pedidos pendentes/em processamento a cada 4 minutos
+    const statusInterval = setInterval(checkPendingOrdersStatus, 240000);
+    
+    // Executar uma verificação inicial ao carregar a página
+    checkPendingOrdersStatus();
+    
+    return () => {
+      clearInterval(interval);
+      clearInterval(statusInterval);
+    };
   }, []);
+
+  const checkPendingOrdersStatus = async () => {
+    // Filtra apenas pedidos pendentes ou em processamento
+    const pendingOrders = localOrders.filter(order => 
+      order.status.toLowerCase() === 'pending' || 
+      order.status.toLowerCase() === 'processing' || 
+      order.status.toLowerCase() === 'in progress'
+    );
+    
+    if (pendingOrders.length === 0) return;
+    
+    // Atualiza o status de cada pedido pendente
+    for (const order of pendingOrders) {
+      try {
+        await checkOrderStatus(order);
+        // Pequena pausa entre as verificações para não sobrecarregar a API
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        console.error(`Erro ao verificar status do pedido ${order.id}:`, error);
+      }
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -244,14 +277,11 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
     }
   };
 
-  const checkOrderStatus = async (order: Order) => {
-    if (!order.id) {
-      toast.error('ID do pedido não encontrado');
-      return;
-    }
-    
-    if (!order.external_order_id) {
-      toast.error('Este pedido não possui um ID externo para verificação');
+  const checkOrderStatus = async (order: any) => {
+    // Verificar se o pedido tem um provedor associado
+    if (!order.provider_id && !order.metadata?.provider && !order.metadata?.provider_name) {
+      console.error('Pedido não tem provedor associado:', order.id);
+      toast.error('Pedido não tem provedor associado');
       return;
     }
     
@@ -266,17 +296,63 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
         body: JSON.stringify({ order_id: order.id }),
       });
       
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.error || 'Erro ao verificar status do pedido');
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        console.error('Erro ao analisar resposta JSON:', parseError);
+        throw new Error('Erro ao processar resposta do servidor');
       }
       
-      toast.success('Status do pedido atualizado com sucesso');
+      if (!response.ok) {
+        const errorMessage = result && result.error ? result.error : 'Erro ao verificar status do pedido';
+        throw new Error(errorMessage);
+      }
+      
+      // Traduzir o status para português para a mensagem de sucesso
+      let statusTraduzido = 'atualizado';
+      if (result.status) {
+        switch (result.status.toLowerCase()) {
+          case 'pending':
+            statusTraduzido = 'Pendente';
+            break;
+          case 'processing':
+          case 'in progress':
+            statusTraduzido = 'Processando';
+            break;
+          case 'completed':
+          case 'success':
+            statusTraduzido = 'Concluído';
+            break;
+          case 'failed':
+          case 'rejected':
+            statusTraduzido = 'Falhou';
+            break;
+          case 'canceled':
+            statusTraduzido = 'Cancelado';
+            break;
+          case 'partial':
+            statusTraduzido = 'Parcial';
+            break;
+          default:
+            statusTraduzido = result.status;
+        }
+      }
+      
+      toast.success(`Status do pedido atualizado: ${statusTraduzido}`);
       
       // Atualizar o pedido na lista
-      setLocalOrders(localOrders.map(o => o.id === order.id ? result.data : o));
-
+      if (result.data) {
+        setLocalOrders(prevOrders => {
+          return prevOrders.map(o => {
+            if (o.id === order.id) {
+              return { ...o, ...result.data };
+            }
+            return o;
+          });
+        });
+      }
+      
       // Verificar e corrigir o link do Instagram se existir
       if (result.data?.metadata?.link) {
         const displayLink = formatInstagramLink(result.data.metadata.link);
@@ -291,9 +367,11 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
         provider_response: result.provider_response
       });
       setStatusModalOpen(true);
+      
+      return result;
     } catch (error) {
       console.error('Erro ao verificar status do pedido:', error);
-      toast.error(error.message || 'Erro ao verificar status do pedido');
+      toast.error(error instanceof Error ? error.message : 'Erro ao verificar status do pedido');
     } finally {
       setCheckingStatus(prev => ({ ...prev, [order.id]: false }));
     }
@@ -471,9 +549,14 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
   return (
     <div>
       <div className="py-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
-          <h2 className="text-2xl font-semibold text-gray-900">Pedidos</h2>
-          <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
+          <div>
+            <h2 className="text-lg font-semibold">Pedidos</h2>
+            <p className="text-sm text-gray-500">
+              O status dos pedidos é atualizado automaticamente a cada 4 minutos.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 mt-4 sm:mt-0">
             <input
               type="text"
               placeholder="Buscar por ID, usuário, serviço..."

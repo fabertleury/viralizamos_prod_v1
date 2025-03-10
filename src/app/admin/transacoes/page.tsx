@@ -223,14 +223,39 @@ export default function TransacoesPage() {
           continue; // Pular para a próxima transação
         }
         
-        await handleMarkDelivered(transaction);
+        // Verificar se todos os pedidos estão completos antes de chamar a API
+        const allOrdersComplete = transaction.orders.every(order => 
+          order.status === 'completed' || order.status === 'success' || order.status === 'partial'
+        );
+        
+        if (allOrdersComplete) {
+          // Se todos os pedidos já estiverem completos, marcar a transação como entregue diretamente
+          try {
+            await supabase
+              .from('transactions')
+              .update({ 
+                delivered: true,
+                delivered_at: new Date().toISOString()
+              })
+              .eq('id', transaction.id);
+            
+            console.log(`Transação ${transaction.id} marcada como entregue (todos os pedidos já completos)`);
+            await fetchTransactions(); // Atualizar a lista após a mudança
+          } catch (updateError) {
+            console.error(`Erro ao marcar transação ${transaction.id} como entregue:`, updateError);
+          }
+        } else {
+          // Se ainda houver pedidos pendentes, chamar a API para verificar o status
+          await handleMarkDelivered(transaction);
+        }
+        
         // Pequena pausa entre as verificações para não sobrecarregar a API
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error: any) {
         console.error(`Erro ao verificar status de entrega da transação ${transaction.id}:`, error);
       }
     }
-  }, [transactions, handleMarkDelivered, supabase]);
+  }, [transactions, handleMarkDelivered, supabase, fetchTransactions]);
 
   useEffect(() => {
     fetchTransactions();
@@ -428,6 +453,30 @@ export default function TransacoesPage() {
                         <span className="px-2 py-1 rounded-full text-xs bg-yellow-100 text-yellow-800">
                           Pendente
                         </span>
+                      )}
+                      {transaction.delivered && transaction.orders && transaction.orders.length > 0 && (
+                        <div className="mt-1 text-xs">
+                          {transaction.orders.map((order: any, index: number) => (
+                            <div key={index} className="flex items-center gap-1">
+                              <span className={`px-2 py-1 rounded-full text-xs ${
+                                order.status === 'completed' || order.status === 'success' ? 'bg-green-100 text-green-800' :
+                                order.status === 'processing' || order.status === 'in progress' ? 'bg-blue-100 text-blue-800' :
+                                order.status === 'partial' ? 'bg-purple-100 text-purple-800' :
+                                order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                order.status === 'canceled' ? 'bg-gray-100 text-gray-800' :
+                                'bg-red-100 text-red-800'
+                              }`}>
+                                {order.status === 'completed' || order.status === 'success' ? 'Concluído' :
+                                 order.status === 'processing' || order.status === 'in progress' ? 'Processando' :
+                                 order.status === 'partial' ? 'Parcial' :
+                                 order.status === 'pending' ? 'Pendente' :
+                                 order.status === 'canceled' ? 'Cancelado' :
+                                 order.status === 'failed' || order.status === 'rejected' ? 'Falhou' : 
+                                 order.status}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </td>
                     <td className="px-6 py-4">

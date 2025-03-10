@@ -167,13 +167,15 @@ async function processTransaction(transactionId: string) {
 
 /**
  * Verifica o status de um pedido no provedor
- * @param orderId ID do pedido
+ * @param orderId ID do pedido (string que será convertida para número)
  * @param providerId ID do provedor
  * @returns Status do pedido
  */
 async function checkOrderStatus(orderId: string, providerId: string) {
   const orderStatusManager = new OrderStatusManager();
-  return await orderStatusManager.checkOrderStatus(orderId, providerId);
+  // Converter o orderId para número
+  const orderIdNumber = parseInt(orderId, 10);
+  return await orderStatusManager.checkOrderStatus(orderIdNumber, providerId);
 }
 
 /**

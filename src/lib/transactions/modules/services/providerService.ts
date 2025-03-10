@@ -18,13 +18,24 @@ export class ProviderService {
       
       console.log(`[ProviderService] Enviando pedido para ${provider.name} (${provider.api_url})`);
       
+      // Garantir que todos os campos estejam no formato correto
+      const formattedRequestData = {
+        ...requestData,
+        service: String(requestData.service).trim(),
+        quantity: Number(requestData.quantity),
+        link: String(requestData.link).trim()
+      };
+      
+      // Log dos dados formatados
+      this.logRequestDetails(formattedRequestData);
+      
       // Fazer a requisição para o provedor
       const response = await fetch(provider.api_url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(requestData)
+        body: JSON.stringify(formattedRequestData)
       });
       
       if (!response.ok) {
