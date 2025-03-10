@@ -51,7 +51,7 @@ export class DatabaseService {
         // Garantir que amount nunca seja nulo
         amount: transaction.amount 
           ? transaction.amount / totalPosts 
-          : (transaction.metadata?.amount || transaction.metadata?.original_amount || 0.01),
+          : (transaction.metadata?.amount || transaction.metadata?.service?.preco || transaction.service?.preco || transaction.metadata?.original_amount || 0.01),
         quantity: quantity,
         // Remover link pois a coluna não existe mais
         // link: link,
