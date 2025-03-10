@@ -35,6 +35,11 @@ export async function POST(request: NextRequest) {
       let providerId = order.provider_id;
       
       // Se não tiver provider_id direto, tentar pegar do metadata
+      if (!providerId && order.metadata?.provider_id) {
+        providerId = order.metadata.provider_id;
+      }
+      
+      // Se ainda não tiver, tentar pegar do metadata.provider
       if (!providerId && order.metadata?.provider?.id) {
         providerId = order.metadata.provider.id;
       }

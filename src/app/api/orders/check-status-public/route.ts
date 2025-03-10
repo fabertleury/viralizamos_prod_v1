@@ -80,7 +80,7 @@ async function processOrderStatus(supabase: any, order: any) {
     let providerResponse;
     
     // Verificar se o pedido tem um provedor associado (em qualquer um dos campos possíveis)
-    if (!order.service?.provider && !order.metadata?.provider && !order.metadata?.provider_name) {
+    if (!order.service?.provider && !order.metadata?.provider && !order.metadata?.provider_id && !order.metadata?.provider_name) {
       throw new Error('Pedido não tem provedor associado');
     }
     
@@ -102,6 +102,24 @@ async function processOrderStatus(supabase: any, order: any) {
         
       if (metadataProviderError) {
         throw new Error('Provedor dos metadados não encontrado');
+      }
+      
+      providerResponse = await checkOrderStatus(
+        metadataProvider.id,
+        order.external_order_id,
+        metadataProvider.api_url,
+        metadataProvider.api_key
+      );
+    } else if (order.metadata?.provider_id) {
+      // Usar o provider_id dos metadados
+      const { data: metadataProvider, error: metadataProviderError } = await supabase
+        .from('providers')
+        .select('*')
+        .eq('id', order.metadata.provider_id)
+        .single();
+        
+      if (metadataProviderError) {
+        throw new Error('Provedor dos metadados (provider_id) não encontrado');
       }
       
       providerResponse = await checkOrderStatus(
