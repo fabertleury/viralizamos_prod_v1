@@ -312,12 +312,12 @@ export const useInstagramAPI = () => {
 
       console.log('Status da API do Instagram:', status);
       return status;
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Erro ao verificar status da API do Instagram:', error);
       
       return {
         status: 'offline',
-        detail: error.message || 'Falha na conexão',
+        detail: error instanceof Error ? error.message : 'Falha na conexão',
         last_checked: new Date()
       };
     }
@@ -365,12 +365,52 @@ export const useInstagramAPI = () => {
     }
   };
 
+  const fetchInstagramProfileInfo = async (username: string): Promise<any> => {
+    try {
+      console.log(`[useInstagramAPI] Buscando informações do perfil: ${username}`);
+      const profileInfo = await makeRequest(`${BASE_URL}/v1/info`, { 
+        username_or_id_or_url: username 
+      });
+      
+      if (!profileInfo) {
+        throw new Error('Não foi possível buscar as informações do perfil');
+      }
+      
+      // Extrair dados da resposta da API, que podem estar em diferentes estruturas
+      const data = profileInfo.data || profileInfo;
+      
+      return {
+        username: data.username || profileInfo.username || username,
+        full_name: data.full_name || profileInfo.full_name || '',
+        biography: data.biography || profileInfo.biography || '',
+        followers: data.follower_count || data.followers_count || data.followers || 0,
+        following: data.following_count || data.following || 0,
+        totalPosts: data.media_count || data.posts || 0,
+        profilePicture: data.hd_profile_pic_url_info?.url || 
+                       data.profile_pic_url_hd || 
+                       data.profile_pic_url || 
+                       '',
+        is_private: data.is_private || profileInfo.is_private || false,
+        // Incluir todos os dados originais para debug
+        data: data
+      };
+    } catch (error: unknown) {
+      console.error('Erro ao buscar informações do perfil:', error);
+      if (error instanceof Error) {
+        throw error;
+      } else {
+        throw new Error('Erro desconhecido ao buscar informações do perfil');
+      }
+    }
+  };
+
   return {
     checkInstagramProfile,
     fetchInstagramPosts,
     fetchInstagramReels,
     fetchPostLikes,
     checkInstagramAPIStatus,
-    fetchContent
+    fetchContent,
+    fetchInstagramProfileInfo
   };
 };

@@ -146,9 +146,7 @@ const ServicosSection = () => {
         
         <div className="text-center mt-12">
           <a 
-            href="https:/viralizamos.com/instagram" 
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/instagram"
             className="bg-[#C43582] text-white px-8 py-3 rounded-full text-xl font-bold hover:bg-[#a62c6c] transition"
           >
             Clique aqui e Comece agora
@@ -249,9 +247,7 @@ const RedesSociaisSection = () => {
         
         <div className="text-center mt-12">
           <a 
-            href="https:/viralizamos.com/instagram" 
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/instagram"
             className="bg-white text-[#C43582] px-8 py-3 rounded-full text-xl font-bold hover:bg-gray-100 transition"
           >
             Comece agora
@@ -422,7 +418,7 @@ export default function HomeV3() {
       <div className="fixed bottom-8 right-8 flex flex-col space-y-4 z-50">
         {configurations['whatsapp_ativo'] === 'true' && (
           <a 
-            href={`https://wa.me/${configurations['whatsapp_numero']?.replace(/\D/g, '')}`} 
+            href={`https://wa.me/${configurations['whatsapp_numero']?.replace(/\D/g, '')}`}
             target="_blank" 
             rel="noopener noreferrer"
             className="bg-green-500 text-white p-4 rounded-full shadow-xl hover:bg-green-600 transition"
@@ -436,7 +432,7 @@ export default function HomeV3() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <a 
-                  href={configurations['ticket_link'] || '#'} 
+                  href={configurations['ticket_link'] || '#'}
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="bg-blue-500 text-white p-4 rounded-full shadow-xl hover:bg-blue-600 transition"

@@ -43,7 +43,7 @@ export function Footer() {
             </p>
             <div className="flex mt-2">
               <a 
-                href="https://instagram.com/viralizamos" 
+                href="https://www.instagram.com/viralizamos.ia" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-white hover:text-pink-500 transition-colors"
