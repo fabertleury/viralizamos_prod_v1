@@ -69,12 +69,14 @@ export class DatabaseService {
         calculatedAmount = (transaction.metadata as any).original_amount;
         console.log('[DatabaseService] Usando transaction.metadata.original_amount:', calculatedAmount);
       } else {
-        calculatedAmount = 1000; // Valor padrão de 10 reais (em centavos)
+        // Valor padrão de 1 centavo em vez de 10 reais para evitar cobranças incorretas
+        calculatedAmount = 1; // 1 centavo
         console.log('[DatabaseService] Usando valor padrão:', calculatedAmount);
       }
       
-      // Garantir que amount nunca seja nulo
-      const finalAmount = calculatedAmount || 1000; // Garantia final contra nulos
+      // Garantir que amount nunca seja nulo e nunca seja zero
+      // Se for zero ou nulo, usar 1 centavo como valor mínimo
+      const finalAmount = calculatedAmount && calculatedAmount > 0 ? calculatedAmount : 1;
       console.log('[DatabaseService] Valor final de amount:', finalAmount);
       
       // Preparar os dados do pedido - removendo campos que não existem na tabela

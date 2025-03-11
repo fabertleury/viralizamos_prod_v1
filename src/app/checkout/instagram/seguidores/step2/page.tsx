@@ -24,6 +24,12 @@ interface ProfileData {
   is_private: boolean;
 }
 
+interface ServiceDetail {
+  title: string;
+  emoji?: string;
+  icon?: string;
+}
+
 interface Service {
   id: string;
   name: string;
@@ -37,10 +43,7 @@ interface Service {
       [key: string]: any;
     };
   };
-  service_details?: {
-    icon: string;
-    title: string;
-  }[];
+  service_details?: ServiceDetail[];
   checkout?: {
     slug: string;
   };
@@ -442,27 +445,57 @@ export default function Step2Page() {
                   </div>
                 )}
                 
-                {service.metadata?.service_details?.service_details && (
-                  <div className="space-y-3 mt-4">
-                    {service.metadata.service_details.service_details.map((detail: any, index: number) => (
-                      <div key={index} className="flex items-center text-sm">
-                        <span className="text-green-500 mr-2">{detail.icon || '✓'}</span>
-                        <span className="text-gray-600">{detail.title}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                {service.service_details && (
-                  <div className="space-y-3">
-                    {service.service_details.map((detail, index) => (
-                      <div key={index} className="flex items-center text-sm">
+                {/* Detalhes do serviço - verificação de várias possíveis estruturas de dados */}
+                <div className="space-y-3 mt-4">
+                  {/* Verificar se temos detalhes do serviço na estrutura service.service_details */}
+                  {service.service_details && service.service_details.map((detail, index) => (
+                    <div key={`detail-${index}`} className="flex items-center text-sm">
+                      <span className="text-green-500 mr-2">{detail.emoji || detail.icon || '✓'}</span>
+                      <span className="text-gray-600">{detail.title}</span>
+                    </div>
+                  ))}
+                  
+                  {/* Verificar se temos detalhes do serviço na estrutura service.metadata?.service_details */}
+                  {!service.service_details && service.metadata?.service_details && 
+                   Array.isArray(service.metadata.service_details) && 
+                   service.metadata.service_details.map((detail: any, index: number) => (
+                    <div key={`metadata-detail-${index}`} className="flex items-center text-sm">
+                      <span className="text-green-500 mr-2">{detail.emoji || detail.icon || '✓'}</span>
+                      <span className="text-gray-600">{detail.title}</span>
+                    </div>
+                  ))}
+                  
+                  {/* Verificar se temos detalhes do serviço na estrutura service.metadata?.service_details?.service_details */}
+                  {!service.service_details && 
+                   !Array.isArray(service.metadata?.service_details) && 
+                   service.metadata?.service_details?.service_details && 
+                   service.metadata.service_details.service_details.map((detail: any, index: number) => (
+                    <div key={`nested-detail-${index}`} className="flex items-center text-sm">
+                      <span className="text-green-500 mr-2">{detail.emoji || detail.icon || '✓'}</span>
+                      <span className="text-gray-600">{detail.title}</span>
+                    </div>
+                  ))}
+                  
+                  {/* Fallback para características padrão se nenhum detalhe for encontrado */}
+                  {!service.service_details && 
+                   !Array.isArray(service.metadata?.service_details) && 
+                   !service.metadata?.service_details?.service_details && (
+                    <>
+                      <div className="flex items-center text-sm">
                         <span className="text-green-500 mr-2">✓</span>
-                        <span className="text-gray-600">{detail.title}</span>
+                        <span className="text-gray-600">Seguidores de alta qualidade</span>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div className="flex items-center text-sm">
+                        <span className="text-green-500 mr-2">✓</span>
+                        <span className="text-gray-600">Entrega gradual e natural</span>
+                      </div>
+                      <div className="flex items-center text-sm">
+                        <span className="text-green-500 mr-2">✓</span>
+                        <span className="text-gray-600">Suporte 24/7</span>
+                      </div>
+                    </>
+                  )}
+                </div>
               </Card>
               
               <Card className="p-6 bg-white shadow-md rounded-xl">
