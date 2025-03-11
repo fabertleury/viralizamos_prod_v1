@@ -37,7 +37,7 @@ export function EngagementProjectionChart({
       visualizacoes: currentData.reelViews || 0
     },
     {
-      name: 'Com ViralAI',
+      name: 'Com Viralizamos',
       seguidores: projectedData.followers,
       curtidas: projectedData.likes,
       comentarios: projectedData.comments,
@@ -59,7 +59,7 @@ export function EngagementProjectionChart({
         </h3>
         <div className="flex items-center text-green-600">
           <FaRocket className="mr-2" />
-          Potencializado por ViralAI
+          Potencializado por Viralizamos.com
         </div>
       </div>
 
@@ -158,7 +158,7 @@ export function EngagementProjectionChart({
 
       <div className="mt-6 bg-purple-50 p-4 rounded-lg text-center">
         <p className="text-purple-800 font-semibold">
-          Com os serviços da ViralAI, seu perfil pode crescer significativamente em engajamento e visibilidade!
+          Com os serviços da Viralizamos, seu perfil pode crescer significativamente em engajamento e visibilidade!
         </p>
       </div>
     </div>
