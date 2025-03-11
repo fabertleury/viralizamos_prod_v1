@@ -15,7 +15,7 @@ import {
   faShield, faRocket, faGlobe, faUsers, faThumbsUp, faEye, faComment, 
   faBolt, faMedal, faTrophy, faGem, faCrown, faFire, faSmile, faLock, faUnlock 
 } from '@fortawesome/free-solid-svg-icons';
-import { supabase } from '@/lib/hooks/useSupabase';
+import { createClient } from '@/lib/supabase/client';
 
 interface ServiceDetail {
   title: string;
@@ -89,7 +89,10 @@ export default function Step1Page() {
       try {
         setLoadingStageService('searching');
         
-        // Buscar serviço pelo ID
+        // Criar cliente do Supabase
+        const supabase = createClient();
+        
+        // Buscar serviço pelo ID - Atualizado para usar o nome correto da tabela 'services'
         const { data, error } = await supabase
           .from('services')
           .select('*')
@@ -99,64 +102,96 @@ export default function Step1Page() {
         if (error) {
           console.error('Erro ao buscar detalhes do serviço:', error);
           toast.error('Erro ao buscar detalhes do serviço');
+          setLoadingStageService('error');
           return;
         }
-
+        
         if (!data) {
           toast.error('Serviço não encontrado');
+          setLoadingStageService('error');
           return;
         }
 
+        // Definir o serviço com todos os dados
         setService(data);
         setLoadingStageService('done');
-      } catch (error) {
-        console.error('Erro ao buscar serviço:', error);
-        toast.error('Erro ao carregar detalhes do serviço');
+
+        // Verificar preço com base na quantidade escolhida
+        const variations = data.service_variations || data.metadata?.quantidade_preco || [];
+        const selectedVariation = variations.find(
+          (v: QuantidadePreco) => v.quantidade === parseInt(quantity || '0')
+        );
+        if (selectedVariation) {
+          setService(prevService => {
+            if (prevService) {
+              return { ...prevService, preco: selectedVariation.preco };
+            }
+            return prevService;
+          });
+        } else {
+          toast.error('Variação de quantidade não encontrada');
+        }
+      } catch (error: any) {
+        console.error('Erro ao buscar detalhes do serviço:', error);
+        toast.error('Erro ao buscar detalhes do serviço');
+        setLoadingStageService('error');
       }
     };
 
     fetchServiceData();
-  }, [serviceId]);
+  }, [serviceId, quantity]);
 
+  // Função para verificar o perfil do Instagram usando a API em cascata
   const checkProfile = async (usernameToCheck: string) => {
-    if (!usernameToCheck) {
-      toast.error('Por favor, insira um nome de usuário');
-      return;
-    }
-
     setIsLoading(true);
+    setError(null);
     setShowModal(true);
     setLoadingStage('loading');
-    setError(null);
-
+    
     try {
-      // Verificar se o perfil existe e é público
-      const profileInfo = await fetchInstagramProfileInfo(usernameToCheck);
+      console.log(`Verificando perfil: ${usernameToCheck}`);
       
-      if (!profileInfo) {
-        throw new Error('Não foi possível encontrar o perfil');
+      // Usar a API em cascata para verificar o perfil
+      const response = await fetch(`/api/instagram/graphql-check?username=${usernameToCheck}`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Erro ao verificar perfil');
       }
-
+      
+      // Formatar os dados do perfil
+      const profileInfo = {
+        username: data.username,
+        full_name: data.full_name,
+        profile_pic_url: data.profile_pic_url,
+        follower_count: data.follower_count,
+        following_count: data.following_count,
+        is_private: data.is_private,
+        is_verified: data.is_verified,
+        source: data.source
+      };
+      
+      console.log('Dados do perfil:', profileInfo);
       setProfileData(profileInfo);
-
+      
       if (profileInfo.is_private) {
+        console.log('Perfil privado detectado:', profileInfo);
         setLoadingStage('error');
-        setError('Este perfil é privado. Por favor, torne-o público para continuar.');
         return;
       }
-
+      
+      // Perfil está público, redirecionar para a próxima etapa
       setLoadingStage('done');
       
       // Armazenar dados do perfil e do serviço no localStorage para a próxima etapa
       const checkoutData = {
         profileData: profileInfo,
         serviceId: serviceId,
-        external_id: service?.external_id || serviceId,
+        external_id: service?.external_id || serviceId, // Armazenar tanto o serviceId quanto o external_id
         quantity: quantity || service?.quantidade
       };
       localStorage.setItem('checkoutProfileData', JSON.stringify(checkoutData));
       
-      // Redirecionar para o step2 de Reels
       router.push(`/checkout/instagram/reels/step2?username=${encodeURIComponent(usernameToCheck)}`);
     } catch (error: any) {
       console.error('Erro ao verificar perfil:', error);
@@ -217,163 +252,151 @@ export default function Step1Page() {
                 </div>
                 <h4 className="font-semibold text-gray-700 text-center">Finalizar Compra</h4>
                 <p className="text-sm text-gray-500 text-center mt-2">
-                  Pague e receba suas visualizações
+                  Pague e receba visualizações
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Formulário de Verificação de Perfil */}
-          <div className="bg-white shadow-md rounded-xl p-6 mb-8">
-            <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
+          {/* Card do Serviço */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="flex items-center mb-4">
+                <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center mr-4">
+                  <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    width="24" 
+                    height="24" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    className="text-purple-600"
+                  >
+                    <path d="M23 7l-7 5 7 5V7z"></path>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                  </svg>
+                </div>
+                <h2 className="text-xl font-bold text-gray-800">{service?.name}</h2>
+              </div>
+              <p className="text-gray-600 mb-4">{service?.description}</p>
+              <div className="flex justify-between items-center">
+                <div>
+                  <span className="text-sm text-gray-500">Quantidade</span>
+                  <p className="text-lg font-semibold text-gray-800">{quantity} visualizações</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm text-gray-500">Preço</span>
+                  <p className="text-2xl font-bold text-purple-600">
+                    R$ {service?.preco ? service.preco.toFixed(2) : '0.00'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Detalhes do Serviço</h3>
+                <p>{service?.description}</p>
+                <ul className="space-y-2 mt-2">
+                  {service?.service_details || service?.metadata?.serviceDetails ? (
+                    (service.service_details || service.metadata?.serviceDetails || []).map((detail, index) => {
+                      return (
+                        <li key={index} className="flex items-center">
+                          <span className="mr-2">{detail.emoji}</span>
+                          <span className="font-semibold text-gray-800">{detail.title}</span>
+                        </li>
+                      );
+                    })
+                  ) : (
+                    <li className="text-gray-500">Nenhum detalhe disponível</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Formulário de Verificação */}
+          <div className="bg-white shadow-md rounded-lg p-8">
+            <h2 className="text-2xl font-bold mb-6 text-center">
               Verificar Perfil do Instagram
             </h2>
-            
+
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div>
-                <label htmlFor="instagram_username" className="block text-sm font-medium text-gray-700 mb-1">
-                  Nome de usuário do Instagram
-                </label>
-                <div className="mt-1 relative rounded-md shadow-sm">
+                <label htmlFor="instagram_username" className="block mb-2">Perfil do Instagram</label>
+                <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <span className="text-gray-500 sm:text-sm">@</span>
                   </div>
-                  <input
-                    type="text"
+                  <input 
+                    type="text" 
                     id="instagram_username"
-                    className="focus:ring-pink-500 focus:border-pink-500 block w-full pl-8 pr-12 sm:text-sm border-gray-300 rounded-md py-3"
-                    placeholder="seu_usuario"
-                    {...register('instagram_username', { required: true })}
+                    placeholder="seuperfil" 
+                    className="pl-8 w-full py-3 border-2 border-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all duration-300 rounded-lg"
+                    {...register('instagram_username', { 
+                      required: 'Informe seu perfil do Instagram',
+                      pattern: {
+                        value: /^[a-zA-Z0-9._]+$/,
+                        message: 'Formato de usuário inválido'
+                      }
+                    })}
                   />
                 </div>
                 {errors.instagram_username && (
-                  <p className="mt-2 text-sm text-red-600">
-                    Por favor, insira seu nome de usuário do Instagram
+                  <p className="text-red-500 text-sm mt-2 flex items-center space-x-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <span>{errors.instagram_username.message}</span>
                   </p>
                 )}
               </div>
 
-              <div className="flex items-start">
-                <div className="flex items-center h-5">
-                  <input
-                    id="is_public_confirmed"
-                    type="checkbox"
-                    className="focus:ring-pink-500 h-4 w-4 text-pink-600 border-gray-300 rounded"
-                    {...register('is_public_confirmed', { required: true })}
-                  />
-                </div>
-                <div className="ml-3 text-sm">
-                  <label htmlFor="is_public_confirmed" className="font-medium text-gray-700">
-                    Confirmo que meu perfil é público
-                  </label>
-                  <p className="text-gray-500">
-                    Para receber visualizações, seu perfil precisa ser público durante o processo.
-                  </p>
-                </div>
+              <div className="flex items-center space-x-2">
+                <input 
+                  type="checkbox" 
+                  id="is_public_confirmed"
+                  {...register('is_public_confirmed', {
+                    required: 'Confirme que o perfil é público'
+                  })}
+                />
+                <label 
+                  htmlFor="is_public_confirmed" 
+                  className="text-sm text-gray-700"
+                >
+                  Confirmo que meu perfil é público
+                </label>
               </div>
               {errors.is_public_confirmed && (
-                <p className="mt-2 text-sm text-red-600">
-                  Você precisa confirmar que seu perfil é público
+                <p className="text-red-500 text-sm mt-1">
+                  {errors.is_public_confirmed.message}
                 </p>
               )}
 
-              <div>
-                <button
-                  type="submit"
-                  className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500"
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Verificando...' : 'Verificar Perfil'}
-                </button>
-              </div>
+              <button 
+                type="submit" 
+                className="w-full py-3 text-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transition-all duration-300 ease-in-out transform hover:scale-105"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Verificando...' : 'Verificar Perfil'}
+              </button>
             </form>
           </div>
-
-          {/* Informações do Serviço */}
-          {service && (
-            <div className="bg-white shadow-md rounded-xl p-6 mb-8">
-              <h3 className="text-xl font-bold mb-4 text-gray-800">Detalhes do Serviço</h3>
-              <div className="flex flex-col space-y-4">
-                <div>
-                  <h4 className="font-semibold text-gray-700">{service.name}</h4>
-                  <p className="text-gray-600">{service.description}</p>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Quantidade:</span>
-                  <span className="font-semibold">{quantity || service.quantidade}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Preço:</span>
-                  <span className="font-semibold text-green-600">
-                    R$ {(service.preco / 100).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Detalhes do Serviço */}
-          <div className="bg-white shadow-md rounded-xl p-6">
-            <h3 className="text-xl font-bold mb-4 text-gray-800">Por que escolher nosso serviço?</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex items-start space-x-3">
-                <div className="text-pink-500">
-                  <FontAwesomeIcon icon={faRocket} className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-700">Entrega Rápida</h4>
-                  <p className="text-sm text-gray-600">
-                    Começamos a entregar suas visualizações em até 30 minutos após a confirmação.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <div className="text-pink-500">
-                  <FontAwesomeIcon icon={faShield} className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-700">100% Seguro</h4>
-                  <p className="text-sm text-gray-600">
-                    Não pedimos sua senha e utilizamos métodos seguros que não violam as políticas do Instagram.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <div className="text-pink-500">
-                  <FontAwesomeIcon icon={faUsers} className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-700">Visualizações Reais</h4>
-                  <p className="text-sm text-gray-600">
-                    Todas as visualizações vêm de contas reais, aumentando seu engajamento de forma natural.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <div className="text-pink-500">
-                  <FontAwesomeIcon icon={faCheck} className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-700">Garantia de Qualidade</h4>
-                  <p className="text-sm text-gray-600">
-                    Se houver qualquer problema, oferecemos suporte e garantia de reposição.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
-      </main>
 
-      {/* Modal de Carregamento */}
-      <LoadingProfileModal 
-        isOpen={showModal} 
-        onClose={() => setShowModal(false)} 
-        stage={loadingStage}
-        error={error}
-        profileData={profileData}
-        onRetry={handleRetryAfterPrivate}
-      />
+        <LoadingProfileModal 
+          open={showModal}
+          onOpenChange={setShowModal}
+          loadingStage={loadingStage}
+          profileData={profileData}
+          error={error}
+          checkoutSlug="reels"
+          onRetryAfterPrivate={handleRetryAfterPrivate}
+        />
+      </main>
     </div>
   );
 }

@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/hooks/useSupabase';
+import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { ReelSelector } from '@/components/instagram/visualizacao/ReelSelector';
+import ReelSelector from '@/components/instagram/curtidas/ReelSelector';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -29,86 +29,173 @@ interface Service {
   name: string;
   preco: number;
   quantidade: number;
-  checkout: {
-    slug: string;
-  };
+  provider_id: string;
 }
 
 interface Post {
   id: string;
+  code: string;
   shortcode: string;
   image_url: string;
-  caption: string;
-  selected?: boolean;
-  displayName?: string;
+  caption?: string;
+  like_count?: number;
+  comment_count?: number;
+  thumbnail_url?: string;
+  display_url?: string;
+  image_versions?: any;
+}
+
+interface InstagramPost {
+  id: string;
+  code: string;
+  shortcode: string;
+  image_url: string;
+  caption?: string;
 }
 
 export default function Step2Page() {
   const router = useRouter();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: ''
+  });
   const [service, setService] = useState<Service | null>(null);
   const [selectedReels, setSelectedReels] = useState<Post[]>([]);
+  const [instagramReels, setInstagramReels] = useState<Post[]>([]);
+  const [paymentData, setPaymentData] = useState<{
+    qrCodeText: string;
+    paymentId: string;
+    amount: number;
+    qrCodeBase64?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadingReels, setLoadingReels] = useState(false);
-  const [instagramReels, setInstagramReels] = useState<Post[] | null>(null);
   const [reelsLoaded, setReelsLoaded] = useState(false);
-  const [formData, setFormData] = useState({
-    email: '',
-    name: '',
-    whatsapp: ''
-  });
-  const [paymentData, setPaymentData] = useState<any>(null);
+  const [loadingReels, setLoadingReels] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [finalAmount, setFinalAmount] = useState<number | null>(null);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
 
-  useEffect(() => {
-    // Carregar dados do localStorage
-    const checkoutData = localStorage.getItem('checkoutProfileData');
-    
-    if (!checkoutData) {
-      toast.error('Dados do perfil não encontrados');
-      router.push('/');
-      return;
-    }
+  const supabase = createClient();
 
-    const loadData = async () => {
-      try {
-        const { profileData: savedProfile, serviceId, formData: savedFormData, timestamp } = JSON.parse(checkoutData);
-        
-        // Verificar se os dados não são muito antigos (30 minutos)
-        const thirtyMinutes = 30 * 60 * 1000;
-        if (new Date().getTime() - timestamp > thirtyMinutes) {
-          toast.error('Sessão expirada. Por favor, comece novamente.');
-          localStorage.removeItem('checkoutProfileData');
-          router.push('/');
-          return;
-        }
-
-        setProfileData(savedProfile);
-        setFormData(savedFormData || formData);
-        
-        if (serviceId) {
-          const serviceData = await fetchService(serviceId);
-          if (serviceData) {
-            setService(serviceData);
-            setFinalAmount(serviceData.preco);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading profile data:', error);
-        toast.error('Erro ao carregar dados do perfil');
-        router.push('/');
-      }
-    };
-
-    loadData();
+  const handleReelSelect = useCallback((reels: InstagramPost[]) => {
+    setSelectedReels(reels as Post[]);
   }, []);
+
+  // Calcular o número total de itens selecionados
+  const selectedItemsCount = selectedReels.length;
+  const maxTotalItems = 5; // Máximo de 5 reels
+  
+  // Calcular visualizações por item
+  const viewsPerItem = service?.quantidade && selectedItemsCount > 0 
+    ? Math.floor(service.quantidade / selectedItemsCount) 
+    : 0;
+
+  // Função para extrair o código correto de um reel do Instagram
+  const extractPostCode = (post: any): string => {
+    // Se o post já tem um código que não é numérico, usar esse código
+    if (post.code && !/^\d+$/.test(post.code)) {
+      console.log('✅ Usando código existente:', post.code);
+      return post.code;
+    }
+    
+    // Se tem shortcode, usar o shortcode
+    if (post.shortcode) {
+      console.log('✅ Usando shortcode:', post.shortcode);
+      return post.shortcode;
+    }
+    
+    // Se tem permalink ou link, extrair o código da URL
+    if (post.permalink || post.link) {
+      const url = post.permalink || post.link;
+      const match = url.match(/instagram\.com\/reel\/([^\/]+)/);
+      if (match && match[1]) {
+        console.log('✅ Código extraído da URL:', match[1]);
+        return match[1];
+      }
+    }
+    
+    // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
+    console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
+    return post.id;
+  };
+
+  const fetchInstagramReels = async (username: string) => {
+    try {
+      // Se já carregou os reels, não precisa buscar novamente
+      if (reelsLoaded && instagramReels.length > 0) {
+        console.log('Usando reels em cache:', instagramReels.length);
+        return instagramReels;
+      }
+
+      setLoadingReels(true);
+      
+      const options = {
+        method: 'GET',
+        url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/reels',
+        params: { username_or_id_or_url: username },
+        headers: {
+          'x-rapidapi-key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY,
+          'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
+        }
+      };
+      const response = await axios.request(options);
+      console.log('Resposta da API de reels:', response.data);
+
+      // Verificar se a resposta tem a estrutura esperada
+      const reels = response.data.data?.items || response.data.items || [];
+      console.log('Reels encontrados:', reels.length);
+
+      // Mapear os reels para o formato esperado
+      const formattedReels: Post[] = reels.map((reel: any) => {
+        // Tentar diferentes caminhos para a imagem do reel
+        const imageUrl = 
+          reel.image_versions?.items?.[0]?.url || 
+          reel.thumbnail_url || 
+          reel.cover_frame_url || 
+          reel.display_url;
+
+        // Extrair o código correto do reel para a URL
+        const reelCode = extractPostCode(reel);
+        
+        return {
+          id: reel.id || '',
+          code: reelCode,
+          shortcode: reelCode,
+          image_url: imageUrl,
+          caption: reel.caption 
+              ? (typeof reel.caption === 'object' 
+                ? reel.caption.text || 'Sem legenda'
+                : String(reel.caption)) 
+              : 'Sem legenda',
+          like_count: reel.like_count || reel.likes_count || 0,
+          comment_count: reel.comment_count || reel.comments_count || 0,
+          // Campos específicos para reels
+          thumbnail_url: reel.thumbnail_url || '',
+          display_url: reel.display_url || '',
+          image_versions: reel.image_versions || null
+        };
+      }).filter(reel => reel.image_url || reel.thumbnail_url || reel.display_url); // Remover reels sem imagem
+
+      console.log('Reels formatados:', formattedReels.length);
+      setInstagramReels(formattedReels);
+      setReelsLoaded(true);
+      setLoadingReels(false);
+      return formattedReels;
+    } catch (error) {
+      console.error('Erro ao buscar reels do Instagram:', error);
+      setLoadingReels(false);
+      return [];
+    }
+  };
 
   const fetchService = async (externalId: string) => {
     console.log('Buscando serviço com ID:', externalId);
     
     try {
+      const supabase = createClient();
+      
       // Verificar se temos uma quantidade específica no localStorage
       const checkoutData = localStorage.getItem('checkoutProfileData');
       let quantity = null;
@@ -181,145 +268,202 @@ export default function Step2Page() {
     }
   };
 
-  // Calcular o número de visualizações por item
-  const maxTotalItems = 10; // Máximo de itens que podem ser selecionados
-  const selectedItemsCount = selectedReels.length;
-  const visualizacoesPerItem = selectedItemsCount > 0 
-    ? Math.floor(service?.quantidade || 0 / selectedItemsCount) 
-    : 0;
+  useEffect(() => {
+    const checkoutData = localStorage.getItem('checkoutProfileData');
+    console.log('Dados de checkout brutos:', checkoutData);
 
-  // Buscar reels do Instagram
-  const fetchInstagramReels = async (username: string) => {
-    if (!username) return;
-    
     try {
-      setLoadingReels(true);
-      
-      // Configurar a requisição para a API do RapidAPI
-      const options = {
-        method: 'GET',
-        url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/user/reels',
-        params: { username },
-        headers: {
-          'X-RapidAPI-Key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY || '',
-          'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com'
-        }
-      };
+      if (checkoutData) {
+        const parsedCheckoutData = JSON.parse(checkoutData);
+        console.log('Dados de checkout parseados:', parsedCheckoutData);
 
-      console.log('Buscando reels para:', username);
-      const response = await axios.request(options);
-      const reels = response.data.data?.items || response.data.items || [];
-      
-      console.log(`Encontrados ${reels.length} reels para ${username}`);
-      
-      // Mapear os dados para o formato esperado
-      const formattedReels = reels.map((reel: any) => {
-        // Extrair a URL da imagem de thumbnail
-        const thumbnailUrl = 
-          reel.image_versions2?.candidates?.[0]?.url || 
-          reel.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url ||
-          reel.thumbnail_url ||
-          '';
+        // Recuperar o external_id com mais flexibilidade
+        const externalId = 
+          parsedCheckoutData.external_id || 
+          parsedCheckoutData.serviceId || 
+          localStorage.getItem('serviceId') || 
+          localStorage.getItem('external_id');
+
+        // Recuperar a quantidade, se disponível
+        const quantity = parsedCheckoutData.quantity;
         
-        return {
-          id: reel.id || `reel_${Math.random().toString(36).substring(2, 11)}`,
-          code: reel.code || reel.shortcode,
-          shortcode: reel.shortcode || reel.code,
-          thumbnail_url: thumbnailUrl,
-          image_url: thumbnailUrl,
-          display_url: thumbnailUrl,
-          caption: reel.caption?.text || reel.caption || '',
-          like_count: reel.like_count || 0,
-          comment_count: reel.comment_count || 0,
-          views_count: reel.view_count || reel.play_count || 0,
-          play_count: reel.play_count || reel.view_count || 0
-        };
-      });
-      
-      setInstagramReels(formattedReels);
-      setReelsLoaded(true);
+        console.log('External ID recuperado:', externalId);
+        console.log('Quantidade recuperada:', quantity);
+
+        // Recuperar o perfil do usuário
+        const profileData = 
+          parsedCheckoutData.profileData || 
+          parsedCheckoutData.profile || 
+          parsedCheckoutData.user;
+
+        console.log('Perfil recuperado:', profileData);
+
+        if (profileData) {
+          setProfileData(profileData);
+          // Atualizar formData com dados do perfil, se disponíveis
+          setFormData({
+            name: parsedCheckoutData.name || '',
+            email: parsedCheckoutData.email || '',
+            phone: parsedCheckoutData.phone || ''
+          });
+        }
+
+        if (externalId && profileData?.username) {
+          console.log('Iniciando busca de serviço e reels para o usuário:', profileData.username);
+          
+          // Buscar serviço e reels em paralelo
+          Promise.all([
+            fetchService(externalId),
+            fetchInstagramReels(profileData.username)
+          ]).then(([serviceData, reelsData]) => {
+            if (serviceData) {
+              // Definir o ID do provedor padrão se não estiver presente
+              if (!serviceData.provider_id) {
+                serviceData.provider_id = '1';
+              }
+              setService(serviceData);
+            } else {
+              console.error('Serviço não encontrado');
+              toast.error('Serviço não encontrado. Por favor, tente novamente.');
+            }
+          }).catch(error => {
+            console.error('Erro ao buscar dados:', error);
+            toast.error('Erro ao carregar dados. Por favor, tente novamente.');
+          });
+        } else {
+          console.error('Dados insuficientes para buscar serviço e reels');
+          toast.error('Dados insuficientes. Por favor, volte à etapa anterior.');
+        }
+      } else {
+        console.error('Nenhum dado de checkout encontrado');
+        toast.error('Nenhum dado de checkout encontrado. Por favor, volte à etapa anterior.');
+      }
     } catch (error) {
-      console.error('Erro ao buscar reels:', error);
-      toast.error('Não foi possível carregar os reels. Tente novamente.');
+      console.error('Erro ao processar dados de checkout:', error);
+      toast.error('Erro ao processar dados. Por favor, tente novamente.');
+    }
+  }, []);
+
+  const prepareTransactionData = () => {
+    if (!service || !profileData || !formData || selectedReels.length === 0 || !paymentData) {
+      toast.error('Dados incompletos para processamento da transação');
+      return null;
+    }
+
+    // Calcular quantidade de visualizações por reel
+    const totalItems = selectedReels.length;
+    const totalViews = service.quantidade;
+    const viewsPerItem = Math.floor(totalViews / totalItems);
+    const remainingViews = totalViews % totalItems;
+
+    // Preparar metadados dos reels
+    const reelsMetadata = selectedReels.map((reel, index) => {
+      // Usar o campo code correto para a URL do reel
+      const reelCode = reel.code || reel.shortcode || reel.id;
+      return {
+        postId: reel.id,
+        postCode: reelCode,
+        postLink: `https://instagram.com/reel/${reelCode}`,
+        views: index === 0 ? viewsPerItem + remainingViews : viewsPerItem,
+        type: 'reel'
+      };
+    });
+
+    return {
+      user_id: formData.name || null,
+      order_id: paymentData.paymentId,
+      type: 'reels',
+      amount: service.preco,
+      status: 'pending',
+      payment_method: 'pix',
+      payment_id: paymentData.paymentId,
+      metadata: {
+        reels: reelsMetadata,
+        serviceDetails: service
+      },
+      customer_name: formData.name || null,
+      customer_email: formData.email || null,
+      customer_phone: formData.phone || null,
+      target_username: profileData.username,
+      target_full_name: profileData.full_name,
+      payment_qr_code: paymentData.qrCodeText || null,
+      payment_external_reference: paymentData.paymentId,
+      service_id: service.id,
+      provider_id: service.provider_id,
+      target_profile_link: `https://www.instagram.com/${profileData.username}/`
+    };
+  };
+
+  const sendTransactionToAdmin = async () => {
+    try {
+      setLoading(true);
+      const transactionData = prepareTransactionData();
+
+      if (!transactionData) {
+        toast.error('Não foi possível preparar os dados da transação');
+        return;
+      }
+
+      const response = await axios.post('/admin/transacoes', transactionData);
+      
+      if (response.status === 200 || response.status === 201) {
+        toast.success('Transação registrada com sucesso');
+        router.push('/pedidos');
+      } else {
+        toast.error('Erro ao registrar transação');
+      }
+    } catch (error) {
+      console.error('Erro ao enviar transação:', error);
+      toast.error('Falha ao processar transação');
     } finally {
-      setLoadingReels(false);
+      setLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!service) {
-      toast.error('Serviço não encontrado');
-      return;
-    }
-    
-    if (!profileData) {
-      toast.error('Perfil não encontrado');
-      return;
-    }
-    
-    if (selectedReels.length === 0) {
+  const handleSubmit = async () => {
+    if (!profileData || !service || selectedReels.length === 0) {
       toast.error('Selecione pelo menos um reel');
       return;
     }
-    
+
     setLoading(true);
-    
+
     try {
+      // Log detalhado dos reels selecionados
+      console.log('📊 Reels selecionados para pagamento:', selectedReels.map(reel => ({
+        id: reel.id,
+        code: reel.code,
+        shortcode: reel.shortcode,
+        url: `https://instagram.com/reel/${reel.code}`
+      })));
+
       // Preparar os dados para o pagamento
+      const reelIds = selectedReels.map(reel => reel.id);
+      const reelCodes = selectedReels.map(reel => extractPostCode(reel));
+
+      // Estruturar os dados conforme esperado pela API
       const paymentData = {
-        service_id: service.id,
-        amount: finalAmount || service.preco,
-        original_amount: service.preco,
-        discount_amount: discountAmount,
-        coupon_code: appliedCoupon,
-        description: `${service.quantidade} visualizações para ${selectedReels.length} reels`,
         service: {
           id: service.id,
           name: service.name,
-          quantity: service.quantidade
+          price: finalAmount || service.preco,
+          preco: finalAmount || service.preco,
+          quantity: service.quantidade,
+          quantidade: service.quantidade,
+          provider_id: service.provider_id
         },
-        profile: {
-          username: profileData.username,
-          full_name: profileData.full_name,
-          link: `https://instagram.com/${profileData.username}`
-        },
+        profile: profileData,
         customer: {
           name: formData.name,
           email: formData.email,
-          phone: formData.whatsapp
+          phone: formData.phone
         },
-        posts: selectedReels.map(reel => ({
-          id: reel.id,
-          code: reel.code || reel.shortcode,
-          image_url: reel.image_url,
-          caption: reel.caption,
-          link: `https://instagram.com/reel/${reel.shortcode}`
-        }))
+        reels: selectedReels,
+        amount: finalAmount || service.preco
       };
 
-      // Criar transação
-      const { data: transaction, error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          type: 'payment',
-          amount: paymentData.amount,
-          status: 'pending',
-          payment_method: 'pix',
-          payment_id: null, // será atualizado após a criação do pagamento
-          metadata: paymentData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+      console.log('Enviando dados para API de pagamento:', paymentData);
 
-      if (transactionError) {
-        console.error('Error creating transaction:', transactionError);
-        throw transactionError;
-      }
-      
       // Criar pagamento via Pix
       const response = await fetch('/api/payment/pix', {
         method: 'POST',
@@ -330,350 +474,241 @@ export default function Step2Page() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Error creating payment:', errorData);
-        throw new Error(errorData.message || 'Erro ao criar pagamento');
+        const error = await response.json();
+        throw new Error(error.message || 'Erro ao criar pagamento');
       }
 
-      const pixData = await response.json();
-      console.log('Pagamento criado:', pixData);
+      const paymentResponse = await response.json();
       
-      // Atualizar a transação com o ID do pagamento
-      if (transaction) {
-        const { error: updateError } = await supabase
-          .from('transactions')
-          .update({
-            payment_id: pixData.id,
-            metadata: {
-              ...transaction.metadata,
-              payment: pixData
-            }
-          })
-          .eq('id', transaction.id);
-          
-        if (updateError) {
-          console.error('Error updating transaction:', updateError);
-        }
+      console.log('Dados completos do pagamento:', {
+        paymentId: paymentResponse.id,
+        paymentIdType: typeof paymentResponse.id,
+        paymentIdLength: paymentResponse.id?.length,
+        paymentData: JSON.stringify(paymentResponse, null, 2)
+      });
+
+      // Garantir que temos todos os dados necessários
+      if (!paymentResponse.id || !paymentResponse.qr_code) {
+        throw new Error('Dados de pagamento incompletos');
       }
-      
-      setPaymentData(pixData);
+
+      setPaymentData({
+        qrCodeText: paymentResponse.qr_code,
+        paymentId: paymentResponse.id,
+        amount: service.preco,
+        qrCodeBase64: paymentResponse.qr_code_base64
+      });
+
+      await sendTransactionToAdmin();
     } catch (error) {
       console.error('Error creating payment:', error);
-      toast.error('Erro ao processar pagamento. Tente novamente.');
+      toast.error('Erro ao criar pagamento. Por favor, tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Carregar os reels quando o perfil estiver disponível
-  useEffect(() => {
-    if (profileData?.username && !reelsLoaded && !loadingReels) {
-      fetchInstagramReels(profileData.username);
-    }
-  }, [profileData]);
-
-  // Função para selecionar/deselecionar um reel
-  const toggleReelSelection = (reel: Post) => {
-    const isSelected = selectedReels.some(p => p.id === reel.id);
-    
-    if (isSelected) {
-      // Remover da seleção
-      setSelectedReels(selectedReels.filter(p => p.id !== reel.id));
-    } else {
-      // Verificar se já atingiu o limite
-      if (selectedReels.length >= maxTotalItems) {
-        toast.error(`Você só pode selecionar até ${maxTotalItems} itens`);
-        return;
-      }
-      
-      // Adicionar à seleção
-      setSelectedReels([...selectedReels, reel]);
-    }
+  const handleClosePaymentModal = () => {
+    setPaymentData(null);
+    router.push('/dashboard');
   };
-
-  // Função para aplicar cupom de desconto
-  const applyCoupon = async (code: string) => {
-    if (!service) return false;
-    
-    try {
-      const { data, error } = await supabase
-        .from('coupons')
-        .select('*')
-        .eq('code', code)
-        .eq('status', true)
-        .single();
-        
-      if (error || !data) {
-        toast.error('Cupom inválido ou expirado');
-        return false;
-      }
-      
-      // Verificar se o cupom já expirou
-      if (data.expires_at && new Date(data.expires_at) < new Date()) {
-        toast.error('Cupom expirado');
-        return false;
-      }
-      
-      // Calcular o desconto
-      let discount = 0;
-      if (data.discount_type === 'percentage') {
-        discount = (service.preco * data.discount_value) / 100;
-      } else {
-        discount = data.discount_value;
-      }
-      
-      // Garantir que o desconto não seja maior que o valor do serviço
-      discount = Math.min(discount, service.preco);
-      
-      // Atualizar o valor final
-      const newFinalAmount = service.preco - discount;
-      setFinalAmount(newFinalAmount);
-      setDiscountAmount(discount);
-      setAppliedCoupon(code);
-      
-      toast.success(`Cupom aplicado! Desconto de R$ ${discount.toFixed(2)}`);
-      return true;
-    } catch (error) {
-      console.error('Error applying coupon:', error);
-      toast.error('Erro ao aplicar cupom');
-      return false;
-    }
-  };
-
-  // Função para remover o cupom aplicado
-  const removeCoupon = () => {
-    if (!service) return;
-    
-    setFinalAmount(service.preco);
-    setDiscountAmount(0);
-    setAppliedCoupon(null);
-    
-    toast.success('Cupom removido');
-  };
-
-  // Renderizar o modal de pagamento se houver dados de pagamento
-  if (paymentData) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <PaymentPixModal 
-          pixData={paymentData}
-          serviceData={{
-            name: service?.name || '',
-            price: finalAmount || service?.preco || 0,
-            originalPrice: service?.preco || 0,
-            discount: discountAmount
-          }}
-          onClose={() => router.push('/')}
-        />
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div>
       <Header />
       
-      <div className="container max-w-4xl mx-auto py-8 px-4">
-        <h1 className="text-2xl font-bold mb-6">Selecione os Reels para adicionar visualizações</h1>
-        
-        {/* Informações do perfil */}
-        {profileData && (
-          <div className="mb-6 flex items-center">
-            <div className="w-16 h-16 rounded-full overflow-hidden mr-4">
-              <img 
-                src={getProxiedImageUrl(profileData.profile_pic_url)} 
-                alt={profileData.username} 
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold">{profileData.full_name}</h2>
-              <p className="text-gray-600">@{profileData.username}</p>
-              <div className="flex space-x-4 text-sm text-gray-600 mt-1">
-                <span>{profileData.follower_count.toLocaleString()} seguidores</span>
-                <span>{profileData.following_count.toLocaleString()} seguindo</span>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {/* Informações do serviço */}
-        {service && (
-          <Card className="p-4 mb-6">
-            <h2 className="text-lg font-semibold mb-2">{service.name}</h2>
-            <p className="text-gray-600 mb-2">
-              {service.quantidade.toLocaleString()} visualizações no total
-            </p>
-            {selectedReels.length > 0 && (
-              <p className="text-sm text-gray-600">
-                Aproximadamente {visualizacoesPerItem.toLocaleString()} visualizações por reel
-              </p>
-            )}
-          </Card>
-        )}
-        
-        {/* Seleção de Reels */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4">Seus Reels</h2>
-          
-          {loadingReels ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              <span className="ml-2">Carregando reels...</span>
-            </div>
-          ) : instagramReels && instagramReels.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {instagramReels.map((reel) => (
-                <ReelSelector
-                  key={reel.id}
-                  reel={reel}
-                  selected={selectedReels.some(p => p.id === reel.id)}
-                  onSelect={() => toggleReelSelection(reel)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 bg-gray-100 rounded-lg">
-              <p className="text-gray-600">Nenhum reel encontrado para este perfil.</p>
-              <p className="text-sm text-gray-500 mt-2">
-                Certifique-se de que o perfil tenha reels públicos.
-              </p>
-            </div>
-          )}
-          
-          {selectedReels.length > 0 && (
-            <div className="mt-4">
-              <h3 className="text-lg font-medium mb-2">Reels selecionados ({selectedReels.length}/{maxTotalItems})</h3>
-              <div className="flex flex-wrap gap-2">
-                {selectedReels.map((reel) => (
-                  <div 
-                    key={reel.id} 
-                    className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm flex items-center"
-                  >
-                    <span className="truncate max-w-[150px]">
-                      {reel.caption ? reel.caption.substring(0, 20) + '...' : 'Reel sem legenda'}
-                    </span>
-                    <button 
-                      className="ml-2 text-primary hover:text-primary/80"
-                      onClick={() => toggleReelSelection(reel)}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-        
-        {/* Formulário de pagamento */}
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                Nome completo
-              </label>
-              <Input
-                id="name"
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-                placeholder="Seu nome completo"
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                E-mail
-              </label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                required
-                placeholder="seu@email.com"
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="whatsapp" className="block text-sm font-medium text-gray-700 mb-1">
-                WhatsApp
-              </label>
-              <Input
-                id="whatsapp"
-                type="tel"
-                value={formData.whatsapp}
-                onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
-                required
-                placeholder="(00) 00000-0000"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Cupom de desconto (opcional)
-              </label>
-              <CouponInput
-                onApply={applyCoupon}
-                onRemove={removeCoupon}
-                appliedCoupon={appliedCoupon}
-              />
-            </div>
-          </div>
-          
-          {/* Resumo do pedido */}
-          <Card className="p-4">
-            <h3 className="text-lg font-semibold mb-4">Resumo do pedido</h3>
-            
-            <div className="space-y-2 mb-4">
-              <div className="flex justify-between">
-                <span>Serviço:</span>
-                <span>{service?.name}</span>
-              </div>
-              
-              <div className="flex justify-between">
-                <span>Quantidade:</span>
-                <span>{service?.quantidade.toLocaleString()} visualizações</span>
-              </div>
-              
-              <div className="flex justify-between">
-                <span>Reels selecionados:</span>
-                <span>{selectedReels.length}</span>
-              </div>
-              
-              {appliedCoupon && (
-                <div className="flex justify-between text-green-600">
-                  <span>Desconto:</span>
-                  <span>-R$ {discountAmount.toFixed(2)}</span>
+      <main className="container mx-auto px-4 py-8">
+        {profileData && service && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Seleção de Reels */}
+            <Card className="p-6 order-1 md:order-none">
+              <div className="flex items-center space-x-4 mb-6">
+                <div className="w-12 h-12 rounded-full overflow-hidden">
+                  <img 
+                    src={getProxiedImageUrl(profileData.profile_pic_url)} 
+                    alt={profileData.username}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
-              )}
-              
-              <div className="flex justify-between font-bold pt-2 border-t">
-                <span>Total:</span>
-                <span>R$ {(finalAmount || service?.preco || 0).toFixed(2)}</span>
+                <div>
+                  <h3 className="font-semibold">{profileData.username}</h3>
+                  <p className="text-sm text-gray-500">{profileData.follower_count.toLocaleString()} seguidores</p>
+                </div>
               </div>
+              
+              {/* Título da seção de reels */}
+              <div className="flex items-center justify-center space-x-4 mb-6">
+                <div 
+                  className="px-6 py-3 rounded-full font-bold text-sm uppercase tracking-wider 
+                  bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-105 shadow-lg"
+                >
+                  <span className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Reels ({instagramReels?.length || 0})
+                  </span>
+                </div>
+              </div>
+
+              <ReelSelector 
+                username={profileData.username}
+                onSelectReels={handleReelSelect}
+                selectedReels={selectedReels}
+                selectedPosts={[]}
+                maxReels={maxTotalItems}
+                totalLikes={service?.quantidade || 100}
+                loading={loadingReels}
+              />
+            </Card>
+
+            {/* Informações do Pedido */}
+            <div className="space-y-6 order-2 md:order-none">
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-1">Informações do Pedido</h3>
+                <div className="space-y-4">
+                  <Input
+                    placeholder="Nome completo"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  />
+                  <Input
+                    placeholder="E-mail"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Telefone"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  />
+                  
+                  <div className="pt-4 border-t space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Quantidade de visualizações:</span>
+                      <span>{service.quantidade.toLocaleString()}</span>
+                    </div>
+                    {selectedReels.length > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span>Visualizações por reel:</span>
+                        <span>{viewsPerItem.toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm">
+                      <span>Reels selecionados:</span>
+                      <span>{selectedItemsCount} / {maxTotalItems}</span>
+                    </div>
+
+                    {/* Miniaturas dos reels selecionados */}
+                    {selectedItemsCount > 0 && (
+                      <div className="mt-3 pt-3 border-t">
+                        <p className="text-sm font-medium mb-1">Reels selecionados:</p>
+                        <div className="flex flex-wrap gap-0">
+                          {selectedReels.map((reel) => (
+                            <div key={`reel-${reel.id}`} className="relative w-12 h-12 rounded-sm overflow-hidden border border-pink-300 group m-0.5">
+                              <img 
+                                src={getProxiedImageUrl(reel.image_url)} 
+                                alt="Reel selecionado" 
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  if (!target.src.includes('placeholder-reel.svg')) {
+                                    target.src = '/images/placeholder-reel.svg';
+                                  }
+                                }}
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+                              <div className="absolute bottom-0 left-0 right-0 text-white text-[8px] bg-purple-500 text-center">
+                                Reel
+                              </div>
+                              {/* Botão X para remover */}
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const updatedReels = selectedReels.filter(r => r.id !== reel.id);
+                                  setSelectedReels(updatedReels);
+                                  handleReelSelect(updatedReels);
+                                }}
+                                className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] 
+                                  shadow-md hover:bg-red-600"
+                                aria-label="Remover reel"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between text-lg font-semibold mt-2 pt-2 border-t">
+                      <span>Valor total:</span>
+                      <span>R$ {(finalAmount || service.preco).toFixed(2)}</span>
+                    </div>
+
+                    {discountAmount > 0 && (
+                      <div className="flex justify-between text-sm text-gray-600 mt-1">
+                        <span>Valor original:</span>
+                        <span className="line-through">R$ {service.preco.toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    {/* Botão de pagamento PIX */}
+                    <div className="flex items-center justify-center my-4">
+                      <button 
+                        onClick={() => handleSubmit()}
+                        disabled={loading || selectedItemsCount === 0 || !formData.name || !formData.email || !formData.phone}
+                        className={`
+                          px-6 py-3 rounded-full font-bold text-sm uppercase tracking-wider 
+                          transition-all duration-300 ease-in-out transform w-full
+                          ${loading || selectedItemsCount === 0 || !formData.name || !formData.email || !formData.phone
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:scale-105 hover:shadow-lg'}
+                        `}
+                      >
+                        {loading ? (
+                          <span className="flex items-center justify-center">
+                            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                            Processando...
+                          </span>
+                        ) : (
+                          <span className="flex items-center justify-center">
+                            PAGAR COM PIX
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    <CouponInput 
+                      serviceId={service.id}
+                      originalAmount={service.preco}
+                      onCouponApplied={(discount, final, code) => {
+                        setDiscountAmount(discount);
+                        setFinalAmount(final);
+                        setAppliedCoupon(code || null);
+                      }}
+                    />
+                  </div>
+                </div>
+              </Card>
             </div>
-            
-            <Button 
-              type="submit" 
-              className="w-full" 
-              disabled={loading || selectedReels.length === 0}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processando...
-                </>
-              ) : (
-                'Pagar com PIX'
-              )}
-            </Button>
-          </Card>
-        </form>
-      </div>
+          </div>
+        )}
+      </main>
+
+      {paymentData ? (
+        <div className="mt-6">
+          <PaymentPixModal
+            qrCodeText={paymentData.qrCodeText}
+            qrCodeBase64={paymentData.qrCodeBase64}
+            amount={paymentData.amount}
+            paymentId={paymentData.paymentId}
+            onClose={() => setPaymentData(null)}
+            isOpen={!!paymentData}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
