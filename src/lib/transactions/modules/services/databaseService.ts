@@ -36,6 +36,47 @@ export class DatabaseService {
       const originalQuantity = transaction.service?.quantity || transaction.metadata?.service?.quantity;
       const quantity = totalPosts > 1 ? Math.floor(originalQuantity / totalPosts) : originalQuantity;
       
+      // Log detalhado dos valores disponíveis para amount
+      console.log('[DatabaseService] Valores disponíveis para amount:');
+      console.log('- transaction.amount:', transaction.amount);
+      console.log('- transaction.metadata?.amount:', transaction.metadata ? (transaction.metadata as any).amount : undefined);
+      console.log('- transaction.metadata?.service?.preco:', transaction.metadata?.service ? (transaction.metadata.service as any).preco : undefined);
+      console.log('- transaction.service?.preco:', transaction.service ? (transaction.service as any).preco : undefined);
+      console.log('- transaction.metadata?.original_amount:', transaction.metadata ? (transaction.metadata as any).original_amount : undefined);
+      console.log('- transaction.metadata?.service?.quantidade_preco:', transaction.metadata?.service ? (transaction.metadata.service as any).quantidade_preco : undefined);
+      
+      // Determinar o valor de amount com verificações detalhadas
+      let calculatedAmount = null;
+      
+      if (transaction.amount) {
+        calculatedAmount = transaction.amount / totalPosts;
+        console.log('[DatabaseService] Usando transaction.amount:', calculatedAmount);
+      } else if (transaction.metadata && (transaction.metadata as any).amount) {
+        calculatedAmount = (transaction.metadata as any).amount;
+        console.log('[DatabaseService] Usando transaction.metadata.amount:', calculatedAmount);
+      } else if (transaction.metadata?.service && (transaction.metadata.service as any).preco) {
+        calculatedAmount = (transaction.metadata.service as any).preco;
+        console.log('[DatabaseService] Usando transaction.metadata.service.preco:', calculatedAmount);
+      } else if (transaction.service && (transaction.service as any).preco) {
+        calculatedAmount = (transaction.service as any).preco;
+        console.log('[DatabaseService] Usando transaction.service.preco:', calculatedAmount);
+      } else if (transaction.metadata?.service && 
+                (transaction.metadata.service as any).quantidade_preco && 
+                (transaction.metadata.service as any).quantidade_preco.length > 0) {
+        calculatedAmount = (transaction.metadata.service as any).quantidade_preco[0].preco;
+        console.log('[DatabaseService] Usando transaction.metadata.service.quantidade_preco[0].preco:', calculatedAmount);
+      } else if (transaction.metadata && (transaction.metadata as any).original_amount) {
+        calculatedAmount = (transaction.metadata as any).original_amount;
+        console.log('[DatabaseService] Usando transaction.metadata.original_amount:', calculatedAmount);
+      } else {
+        calculatedAmount = 1000; // Valor padrão de 10 reais (em centavos)
+        console.log('[DatabaseService] Usando valor padrão:', calculatedAmount);
+      }
+      
+      // Garantir que amount nunca seja nulo
+      const finalAmount = calculatedAmount || 1000; // Garantia final contra nulos
+      console.log('[DatabaseService] Valor final de amount:', finalAmount);
+      
       // Preparar os dados do pedido - removendo campos que não existem na tabela
       const orderData = {
         transaction_id: transaction.id,
@@ -48,10 +89,7 @@ export class DatabaseService {
         // external_id: transaction.service?.external_id || transaction.metadata?.service?.external_id,
         external_order_id: orderResponse.order || orderResponse.orderId,
         status: orderResponse.status || 'pending',
-        // Garantir que amount nunca seja nulo
-        amount: transaction.amount 
-          ? transaction.amount / totalPosts 
-          : (transaction.metadata?.amount || transaction.metadata?.service?.preco || transaction.service?.preco || transaction.metadata?.original_amount || 0.01),
+        amount: finalAmount,
         quantity: quantity,
         // Remover link pois a coluna não existe mais
         // link: link,

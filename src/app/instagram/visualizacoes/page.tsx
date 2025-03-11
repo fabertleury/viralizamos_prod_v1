@@ -78,7 +78,8 @@ export default function VisualizacoesPage() {
               categoria.includes('visualizacao') || 
               nome.includes('visualizacao') || 
               nome.includes('view') ||
-              service.type === 'visualizacoes'
+              service.type === 'visualizacoes' ||
+              service.type === 'reels'
             );
           })
           .map((service: any) => {
