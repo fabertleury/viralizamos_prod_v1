@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import CookieConsent from '@/components/CookieConsent';
 import type { CustomerData } from '@/types/customer';
 
 export default function AgradecimentoPage() {
@@ -338,6 +339,7 @@ export default function AgradecimentoPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-white to-gray-100">
+      <CookieConsent />
       <div className="max-w-md w-full bg-white rounded-lg shadow-xl overflow-hidden">
         <div className="p-6 sm:p-8">
           <div className="flex justify-center mb-6">

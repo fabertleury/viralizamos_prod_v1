@@ -9,6 +9,7 @@ import './styles.css';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useInstagramAPI } from '@/hooks/useInstagramAPI';
 import { useRouter } from 'next/navigation';
+import CookieConsent from '../components/CookieConsent';
 
 // Interface para as redes sociais
 interface SocialNetwork {
@@ -575,6 +576,7 @@ export default function HomeV3() {
 
   return (
     <div>
+      <CookieConsent />
       <main className="home-v3">
         <Header />
         
