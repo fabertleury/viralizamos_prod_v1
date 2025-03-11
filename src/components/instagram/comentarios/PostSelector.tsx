@@ -343,7 +343,11 @@ export function PostSelector({
                     </div>
                     
                     <div className="p-2 bg-white">
-                      <p className="text-xs truncate">{post.caption || 'Sem legenda'}</p>
+                      <p className="text-xs truncate">
+                        {typeof post.caption === 'object' 
+                          ? (post.caption.text || 'Sem legenda') 
+                          : (post.caption || 'Sem legenda')}
+                      </p>
                       <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
                         <span>{formatNumber(post.like_count || 0)} ❤️</span>
                         <span>{formatNumber(post.comment_count || 0)} 💬</span>

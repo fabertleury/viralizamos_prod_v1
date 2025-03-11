@@ -36,7 +36,7 @@ function ReelSelector({
       return reel;
     }
 
-    console.log('🔍 Processando reel raw data:', {
+    console.log(' Processando reel raw data:', {
       id: reel.id || reel.pk || reel.fbid,
       play_count: reel.play_count,
       view_count: reel.view_count,
@@ -50,22 +50,22 @@ function ReelSelector({
     
     if (typeof reel.ig_play_count === 'number' && reel.ig_play_count > 0) {
       viewsCount = reel.ig_play_count;
-      console.log(`📊 Usando ig_play_count: ${viewsCount} para reel ${id}`);
+      console.log(` Usando ig_play_count: ${viewsCount} para reel ${id}`);
     } else if (typeof reel.play_count === 'number' && reel.play_count > 0) {
       viewsCount = reel.play_count;
-      console.log(`📊 Usando play_count: ${viewsCount} para reel ${id}`);
+      console.log(` Usando play_count: ${viewsCount} para reel ${id}`);
     } else if (typeof reel.fb_play_count === 'number' && reel.fb_play_count > 0) {
       viewsCount = reel.fb_play_count;
-      console.log(`📊 Usando fb_play_count: ${viewsCount} para reel ${id}`);
+      console.log(` Usando fb_play_count: ${viewsCount} para reel ${id}`);
     } else if (typeof reel.view_count === 'number' && reel.view_count > 0) {
       viewsCount = reel.view_count;
-      console.log(`📊 Usando view_count: ${viewsCount} para reel ${id}`);
+      console.log(` Usando view_count: ${viewsCount} para reel ${id}`);
     } else if (typeof reel.views_count === 'number' && reel.views_count > 0) {
       viewsCount = reel.views_count;
-      console.log(`📊 Usando views_count: ${viewsCount} para reel ${id}`);
+      console.log(` Usando views_count: ${viewsCount} para reel ${id}`);
     } else if (typeof reel.video_play_count === 'number' && reel.video_play_count > 0) {
       viewsCount = reel.video_play_count;
-      console.log(`📊 Usando video_play_count: ${viewsCount} para reel ${id}`);
+      console.log(` Usando video_play_count: ${viewsCount} para reel ${id}`);
     } else {
       console.warn(`Nenhuma contagem de visualizações encontrada para reel ${id}`);
     }
@@ -103,7 +103,7 @@ function ReelSelector({
       instagram_url: `https://instagram.com/reel/${reel.code || reel.shortcode || id}`
     };
     
-    console.log('📈 Reel processado:', {
+    console.log(' Reel processado:', {
       id: processedReel.id,
       code: processedReel.code,
       views: processedReel.views_count,
@@ -124,7 +124,7 @@ function ReelSelector({
     const totalSelectedItems = selectedPosts.length + selectedReels.length;
     const isAlreadySelected = selectedReels.some(selectedReel => selectedReel.id === reel.id);
     
-    console.log('👉 Reel selecionado - dados completos:', {
+    console.log(' Reel selecionado - dados completos:', {
       id: reel.id,
       code: reel.code,
       shortcode: reel.shortcode,
@@ -147,10 +147,10 @@ function ReelSelector({
     const selectedReel = {
       ...reel,
       selected: true,
-      displayName: `👉 ${typeof reel.caption === 'string' ? reel.caption : 'Reel sem legenda'}`
+      displayName: ` ${typeof reel.caption === 'string' ? reel.caption : 'Reel sem legenda'}`
     };
 
-    console.log('📈 Reel adicionado à seleção:', {
+    console.log(' Reel adicionado à seleção:', {
       id: selectedReel.id,
       code: selectedReel.code,
       url: `https://instagram.com/reel/${selectedReel.code}`
@@ -167,7 +167,7 @@ function ReelSelector({
       if (!username) return;
       
       if (reelsCache[username]) {
-        console.log(`📁 Usando cache para reels de ${username}`);
+        console.log(` Usando cache para reels de ${username}`);
         setReels(reelsCache[username]);
         return;
       }
@@ -191,7 +191,7 @@ function ReelSelector({
           }
           
           const data = await response.json();
-          console.log(`📈 Recebidos ${data.length} reels para ${username}`);
+          console.log(` Recebidos ${data.length} reels para ${username}`);
           
           const processedReels = data.map(processReelData);
           
@@ -204,7 +204,7 @@ function ReelSelector({
           
           if (retryCount < MAX_RETRIES) {
             retryCount++;
-            console.log(`🔄 Tentando novamente (${retryCount}/${MAX_RETRIES})...`);
+            console.log(` Tentando novamente (${retryCount}/${MAX_RETRIES})...`);
             setTimeout(fetchWithRetry, 2000); 
           } else {
             setError('Não foi possível carregar os reels. Por favor, tente novamente mais tarde.');
@@ -312,7 +312,13 @@ function ReelSelector({
                     </div>
                     
                     <div className="p-2 bg-white">
-                      <p className="text-xs truncate">{typeof reel.caption === 'string' ? reel.caption : 'Sem legenda'}</p>
+                      <p className="text-xs truncate">
+                        {typeof reel.caption === 'object' 
+                          ? (reel.caption.text || 'Sem legenda') 
+                          : (typeof reel.caption === 'string' 
+                              ? reel.caption 
+                              : 'Sem legenda')}
+                      </p>
                       <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
                         <span>{formatNumber(reel.views_count || 0)} 👁️</span>
                         <span>{formatNumber(reel.comment_count || 0)} 💬</span>
