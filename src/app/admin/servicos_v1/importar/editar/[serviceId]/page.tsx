@@ -54,6 +54,7 @@ export default function EditarServicoImportadoPage() {
   const [successRate, setSuccessRate] = useState('');
   const [checkoutTypeId, setCheckoutTypeId] = useState('');
   const [status, setStatus] = useState(true);
+  const [isBestSeller, setIsBestSeller] = useState(false);
   const [serviceDetails, setServiceDetails] = useState<ServiceDetail[]>([{ title: '', emoji: '' }]);
   const [refill, setRefill] = useState(false);
 
@@ -115,6 +116,7 @@ export default function EditarServicoImportadoPage() {
           setSuccessRate(existingServiceInDb.success_rate?.toString() || '0');
           setCheckoutTypeId(existingServiceInDb.checkout_type_id || '');
           setStatus(existingServiceInDb.status !== false);
+          setIsBestSeller(existingServiceInDb.isbestseller === 'TRUE');
           setQuantityPrices(existingServiceInDb.service_variations || existingServiceInDb.metadata?.quantidade_preco || [{ quantidade: 50, preco: 10.00, preco_original: undefined }]);
           setServiceDetails(existingServiceInDb.service_details || existingServiceInDb.metadata?.serviceDetails || [{ title: '', emoji: '' }]);
           setRefill(existingServiceInDb.metadata?.refill || false);
@@ -209,6 +211,7 @@ export default function EditarServicoImportadoPage() {
           setSuccessRate(existingService.success_rate?.toString() || '0');
           setCheckoutTypeId(existingService.checkout_type_id || '');
           setStatus(existingService.status !== false);
+          setIsBestSeller(existingService.isbestseller === 'TRUE');
           setQuantityPrices(existingService.service_variations || existingService.metadata?.quantidade_preco || [{ quantidade: 50, preco: 10.00, preco_original: undefined }]);
           setServiceDetails(existingService.service_details || existingService.metadata?.serviceDetails || [{ title: '', emoji: '' }]);
           setRefill(existingService.metadata?.refill || false);
@@ -356,6 +359,7 @@ export default function EditarServicoImportadoPage() {
         delivery_time: deliveryTime,
         success_rate: parseFloat(successRate) || 0,
         status,
+        isbestseller: isBestSeller ? 'TRUE' : 'FALSE',
         service_variations: quantityPrices,
         service_details: serviceDetails,
         metadata: {
@@ -644,6 +648,17 @@ export default function EditarServicoImportadoPage() {
               className="mr-2"
             />
             <label>Serviço Ativo</label>
+          </div>
+
+          {/* Mais Vendido */}
+          <div className="col-span-2 flex items-center">
+            <input
+              type="checkbox"
+              checked={isBestSeller}
+              onChange={(e) => setIsBestSeller(e.target.checked)}
+              className="mr-2"
+            />
+            <label>Mais Vendido</label>
           </div>
 
           {/* Refilável */}

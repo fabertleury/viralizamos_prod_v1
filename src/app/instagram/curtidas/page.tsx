@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-// import { Heart, ChevronRight, Plus, Minus } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { createClient } from '@/lib/supabase/client';
@@ -31,12 +30,13 @@ interface Service {
     [key: string]: any;
   };
   type: string;
+  isbestseller?: string;
 }
 
 export default function CurtidasPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedServices, setSelectedServices] = useState<Record<string, number>>({});
+  const [selectedServices, setSelectedServices] = useState<{[key: string]: number}>({});
   const supabase = createClient();
 
   useEffect(() => {
@@ -60,7 +60,8 @@ export default function CurtidasPage() {
             metadata,
             service_variations,
             checkout_type_id,
-            type
+            type,
+            isbestseller
           `)
           .eq('status', true)
           .order('preco', { ascending: true });
@@ -71,39 +72,20 @@ export default function CurtidasPage() {
 
         if (error) throw error;
 
-        // Filtrar serviços de curtidas de forma mais abrangente
-        const curtidasServices = (data || []).filter(service => {
-          const categoria = service.categoria?.toLowerCase() || '';
-          const nome = service.name?.toLowerCase() || '';
-          
-          return (
-            categoria.includes('curtida') || 
-            nome.includes('curtida') || 
-            nome.includes('like') ||
-            service.type === 'curtidas'
-          );
-        }).map(service => {
-          // Tratar metadata de forma segura
-          let metadata: Record<string, any> = {};
-          try {
-            metadata = service.metadata && typeof service.metadata === 'string' 
-              ? JSON.parse(service.metadata) 
-              : service.metadata || {};
-          } catch (parseError) {
-            console.error('Erro ao parsear metadata:', parseError);
-          }
-
-          // Verificar se service_variations existe, senão usar metadata.quantidade_preco
-          const variations = service.service_variations || (metadata.quantidade_preco as any[]) || [];
-          
-          // Garantir que as variações tenham o formato correto com preco_original
-          const formattedVariations = variations.map((v: any) => ({
-            quantidade: v.quantidade,
-            preco: v.preco,
-            preco_original: v.preco_original || null
-          }));
-
-          return {
+        // Transformar os dados para o formato esperado
+        const formattedServices: Service[] = (data || [])
+          .filter(service => {
+            const categoria = service.categoria?.toLowerCase() || '';
+            const nome = service.name?.toLowerCase() || '';
+            
+            return (
+              categoria.includes('curtida') || 
+              nome.includes('curtida') || 
+              nome.includes('like') ||
+              service.type === 'curtidas'
+            );
+          })
+          .map((service: any) => ({
             id: service.id,
             name: service.name,
             description: service.descricao,
@@ -113,16 +95,13 @@ export default function CurtidasPage() {
             slug: service.name.toLowerCase().replace(/\s+/g, '-'),
             categoria: service.categoria,
             status: service.status,
-            discount_price: metadata.discount_price,
-            quantidade_preco: formattedVariations,
-            metadata: {
-              service_details: metadata.service_details || {}
-            },
-            type: service.type
-          };
-        });
+            quantidade_preco: service.service_variations || (service.metadata?.quantidade_preco as any[]) || [],
+            metadata: service.metadata,
+            type: service.type,
+            isbestseller: service.isbestseller
+          }));
 
-        setServices(curtidasServices);
+        setServices(formattedServices);
       } catch (error) {
         console.error('Erro detalhado ao buscar serviços:', error);
         toast.error('Não foi possível carregar os serviços');
@@ -178,8 +157,8 @@ export default function CurtidasPage() {
     return variation && variation.preco_original && variation.preco_original > variation.preco;
   };
 
-  const isServiceSelected = (serviceId: string): boolean => {
-    return selectedServices[serviceId] !== undefined;
+  const isServiceSelected = (serviceId: string) => {
+    return selectedServices[serviceId] && selectedServices[serviceId] > 0;
   };
 
   const getServiceDetails = (service: Service) => {
@@ -218,7 +197,7 @@ export default function CurtidasPage() {
                     Curtidas para Instagram
                   </h2>
                   <p className="text-xl md:text-2xl mb-0">
-                    Aumente o engajamento do seu perfil com curtidas de alta qualidade
+                    Aumente a credibilidade do seu perfil com curtidas de alta qualidade
                   </p>
                 </div>
               </div>
@@ -240,13 +219,13 @@ export default function CurtidasPage() {
               ) : (
                 <div className="space-y-12">
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                    {services.map((service, index) => (
+                    {services.map((service) => (
                       <Card 
                         key={service.id} 
                         className="flex flex-col p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 ease-in-out relative"
                       >
                         {/* Badge de Mais Vendido */}
-                        {index === 0 && (
+                        {(service.isbestseller === 'TRUE' || service.isbestseller === 'true') && (
                           <div className="absolute top-0 right-0 m-2 px-3 py-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-xs font-bold rounded-full shadow-md z-10">
                             Mais Vendido
                           </div>
@@ -258,9 +237,6 @@ export default function CurtidasPage() {
                             <h3 className="text-2xl font-bold text-gray-900 break-words">
                               {service.name}
                             </h3>
-                            <p className="text-sm font-medium text-purple-600 mt-1 bg-purple-50 py-1 px-2 rounded-md mx-auto inline-block">
-                              Divida em até 5 posts diferentes!
-                            </p>
                           </div>
 
                           {/* Detalhes adicionais do serviço */}

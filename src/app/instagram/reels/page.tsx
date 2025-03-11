@@ -30,6 +30,7 @@ interface Service {
     [key: string]: any;
   };
   type: string;
+  isbestseller?: string;
 }
 
 export default function ReelsPage() {
@@ -57,7 +58,8 @@ export default function ReelsPage() {
             metadata,
             service_variations,
             checkout_type_id,
-            type
+            type,
+            isbestseller
           `)
           .eq('status', true)
           .order('preco', { ascending: true });
@@ -68,52 +70,57 @@ export default function ReelsPage() {
         if (error) throw error;
 
         // Filtrando serviços de reels
-        const reelsServices = (data || []).filter(service => {
-          const categoria = service.categoria?.toLowerCase() || '';
-          const nome = service.name?.toLowerCase() || '';
-          
-          return (
-            categoria.includes('reel') || 
-            nome.includes('reel') ||
-            service.type === 'reels'
-          );
-        }).map(service => {
-          let metadata: Record<string, any> = {};
-          try {
-            metadata = service.metadata && typeof service.metadata === 'string' 
-              ? JSON.parse(service.metadata) 
-              : service.metadata || {};
-          } catch (parseError) {
-            console.error('Erro ao parsear metadata:', parseError);
-          }
+        const reelsServices = (data || [])
+          .filter(service => {
+            const categoria = service.categoria?.toLowerCase() || '';
+            const nome = service.name?.toLowerCase() || '';
+            
+            return (
+              categoria.includes('reel') || 
+              nome.includes('reel') ||
+              service.type === 'reels'
+            );
+          })
+          .map((service: any) => {
+            // Tratar metadata de forma segura
+            let metadata: Record<string, any> = {};
+            try {
+              metadata = service.metadata && typeof service.metadata === 'string' 
+                ? JSON.parse(service.metadata) 
+                : service.metadata || {};
+            } catch (parseError) {
+              console.error('Erro ao parsear metadata:', parseError);
+            }
 
-          const variations = service.service_variations || (metadata.quantidade_preco as any[]) || [];
-          
-          // Garantir que as variações tenham o formato correto com preco_original
-          const formattedVariations = variations.map((v: any) => ({
-            quantidade: v.quantidade,
-            preco: v.preco,
-            preco_original: v.preco_original || null
-          }));
+            // Verificar se service_variations existe, senão usar metadata.quantidade_preco
+            const variations = service.service_variations || (metadata.quantidade_preco as any[]) || [];
+            
+            // Garantir que as variações tenham o formato correto com preco_original
+            const formattedVariations = variations.map((v: any) => ({
+              quantidade: v.quantidade,
+              preco: v.preco,
+              preco_original: v.preco_original || null
+            }));
 
-          return {
-            id: service.id,
-            name: service.name,
-            description: service.descricao,
-            price: service.preco,
-            min_quantity: service.min_order || 50,
-            max_quantity: service.max_order || 10000,
-            slug: service.name.toLowerCase().replace(/\s+/g, '-'),
-            categoria: service.categoria,
-            status: service.status,
-            discount_price: metadata.discount_price,
-            quantidade_preco: formattedVariations,
-            metadata: {
-              service_details: metadata.service_details || {}
-            },
-            type: service.type
-          };
-        });
+            return {
+              id: service.id,
+              name: service.name,
+              description: service.descricao,
+              price: service.preco,
+              min_quantity: service.min_order || 50,
+              max_quantity: service.max_order || 10000,
+              slug: service.name.toLowerCase().replace(/\s+/g, '-'),
+              categoria: service.categoria,
+              status: service.status,
+              discount_price: metadata.discount_price,
+              quantidade_preco: formattedVariations,
+              metadata: {
+                service_details: metadata.service_details || {}
+              },
+              type: service.type,
+              isbestseller: service.isbestseller
+            };
+          });
 
         setServices(reelsServices);
         setLoading(false);
@@ -195,7 +202,14 @@ export default function ReelsPage() {
             <p className="text-center col-span-full">Nenhum serviço de reels encontrado.</p>
           ) : (
             services.map(service => (
-              <Card key={service.id} className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
+              <Card key={service.id} className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 relative">
+                {/* Badge de Mais Vendido */}
+                {(service.isbestseller === 'TRUE' || service.isbestseller === 'true') && (
+                  <div className="absolute top-0 right-0 m-2 px-3 py-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-xs font-bold rounded-full shadow-md z-10">
+                    Mais Vendido
+                  </div>
+                )}
+                
                 <div className="p-6">
                   <h2 className="text-xl font-semibold mb-2">{service.name}</h2>
                   <p className="text-gray-600 mb-4">{service.description}</p>

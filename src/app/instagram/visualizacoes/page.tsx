@@ -30,6 +30,7 @@ interface Service {
     [key: string]: any;
   };
   type: string;
+  isbestseller?: string;
 }
 
 export default function VisualizacoesPage() {
@@ -56,9 +57,10 @@ export default function VisualizacoesPage() {
             status,
             metadata,
             service_variations,
-            type
+            checkout_type_id,
+            type,
+            isbestseller
           `)
-          .or(`categoria.ilike.%visualiza%,name.ilike.%visualiza%,type.eq.visualizacoes`)
           .eq('status', true)
           .order('preco', { ascending: true });
 
@@ -67,49 +69,60 @@ export default function VisualizacoesPage() {
 
         if (error) throw error;
 
-        const visualizacoesServices = (data || []).filter(service => 
-          service.categoria?.toLowerCase().includes('visualiza') || 
-          service.name.toLowerCase().includes('visualiza') ||
-          service.type === 'visualizacoes'
-        ).map(service => {
-          let metadata: Record<string, any> = {};
-          try {
-            metadata = service.metadata && typeof service.metadata === 'string' 
-              ? JSON.parse(service.metadata) 
-              : service.metadata || {};
-          } catch (parseError) {
-            console.error('Erro ao parsear metadata:', parseError);
-          }
+        const formattedServices: Service[] = (data || [])
+          .filter(service => {
+            const categoria = service.categoria?.toLowerCase() || '';
+            const nome = service.name?.toLowerCase() || '';
+            
+            return (
+              categoria.includes('visualizacao') || 
+              nome.includes('visualizacao') || 
+              nome.includes('view') ||
+              service.type === 'visualizacoes'
+            );
+          })
+          .map((service: any) => {
+            // Tratar metadata de forma segura
+            let metadata: Record<string, any> = {};
+            try {
+              metadata = service.metadata && typeof service.metadata === 'string' 
+                ? JSON.parse(service.metadata) 
+                : service.metadata || {};
+            } catch (parseError) {
+              console.error('Erro ao parsear metadata:', parseError);
+            }
 
-          const variations = service.service_variations || (metadata.quantidade_preco as any[]) || [];
-          
-          // Garantir que as variações tenham o formato correto com preco_original
-          const formattedVariations = variations.map(v => ({
-            quantidade: v.quantidade,
-            preco: v.preco,
-            preco_original: v.preco_original || null
-          }));
+            // Verificar se service_variations existe, senão usar metadata.quantidade_preco
+            const variations = service.service_variations || (metadata.quantidade_preco as any[]) || [];
+            
+            // Garantir que as variações tenham o formato correto com preco_original
+            const formattedVariations = variations.map((v: any) => ({
+              quantidade: v.quantidade,
+              preco: v.preco,
+              preco_original: v.preco_original || null
+            }));
 
-          return {
-            id: service.id,
-            name: service.name,
-            description: service.descricao,
-            price: service.preco,
-            min_quantity: service.min_order || 50,
-            max_quantity: service.max_order || 10000,
-            slug: service.name.toLowerCase().replace(/\s+/g, '-'),
-            categoria: service.categoria,
-            status: service.status,
-            discount_price: metadata.discount_price,
-            quantidade_preco: formattedVariations,
-            metadata: {
-              service_details: metadata.service_details || {}
-            },
-            type: service.type
-          };
-        });
+            return {
+              id: service.id,
+              name: service.name,
+              description: service.descricao,
+              price: service.preco,
+              min_quantity: service.min_order || 50,
+              max_quantity: service.max_order || 10000,
+              slug: service.name.toLowerCase().replace(/\s+/g, '-'),
+              categoria: service.categoria,
+              status: service.status,
+              discount_price: metadata.discount_price,
+              quantidade_preco: formattedVariations,
+              metadata: {
+                service_details: metadata.service_details || {}
+              },
+              type: service.type,
+              isbestseller: service.isbestseller
+            };
+          });
 
-        setServices(visualizacoesServices);
+        setServices(formattedServices);
       } catch (error) {
         console.error('Erro ao buscar serviços:', error);
         toast.error('Erro ao carregar serviços. Tente novamente mais tarde.');
@@ -214,7 +227,7 @@ export default function VisualizacoesPage() {
                     className="flex flex-col p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 ease-in-out relative"
                   >
                     {/* Badge de Mais Vendido */}
-                    {index === 0 && (
+                    {(service.isbestseller === 'TRUE' || service.isbestseller === 'true') && (
                       <div className="absolute top-0 right-0 m-2 px-3 py-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-xs font-bold rounded-full shadow-md z-10">
                         Mais Vendido
                       </div>
@@ -291,7 +304,7 @@ export default function VisualizacoesPage() {
 
                       {isServiceSelected(service.id) && (
                         <Link 
-                          href={`/checkout/instagram/visualizacao/step1?service_id=${service.id}&quantity=${selectedServices[service.id]}`}
+                          href={`/checkout/instagram/${service.type === 'reels' ? 'reels' : 'visualizacao'}/step1?service_id=${service.id}&quantity=${selectedServices[service.id]}`}
                           className="w-full mt-auto"
                         >
                           <Button 

@@ -106,6 +106,19 @@ const groupSubcategoriesByCategory = (subcategories: Subcategory[]) => {
   }).filter(category => category.subcategories.length > 0);
 };
 
+// Ordem personalizada para exibição dos cards
+const getCategoryOrder = (slug: string): number => {
+  const orderMap: { [key: string]: number } = {
+    'curtidas': 1,
+    'seguidores': 2,
+    'visualizacoes': 3,
+    'comentarios': 4,
+    'reels': 5
+  };
+  
+  return orderMap[slug] || 99; // Categorias não mapeadas vão para o final
+};
+
 export default function InstagramPage() {
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,7 +181,8 @@ export default function InstagramPage() {
     fetchData();
   }, []);
 
-  const groupedSubcategories = groupSubcategoriesByCategory(subcategories);
+  const groupedSubcategories = groupSubcategoriesByCategory(subcategories)
+    .sort((a, b) => getCategoryOrder(a.slug) - getCategoryOrder(b.slug));
 
   return (
     <>

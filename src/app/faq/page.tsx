@@ -164,7 +164,7 @@ export default function FAQPage() {
             Se você não encontrou a resposta que procurava, entre em contato com nossa equipe de suporte. Estamos sempre prontos para ajudar!
           </p>
           <a 
-            href="https://wa.me/5511999999999" 
+            href="https://wa.me/5562999915390" 
             target="_blank" 
             rel="noopener noreferrer"
             className="inline-flex items-center px-6 py-3 bg-[#C43582] text-white font-medium rounded-lg hover:bg-[#a62c6c] transition-colors"

@@ -33,22 +33,47 @@ interface Subcategory {
 interface Service {
   id: string;
   name: string;
-  descricao: string;
+  descricao?: string;
+  description?: string;
   type: string;
   quantidade: number;
   preco: number;
   category_id: string;
-  subcategory_id: string;
-  checkout_type_id: string;
+  subcategory_id?: string;
+  checkout_type_id?: string;
   status: boolean;
   delivery_time: string;
   min_order: number;
   max_order: number;
   featured: boolean;
-  external_id: string;
+  external_id?: string;
   provider_id: string;
   success_rate: number;
-  metadata: any;
+  metadata?: any;
+  isbestseller?: string;
+  order?: number;
+  service_variations?: any[];
+  service_details?: any;
+  category?: {
+    id: string;
+    name: string;
+    icon: string;
+    social?: {
+      id: string;
+      name: string;
+      icon: string;
+    }
+  };
+  subcategory?: {
+    id: string;
+    name: string;
+  };
+  provider?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  animating?: boolean;
 }
 
 interface ServiceFormModalProps {
@@ -72,6 +97,7 @@ export function ServiceFormModal({
   const [formData, setFormData] = useState({
     name: '',
     descricao: '',
+    description: '',
     type: '',
     quantidade: 0,
     preco: 0,
@@ -98,7 +124,7 @@ export function ServiceFormModal({
         type: editingService.type || '',
         quantidade: editingService.quantidade || 0,
         preco: editingService.preco || 0,
-        descricao: editingService.descricao || '',
+        descricao: editingService.descricao || editingService.description || '',
         category_id: editingService.category_id || '',
         subcategory_id: editingService.subcategory_id || '',
         checkout_type_id: editingService.checkout_type_id || '',
@@ -205,7 +231,7 @@ export function ServiceFormModal({
     try {
       const data = {
         name: formData.name,
-        descricao: formData.descricao,
+        descricao: formData.descricao || formData.description,
         type: formData.type,
         quantidade: formData.quantidade,
         preco: formData.preco,
@@ -348,7 +374,7 @@ export function ServiceFormModal({
             <Label>Descrição</Label>
             <Textarea 
               name="descricao"
-              value={formData.descricao}
+              value={formData.descricao || formData.description}
               onChange={handleInputChange}
               placeholder="Descrição do serviço"
             />

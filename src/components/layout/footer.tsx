@@ -73,9 +73,14 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/suporte" className="text-gray-400 hover:text-white transition-colors">
-                  Suporte
-                </Link>
+                <a 
+                  href="https://wa.me/5562999915390" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  Suporte via WhatsApp
+                </a>
               </li>
             </ul>
           </div>
