@@ -64,7 +64,8 @@ export async function sendOrderToProvider(
   link: string, 
   quantity: number,
   transactionId: string,
-  targetUsername: string
+  targetUsername: string,
+  amount: number
 ): Promise<any> {
   try {
     // Função padronizada para extrair o código do post do Instagram
@@ -181,6 +182,7 @@ export async function sendOrderToProvider(
         external_order_id: normalizedResponse.orderId,
         status: normalizedResponse.status,
         quantity: quantity,
+        amount: amount, // Adicionando o valor do pedido
         target_username: targetUsername,
         metadata: {
           provider: provider.name,

@@ -50,4 +50,66 @@ export class TransactionService {
     
     return serviceId;
   }
+
+  /**
+   * Calcula o valor do pedido (amount) para o serviço de reels
+   * @param transaction Dados da transação
+   * @returns Valor do pedido
+   */
+  calculateAmount(transaction: Transaction): number {
+    // Implementação para calcular o valor do pedido
+    // Essa implementação deve ser feita de acordo com as regras de negócio do serviço de reels
+    let calculatedAmount = 0;
+    // Lógica de cálculo do valor do pedido (amount) para o serviço de reels
+    // Por exemplo, calcular com base no número de reels, duração, etc.
+    if (transaction.metadata && transaction.metadata.service && transaction.metadata.service.preco) {
+        calculatedAmount = transaction.metadata.service.preco * (transaction.metadata.reels.length || 1);
+    }
+    return calculatedAmount;
+  }
+
+  /**
+   * Cria um pedido para o serviço de likes
+   * @param transaction Dados da transação
+   * @returns Dados do pedido criado
+   */
+  createOrderForLikes(transaction: Transaction): any {
+    // Implementação para criar o pedido
+    // Incluindo a chamada para calcular o valor do pedido (amount)
+    return {
+      // ... outros dados do pedido ...
+      amount: this.calculateAmount(transaction),
+      // ... outros dados do pedido ...
+    };
+  }
+
+  /**
+   * Cria um pedido para o serviço de comments
+   * @param transaction Dados da transação
+   * @returns Dados do pedido criado
+   */
+  createOrderForComments(transaction: Transaction): any {
+    // Implementação para criar o pedido
+    // Incluindo a chamada para calcular o valor do pedido (amount)
+    return {
+      // ... outros dados do pedido ...
+      amount: this.calculateAmount(transaction),
+      // ... outros dados do pedido ...
+    };
+  }
+
+  /**
+   * Cria um pedido para o serviço de views
+   * @param transaction Dados da transação
+   * @returns Dados do pedido criado
+   */
+  createOrderForViews(transaction: Transaction): any {
+    // Implementação para criar o pedido
+    // Incluindo a chamada para calcular o valor do pedido (amount)
+    return {
+      // ... outros dados do pedido ...
+      amount: this.calculateAmount(transaction),
+      // ... outros dados do pedido ...
+    };
+  }
 }

@@ -32,6 +32,7 @@ interface Service {
 export default function PaymentDebugPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [requestDetails, setRequestDetails] = useState<any>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [filteredServices, setFilteredServices] = useState<Service[]>([]);
@@ -49,23 +50,6 @@ export default function PaymentDebugPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Carregar provedores
-        const { data: providersData, error: providersError } = await supabase
-          .from('providers')
-          .select('*')
-          .eq('status', 'TRUE'); // Alterar para 'TRUE' em maiúsculas
-
-        console.log('Query to providers:', supabase.from('providers').select('*').eq('status', 'TRUE')); // Log da consulta
-        console.log('Providers Data:', providersData); // Log para verificar dados dos provedores
-
-        if (providersError) {
-          console.error('Erro ao carregar provedores:', providersError);
-          toast.error('Erro ao carregar provedores');
-          return;
-        }
-
-        setProviders(providersData || []);
-
         // Carregar serviços
         const { data: servicesData, error: servicesError } = await supabase
           .from('services')
@@ -81,29 +65,13 @@ export default function PaymentDebugPage() {
 
         setServices(servicesData || []);
 
-        // Se houver provedores, selecionar o primeiro por padrão
-        if (providersData && providersData.length > 0) {
+        // Se houver serviços, selecionar o primeiro por padrão
+        if (servicesData && servicesData.length > 0) {
           setFormData(prev => ({
             ...prev,
-            provider_id: providersData[0].id
+            service_id: servicesData[0].id,
+            amount: servicesData[0].preco.toString()
           }));
-
-          // Filtrar serviços pelo provedor selecionado
-          const filtered = servicesData?.filter(service => 
-            service.provider_id === providersData[0].id && 
-            service.type === formData.type
-          ) || [];
-
-          setFilteredServices(filtered);
-
-          // Se houver serviços filtrados, selecionar o primeiro por padrão
-          if (filtered.length > 0) {
-            setFormData(prev => ({
-              ...prev,
-              service_id: filtered[0].id,
-              amount: filtered[0].preco.toString()
-            }));
-          }
         }
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
@@ -116,9 +84,8 @@ export default function PaymentDebugPage() {
   
   // Atualizar serviços filtrados quando o provedor ou tipo mudar
   useEffect(() => {
-    if (formData.provider_id && formData.type) {
+    if (formData.type) {
       const filtered = services.filter(service => 
-        service.provider_id === formData.provider_id && 
         service.type === formData.type
       );
       
@@ -133,7 +100,7 @@ export default function PaymentDebugPage() {
         }));
       }
     }
-  }, [formData.provider_id, formData.type, services]);
+  }, [formData.type, services]);
   
   // Atualizar o valor amount quando o serviço mudar
   useEffect(() => {
@@ -183,7 +150,6 @@ export default function PaymentDebugPage() {
           name: selectedService?.name || 'Serviço de Teste',
           preco: formData.amount ? parseFloat(formData.amount) : 0,
           quantidade: selectedService?.quantidade || 100,
-          provider_id: formData.provider_id,
           type: formData.type
         }
       },
@@ -195,7 +161,6 @@ export default function PaymentDebugPage() {
       payment_qr_code: 'test_qr_code',
       payment_external_reference: paymentId,
       service_id: formData.service_id || 'test_service',
-      provider_id: formData.provider_id,
       target_profile_link: `https://www.instagram.com/${formData.target_username}/`
     };
   };
@@ -208,16 +173,68 @@ export default function PaymentDebugPage() {
       // Log dos dados que serão enviados
       console.log('Enviando dados de teste:', testData);
       
-      // Enviar para a rota de teste
-      const response = await axios.post('/api/test/payment-debug', testData);
+      // Adicionar a URL e a Key para a requisição
+      const apiUrl = 'URL_DO_PROVEDOR'; // Substitua pela URL real
+      const apiKey = 'SUA_API_KEY'; // Substitua pela chave real
       
-      setResult(response.data);
+      // Estrutura dos dados a serem enviados
+      const requestData = {
+        method: 'POST',
+        action: 'add',
+        service: testData.service_id,
+        link: testData.metadata.posts[0].postLink, // Exemplo de como pegar o link do primeiro post
+        quantidade: testData.metadata.serviceDetails.quantidade,
+        key: apiKey
+      };
       
-      if (response.data.amountStatus === 'OK') {
-        toast.success('Teste realizado com sucesso! Valor amount está presente.');
-      } else {
-        toast.error('Teste falhou! Valor amount está ausente ou nulo.');
+      // Log dos dados que serão enviados
+      console.log('Dados da requisição:', requestData);
+      
+      // Enviar para a URL do provedor
+      const response = await axios.post(apiUrl, requestData);
+      console.log('Resposta do provedor:', response.data);
+      
+      // Adicionar campo para armazenar a resposta do servidor
+      const serverResponse = response.data;
+      const serverName = 'Nome do Provedor'; // Substitua pelo nome real do provedor
+      setResult({ ...serverResponse, serverName });
+      
+      // Adicionar a resposta do provedor ao resultado
+      const detailedResult = {
+        ...serverResponse,
+        requestData: testData,
+        serverName: serverName,
+      };
+      setResult(detailedResult);
+      
+      // Adicionar campos separados para envio e resposta
+      const requestDetails = {
+        sentData: testData,
+        providerResponse: serverResponse.message
+      };
+      setRequestDetails(requestDetails);
+      
+      // Adicionar a lógica para garantir que o valor amount seja enviado corretamente
+      const orderData = {
+        user_id: testData.user_id,
+        order_id: testData.order_id,
+        service_id: testData.service_id,
+        amount: testData.amount, // Certifique-se de que este valor está sendo passado corretamente
+        status: 'pending',
+        // Outros campos necessários para a criação do pedido
+      };
+      
+      // Verificar se o amount está definido
+      if (!orderData.amount) {
+        console.error('Valor amount não está definido:', orderData);
+        toast.error('Valor amount é necessário para criar o pedido.');
+        return;
       }
+      
+      // Enviar para a tabela orders
+      const orderResponse = await axios.post('/api/orders', { orderData });
+      console.log('Ordens salvas:', orderResponse.data);
+      
     } catch (error: any) {
       console.error('Erro ao testar pagamento:', error);
       toast.error(error.response?.data?.error || 'Erro ao testar pagamento');
@@ -236,21 +253,6 @@ export default function PaymentDebugPage() {
           <h2 className="text-lg font-semibold mb-4">Configuração do Teste</h2>
           
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Provedor</label>
-              <select
-                className="w-full p-2 border rounded-md"
-                value={formData.provider_id}
-                onChange={(e) => setFormData({ ...formData, provider_id: e.target.value })}
-              >
-                {providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
             <div>
               <label className="block text-sm font-medium mb-1">Tipo de serviço</label>
               <select
@@ -342,6 +344,19 @@ export default function PaymentDebugPage() {
             </div>
           ) : (
             <p className="text-gray-500 italic">Execute o teste para ver os resultados aqui.</p>
+          )}
+          
+          {requestDetails ? (
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Detalhes da Requisição</h3>
+              <Textarea
+                className="w-full h-[200px] font-mono text-sm"
+                value={JSON.stringify(requestDetails, null, 2)}
+                readOnly
+              />
+            </div>
+          ) : (
+            <p className="text-gray-500 italic">Execute o teste para ver os detalhes da requisição aqui.</p>
           )}
         </Card>
       </div>

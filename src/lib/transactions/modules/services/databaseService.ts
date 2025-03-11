@@ -89,7 +89,7 @@ export class DatabaseService {
         // external_id: transaction.service?.external_id || transaction.metadata?.service?.external_id,
         external_order_id: orderResponse.order || orderResponse.orderId,
         status: orderResponse.status || 'pending',
-        amount: finalAmount,
+        amount: finalAmount, // Alterado para usar o valor calculado
         quantity: quantity,
         // Remover link pois a coluna não existe mais
         // link: link,
