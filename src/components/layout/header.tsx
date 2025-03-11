@@ -63,7 +63,17 @@ export function Header() {
           .order('order_position', { ascending: true });
 
         if (socialsData) {
-          setSocialNetworks(socialsData);
+          // Garantir que o link para Instagram seja sempre absoluto
+          const processedSocials = socialsData.map(social => {
+            if (social.slug === 'instagram') {
+              return {
+                ...social,
+                url: '/instagram' // Garantir que seja um caminho absoluto
+              };
+            }
+            return social;
+          });
+          setSocialNetworks(processedSocials);
         }
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
@@ -111,16 +121,9 @@ export function Header() {
               {translations.header.home}
             </Link>
             
-            {/* Social Networks */}
-            {socialNetworks.map((social) => (
-              <Link
-                key={social.id}
-                href={social.url}
-                className="text-gray-800 hover:text-[#FF00CE] transition-colors"
-              >
-                <span>{social.name}</span>
-              </Link>
-            ))}
+            <Link href="/instagram" className="text-gray-700 hover:text-gray-900">
+              Serviços para Instagram
+            </Link>
             
             {/* FAQ Link */}
             <Link href="/faq" className="text-gray-700 hover:text-primary">
@@ -167,16 +170,13 @@ export function Header() {
                     {translations.header.home}
                   </Link>
                   
-                  {socialNetworks.map((social) => (
-                    <Link
-                      key={social.id}
-                      href={social.url}
-                      className="text-gray-800 hover:text-[#FF00CE] transition-colors py-2 border-b"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      <span>{social.name}</span>
-                    </Link>
-                  ))}
+                  <Link 
+                    href="/instagram" 
+                    className="text-gray-700 hover:text-gray-900 py-2 border-b"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Serviços para Instagram
+                  </Link>
                   
                   <Link 
                     href="/faq" 

@@ -150,7 +150,8 @@ export default function ServicosV1Page() {
     try {
       const { data: providersData, error: providersError } = await supabase
         .from('providers')
-        .select('*');
+        .select('*')
+        .eq('status', true); // Filtrar provedores com status TRUE
         
       if (providersError) {
         console.error('Erro ao buscar provedores:', providersError);
@@ -169,7 +170,6 @@ export default function ServicosV1Page() {
       if (providersData?.length > 0) {
         console.log('Exemplo de provedor:', providersData[0]);
       }
-      
       return providersMap;
     } catch (error) {
       console.error('Erro ao buscar provedores:', error);
