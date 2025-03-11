@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/hooks/useSupabase';
+import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { PostSelector } from '@/components/instagram/visualizacao/PostSelector';
-import { ReelSelector } from '@/components/instagram/visualizacao/ReelSelector';
+import PostSelector from '@/components/instagram/visualizacao/PostSelector';
+import ReelSelector from '@/components/instagram/visualizacao/ReelSelector';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -30,365 +30,348 @@ interface Service {
   name: string;
   preco: number;
   quantidade: number;
-  checkout: {
-    slug: string;
-  };
+  provider_id: string;
 }
 
 interface Post {
   id: string;
+  code: string;
   shortcode: string;
   image_url: string;
-  caption: string;
-  selected?: boolean;
-  displayName?: string;
+  caption?: string;
+  like_count?: number;
+  comment_count?: number;
+  thumbnail_url?: string;
+  display_url?: string;
+  image_versions?: any;
+}
+
+interface InstagramPost {
+  id: string;
+  code: string;
+  shortcode: string;
+  image_url: string;
+  caption?: string;
 }
 
 export default function Step2Page() {
   const router = useRouter();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: ''
+  });
   const [service, setService] = useState<Service | null>(null);
-  const [selectedPosts, setSelectedPosts] = useState<Post[]>([]);
+  const [selectedPosts, setSelectedPosts] = useState<InstagramPost[]>([]);
   const [selectedReels, setSelectedReels] = useState<Post[]>([]);
+  const [instagramPosts, setInstagramPosts] = useState<Post[]>([]);
+  const [instagramReels, setInstagramReels] = useState<Post[]>([]);
+  const [paymentData, setPaymentData] = useState<{
+    qrCodeText: string;
+    paymentId: string;
+    amount: number;
+    qrCodeBase64?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadingPosts, setLoadingPosts] = useState(false);
-  const [loadingReels, setLoadingReels] = useState(false);
-  const [instagramPosts, setInstagramPosts] = useState<Post[] | null>(null);
-  const [instagramReels, setInstagramReels] = useState<Post[] | null>(null);
+  const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('posts');
   const [postsLoaded, setPostsLoaded] = useState(false);
   const [reelsLoaded, setReelsLoaded] = useState(false);
-  const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('posts');
-  const [formData, setFormData] = useState({
-    email: '',
-    name: '',
-    whatsapp: ''
-  });
-  const [paymentData, setPaymentData] = useState<any>(null);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [loadingReels, setLoadingReels] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [finalAmount, setFinalAmount] = useState<number | null>(null);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
 
-  useEffect(() => {
-    // Carregar dados do localStorage
-    const checkoutData = localStorage.getItem('checkoutProfileData');
-    
-    if (!checkoutData) {
-      toast.error('Dados do perfil não encontrados');
-      router.push('/');
-      return;
-    }
+  const supabase = createClient();
 
-    const loadData = async () => {
-      try {
-        const { profileData: savedProfile, serviceId, formData: savedFormData, timestamp } = JSON.parse(checkoutData);
+  const handlePostSelect = useCallback((posts: InstagramPost[]) => {
+    setSelectedPosts(posts);
+  }, []);
+
+  const handleReelSelect = useCallback((reels: InstagramPost[]) => {
+    setSelectedReels(reels);
+  }, []);
+
+  // Calcular o número total de itens selecionados
+  const selectedItemsCount = selectedPosts.length + selectedReels.length;
+  const maxTotalItems = 10; // Máximo de 10 itens no total entre posts e reels
+  
+  // Calcular visualizações por item
+  const totalItems = selectedPosts.length + selectedReels.length;
+  const visualizacoesPerItem = totalItems > 0 
+    ? Math.floor(service?.quantidade / totalItems) 
+    : 0;
+
+  // Função para extrair o código correto de um post do Instagram
+  const extractPostCode = (post: any): string => {
+    // Se o post já tem um código que não é numérico, usar esse código
+    if (post.code && !/^\d+$/.test(post.code)) {
+      console.log('✅ Usando código existente:', post.code);
+      return post.code;
+    }
+    
+    // Se tem shortcode, usar o shortcode
+    if (post.shortcode) {
+      console.log('✅ Usando shortcode:', post.shortcode);
+      return post.shortcode;
+    }
+    
+    // Se tem permalink ou link, extrair o código da URL
+    if (post.permalink || post.link) {
+      const url = post.permalink || post.link;
+      const match = url.match(/instagram\.com\/p\/([^\/]+)/);
+      if (match && match[1]) {
+        console.log('✅ Código extraído da URL:', match[1]);
+        return match[1];
+      }
+    }
+    
+    // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
+    console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
+    return post.id;
+  };
+
+  useEffect(() => {
+    const checkoutData = localStorage.getItem('checkoutProfileData');
+    console.log('Dados de checkout brutos:', checkoutData);
+
+    try {
+      if (checkoutData) {
+        const parsedCheckoutData = JSON.parse(checkoutData);
+        console.log('Dados de checkout parseados:', parsedCheckoutData);
+
+        // Recuperar o external_id com mais flexibilidade
+        const externalId = 
+          parsedCheckoutData.external_id || 
+          parsedCheckoutData.serviceId || 
+          localStorage.getItem('serviceId') || 
+          localStorage.getItem('external_id');
+
+        // Recuperar a quantidade, se disponível
+        const quantity = parsedCheckoutData.quantity;
         
-        // Verificar se os dados não são muito antigos (30 minutos)
-        const thirtyMinutes = 30 * 60 * 1000;
-        if (new Date().getTime() - timestamp > thirtyMinutes) {
-          toast.error('Sessão expirada. Por favor, comece novamente.');
-          localStorage.removeItem('checkoutProfileData');
-          router.push('/');
-          return;
+        console.log('External ID recuperado:', externalId);
+        console.log('Quantidade recuperada:', quantity);
+
+        // Recuperar o perfil do usuário
+        const profileData = 
+          parsedCheckoutData.profileData || 
+          parsedCheckoutData.profile || 
+          parsedCheckoutData.user;
+
+        console.log('Perfil recuperado:', profileData);
+
+        if (profileData) {
+          setProfileData(profileData);
+          // Atualizar formData com dados do perfil, se disponíveis
+          setFormData({
+            name: parsedCheckoutData.name || '',
+            email: parsedCheckoutData.email || '',
+            phone: parsedCheckoutData.phone || ''
+          });
         }
 
-        setProfileData(savedProfile);
-        setFormData(savedFormData || formData);
-        
-        if (serviceId) {
-          const serviceData = await fetchService(serviceId);
-          if (serviceData) {
-            setService(serviceData);
-            setFinalAmount(serviceData.preco);
-          }
+        if (externalId && profileData?.username) {
+          console.log('Iniciando busca de serviço e posts para o usuário:', profileData.username);
+          
+          // Buscar serviço e posts em paralelo
+          Promise.all([
+            fetchService(externalId),
+            fetchInstagramPosts(profileData.username)
+          ]).then(([serviceData, postsData]) => {
+            if (serviceData) {
+              // Definir o ID do provedor padrão se não estiver presente
+              if (!serviceData.provider_id) {
+                serviceData.provider_id = '1';
+              }
+              setService(serviceData);
+              setFinalAmount(serviceData.preco);
+            } else {
+              console.error('Serviço não encontrado');
+              toast.error('Serviço não encontrado. Por favor, tente novamente.');
+            }
+          }).catch(error => {
+            console.error('Erro ao buscar dados:', error);
+            toast.error('Erro ao carregar dados. Por favor, tente novamente.');
+          });
+        } else {
+          console.error('Dados insuficientes para buscar serviço e posts');
+          toast.error('Dados insuficientes. Por favor, volte à etapa anterior.');
+        }
+      } else {
+        console.error('Nenhum dado de checkout encontrado');
+        toast.error('Nenhum dado de checkout encontrado. Por favor, volte à etapa anterior.');
+      }
+    } catch (error) {
+      console.error('Erro ao processar dados de checkout:', error);
+      toast.error('Erro ao processar dados. Por favor, tente novamente.');
+    }
+  }, []);
+
+  useEffect(() => {
+    const fetchReels = async () => {
+      try {
+        if (profileData?.username && !reelsLoaded) {
+          setLoadingReels(true);
+          await fetchInstagramReels(profileData.username);
+          setLoadingReels(false);
         }
       } catch (error) {
-        console.error('Error loading profile data:', error);
-        toast.error('Erro ao carregar dados do perfil');
-        router.push('/');
+        console.error('Erro ao buscar reels:', error);
       }
     };
 
-    loadData();
-  }, []);
+    fetchReels();
+  }, [profileData, reelsLoaded]);
 
-  const fetchService = async (externalId: string) => {
-    console.log('Buscando serviço com ID:', externalId);
-    
-    try {
-      // Verificar se temos uma quantidade específica no localStorage
-      const checkoutData = localStorage.getItem('checkoutProfileData');
-      let quantity = null;
-      
-      if (checkoutData) {
-        const parsedData = JSON.parse(checkoutData);
-        quantity = parsedData.quantity;
-        console.log('Quantidade encontrada no localStorage:', quantity);
-      }
+  useEffect(() => {
+    if (activeTab === 'reels' && !reelsLoaded && profileData?.username) {
+      fetchInstagramReels(profileData.username);
+    }
+  }, [activeTab, reelsLoaded, profileData]);
 
-      // Limpar o externalId para garantir que não tenha aspas extras
-      const cleanExternalId = externalId ? externalId.replace(/"/g, '') : '';
-      console.log('External ID limpo:', cleanExternalId);
-      
-      // Buscar primeiro pelo external_id
-      let { data, error } = await supabase
-        .from('services')
-        .select('*')
-        .eq('external_id', cleanExternalId);
-      
-      // Se não encontrar pelo external_id, tentar pelo id
-      if (!data || data.length === 0) {
-        console.log('Serviço não encontrado pelo external_id, tentando pelo id');
-        const result = await supabase
-          .from('services')
-          .select('*')
-          .eq('id', cleanExternalId);
-          
-        data = result.data;
-        error = result.error;
-      }
-      
-      // Verificar se encontramos o serviço
-      if (error) {
-        console.error('Erro ao buscar serviço:', error);
-        return null;
-      }
-      
-      if (!data || data.length === 0) {
-        console.error('Nenhum serviço encontrado');
-        return null;
-      }
-      
-      // Pegar o primeiro serviço encontrado
-      const serviceData = data[0];
-      console.log('Serviço encontrado:', serviceData);
-      
-      // Se temos uma quantidade específica, atualizar o serviço
-      if (quantity) {
-        console.log('Atualizando quantidade do serviço para:', quantity);
-        serviceData.quantidade = parseInt(quantity);
-        
-        // Atualizar o preço se houver variações de preço
-        if (serviceData.service_variations && serviceData.service_variations.length > 0) {
-          const selectedVariation = serviceData.service_variations.find(
-            (v: any) => v.quantidade === parseInt(quantity)
-          );
-          
-          if (selectedVariation) {
-            console.log('Variação de preço encontrada:', selectedVariation);
-            serviceData.preco = selectedVariation.preco;
-          }
-        }
-      }
-      
-      return serviceData;
-    } catch (error) {
-      console.error('Erro ao buscar serviço:', error);
+  const prepareTransactionData = () => {
+    if (!service || !profileData || !formData || (selectedPosts.length + selectedReels.length) === 0 || !paymentData) {
+      toast.error('Dados incompletos para processamento da transação');
       return null;
     }
-  };
 
-  // Calcular o número de visualizações por item
-  const maxTotalItems = 10; // Máximo de itens que podem ser selecionados
-  const selectedItemsCount = selectedPosts.length + selectedReels.length;
-  const visualizacoesPerItem = selectedItemsCount > 0 
-    ? Math.floor(service?.quantidade || 0 / selectedItemsCount) 
-    : 0;
+    // Calcular quantidade de visualizações por post
+    const totalItems = selectedPosts.length + selectedReels.length;
+    const totalViews = service.quantidade;
+    const viewsPerItem = Math.floor(totalViews / totalItems);
+    const remainingViews = totalViews % totalItems;
 
-  // Buscar posts do Instagram
-  const fetchInstagramPosts = async (username: string) => {
-    if (!username) return;
-    
-    try {
-      setLoadingPosts(true);
-      
-      // Configurar a requisição para a API do RapidAPI
-      const options = {
-        method: 'GET',
-        url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/user/posts',
-        params: { username },
-        headers: {
-          'X-RapidAPI-Key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY || '',
-          'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com'
-        }
+    // Preparar metadados dos posts
+    const postsMetadata = selectedPosts.map((post, index) => {
+      // Usar o campo code correto para a URL do post
+      const postCode = post.code || post.shortcode || post.id;
+      return {
+        postId: post.id,
+        postCode: postCode,
+        postLink: `https://instagram.com/p/${postCode}`,
+        views: index === 0 ? viewsPerItem + remainingViews : viewsPerItem,
+        type: 'post' // Adicionar tipo explícito para posts
       };
+    });
 
-      console.log('Buscando posts para:', username);
-      const response = await axios.request(options);
-      const posts = response.data.data?.items || response.data.items || [];
-      
-      console.log(`Encontrados ${posts.length} posts para ${username}`);
-      
-      // Filtrar para remover reels e vídeos
-      const filteredPosts = posts.filter((post: any) => {
-        return !post.is_video && !post.product_type?.includes('reel');
-      });
-      
-      console.log(`${filteredPosts.length} posts após filtrar (sem reels/vídeos)`);
-      
-      // Mapear os dados para o formato esperado
-      const formattedPosts = filteredPosts.map((post: any) => {
-        // Extrair a URL da imagem
-        const imageUrl = 
-          post.image_versions2?.candidates?.[0]?.url || 
-          post.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url ||
-          post.image_url ||
-          '';
-        
-        return {
-          id: post.id || `post_${Math.random().toString(36).substring(2, 11)}`,
-          code: post.code || post.shortcode,
-          shortcode: post.shortcode || post.code,
-          image_url: imageUrl,
-          display_url: imageUrl,
-          thumbnail_url: imageUrl,
-          caption: post.caption?.text || post.caption || '',
-          like_count: post.like_count || 0,
-          comment_count: post.comment_count || 0
-        };
-      });
-      
-      setInstagramPosts(formattedPosts);
-      setPostsLoaded(true);
-    } catch (error) {
-      console.error('Erro ao buscar posts:', error);
-      toast.error('Não foi possível carregar os posts. Tente novamente.');
-    } finally {
-      setLoadingPosts(false);
-    }
-  };
-
-  // Buscar reels do Instagram
-  const fetchInstagramReels = async (username: string) => {
-    if (!username) return;
-    
-    try {
-      setLoadingReels(true);
-      
-      // Configurar a requisição para a API do RapidAPI
-      const options = {
-        method: 'GET',
-        url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/user/reels',
-        params: { username },
-        headers: {
-          'X-RapidAPI-Key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY || '',
-          'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com'
-        }
+    const reelsMetadata = selectedReels.map((reel, index) => {
+      // Usar o campo code correto para a URL do reel
+      const reelCode = reel.code || reel.shortcode || reel.id;
+      return {
+        postId: reel.id,
+        postCode: reelCode,
+        postLink: `https://instagram.com/reel/${reelCode}`,
+        views: viewsPerItem,
+        type: 'reel' // Adicionar tipo explícito para reels
       };
+    });
 
-      console.log('Buscando reels para:', username);
-      const response = await axios.request(options);
-      const reels = response.data.data?.items || response.data.items || [];
+    return {
+      user_id: formData.name || null,
+      order_id: paymentData.paymentId,
+      type: 'visualizacao',
+      amount: service.preco,
+      status: 'pending',
+      payment_method: 'pix',
+      payment_id: paymentData.paymentId,
+      metadata: {
+        posts: [...postsMetadata, ...reelsMetadata],
+        serviceDetails: service
+      },
+      customer_name: formData.name || null,
+      customer_email: formData.email || null,
+      customer_phone: formData.phone || null,
+      target_username: profileData.username,
+      target_full_name: profileData.full_name,
+      payment_qr_code: paymentData.qrCodeText || null,
+      payment_external_reference: paymentData.paymentId,
+      service_id: service.id,
+      provider_id: service.provider_id,
+      target_profile_link: `https://www.instagram.com/${profileData.username}/`
+    };
+  };
+
+  const sendTransactionToAdmin = async () => {
+    try {
+      setLoading(true);
+      const transactionData = prepareTransactionData();
+
+      if (!transactionData) {
+        toast.error('Não foi possível preparar os dados da transação');
+        return;
+      }
+
+      const response = await axios.post('/admin/transacoes', transactionData);
       
-      console.log(`Encontrados ${reels.length} reels para ${username}`);
-      
-      // Mapear os dados para o formato esperado
-      const formattedReels = reels.map((reel: any) => {
-        // Extrair a URL da imagem de thumbnail
-        const thumbnailUrl = 
-          reel.image_versions2?.candidates?.[0]?.url || 
-          reel.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url ||
-          reel.thumbnail_url ||
-          '';
-        
-        return {
-          id: reel.id || `reel_${Math.random().toString(36).substring(2, 11)}`,
-          code: reel.code || reel.shortcode,
-          shortcode: reel.shortcode || reel.code,
-          thumbnail_url: thumbnailUrl,
-          image_url: thumbnailUrl,
-          display_url: thumbnailUrl,
-          caption: reel.caption?.text || reel.caption || '',
-          like_count: reel.like_count || 0,
-          comment_count: reel.comment_count || 0,
-          views_count: reel.view_count || reel.play_count || 0,
-          play_count: reel.play_count || reel.view_count || 0
-        };
-      });
-      
-      setInstagramReels(formattedReels);
-      setReelsLoaded(true);
+      if (response.status === 200 || response.status === 201) {
+        toast.success('Transação registrada com sucesso');
+        router.push('/pedidos');
+      } else {
+        toast.error('Erro ao registrar transação');
+      }
     } catch (error) {
-      console.error('Erro ao buscar reels:', error);
-      toast.error('Não foi possível carregar os reels. Tente novamente.');
+      console.error('Erro ao enviar transação:', error);
+      toast.error('Falha ao processar transação');
     } finally {
-      setLoadingReels(false);
+      setLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!service) {
-      toast.error('Serviço não encontrado');
-      return;
-    }
-    
-    if (!profileData) {
-      toast.error('Perfil não encontrado');
-      return;
-    }
-    
-    if (selectedPosts.length === 0 && selectedReels.length === 0) {
+  const handleSubmit = async () => {
+    if (!profileData || !service || (selectedPosts.length + selectedReels.length) === 0) {
       toast.error('Selecione pelo menos um post ou reel');
       return;
     }
-    
+
     setLoading(true);
-    
+
     try {
+      // Log detalhado dos posts e reels selecionados
+      console.log('📊 Posts selecionados para pagamento:', selectedPosts.map(post => ({
+        id: post.id,
+        code: post.code,
+        shortcode: post.shortcode,
+        url: `https://instagram.com/p/${post.code}`
+      })));
+      
+      console.log('📊 Reels selecionados para pagamento:', selectedReels.map(reel => ({
+        id: reel.id,
+        code: reel.code,
+        shortcode: reel.shortcode,
+        url: `https://instagram.com/reel/${reel.code}`
+      })));
+
       // Preparar os dados para o pagamento
+      const postIds = selectedPosts.map(post => post.id);
+      const reelIds = selectedReels.map(reel => reel.id);
+      const postCodes = selectedPosts.map(post => extractPostCode(post));
+      const reelCodes = selectedReels.map(reel => extractPostCode(reel));
+
+      // Estruturar os dados conforme esperado pela API
       const paymentData = {
-        service_id: service.id,
-        amount: finalAmount || service.preco,
-        original_amount: service.preco,
-        discount_amount: discountAmount,
-        coupon_code: appliedCoupon,
-        description: `${service.quantidade} visualizações para ${selectedPosts.length + selectedReels.length} itens`,
         service: {
           id: service.id,
           name: service.name,
-          quantity: service.quantidade
+          price: finalAmount || service.preco,
+          preco: finalAmount || service.preco,
+          quantity: service.quantidade,
+          quantidade: service.quantidade,
+          provider_id: service.provider_id
         },
-        profile: {
-          username: profileData.username,
-          full_name: profileData.full_name,
-          link: `https://instagram.com/${profileData.username}`
-        },
+        profile: profileData,
         customer: {
           name: formData.name,
           email: formData.email,
-          phone: formData.whatsapp
+          phone: formData.phone
         },
-        posts: [...selectedPosts, ...selectedReels].map(post => ({
-          id: post.id,
-          code: post.code || post.shortcode,
-          image_url: post.image_url,
-          caption: post.caption,
-          link: `https://instagram.com/p/${post.shortcode}`
-        }))
+        posts: [...selectedPosts, ...selectedReels],
+        amount: finalAmount || service.preco
       };
 
-      // Criar transação
-      const { data: transaction, error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          type: 'payment',
-          amount: paymentData.amount,
-          status: 'pending',
-          payment_method: 'pix',
-          payment_id: null, // será atualizado após a criação do pagamento
-          metadata: paymentData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+      console.log('Enviando dados para API de pagamento:', paymentData);
 
-      if (transactionError) {
-        console.error('Error creating transaction:', transactionError);
-        throw transactionError;
-      }
-      
       // Criar pagamento via Pix
       const response = await fetch('/api/payment/pix', {
         method: 'POST',
@@ -400,97 +383,42 @@ export default function Step2Page() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Erro ao gerar pagamento');
+        throw new Error(error.message || 'Erro ao criar pagamento');
       }
 
-      const paymentDataResponse = await response.json();
+      const paymentResponse = await response.json();
       
-      // Atualizar transação com dados do pagamento
-      const { error: updateError } = await supabase
-        .from('transactions')
-        .update({
-          payment_id: paymentDataResponse.id,
-          metadata: {
-            ...transaction.metadata,
-            payment: paymentDataResponse
-          }
-        })
-        .eq('id', transaction.id);
-
-      if (updateError) throw updateError;
-
-      // Mostrar modal de pagamento
-      setPaymentData({
-        qrCode: paymentDataResponse.qr_code_base64,
-        qrCodeText: paymentDataResponse.qr_code,
-        amount: paymentDataResponse.amount,
-        qrCodeBase64: paymentDataResponse.qr_code_base64
+      console.log('Dados completos do pagamento:', {
+        paymentId: paymentResponse.id,
+        paymentIdType: typeof paymentResponse.id,
+        paymentIdLength: paymentResponse.id?.length,
+        paymentData: JSON.stringify(paymentResponse, null, 2)
       });
 
-      // Limpar dados do checkout após sucesso
-      localStorage.removeItem('checkoutProfileData');
+      // Garantir que temos todos os dados necessários
+      if (!paymentResponse.id || !paymentResponse.qr_code) {
+        throw new Error('Dados de pagamento incompletos');
+      }
+
+      setPaymentData({
+        qrCodeText: paymentResponse.qr_code,
+        paymentId: paymentResponse.id,
+        amount: service.preco,
+        qrCodeBase64: paymentResponse.qr_code_base64
+      });
+
+      await sendTransactionToAdmin();
     } catch (error) {
       console.error('Error creating payment:', error);
-      toast.error('Erro ao gerar pagamento');
+      toast.error('Erro ao criar pagamento. Por favor, tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Preparar dados da transação para o backend
-  const prepareTransactionData = (paymentData: any) => {
-    return {
-      user_id: formData.name || null,
-      order_id: paymentData.paymentId,
-      type: service?.type, // Usar o tipo do serviço
-      amount: service?.preco,
-      status: 'pending',
-      payment_method: 'pix',
-      payment_data: {
-        qr_code: paymentData.qrCodeText,
-        payment_id: paymentData.paymentId
-      },
-      metadata: {
-        profile: profileData?.username,
-        posts: [...selectedPosts, ...selectedReels].map(post => ({
-          id: post.id,
-          code: post.code || post.shortcode,
-          caption: post.caption
-        }))
-      }
-    };
-  };
-
-  // Função para lidar com a seleção de posts
-  const handlePostSelect = (post: Post) => {
-    console.log('Post selecionado/desselecionado:', post);
-    
-    // Verificar se o post já está selecionado
-    const isSelected = selectedPosts.some(selectedPost => selectedPost.id === post.id);
-    
-    if (isSelected) {
-      // Remover post da seleção
-      setSelectedPosts(prev => prev.filter(item => item.id !== post.id));
-    } else {
-      // Adicionar post à seleção
-      setSelectedPosts(prev => [...prev, post]);
-    }
-  };
-
-  // Função para lidar com a seleção de reels
-  const handleReelSelect = (reel: Post) => {
-    console.log('Reel selecionado/desselecionado:', reel);
-    
-    // Verificar se o reel já está selecionado
-    const isSelected = selectedReels.some(selectedReel => selectedReel.id === reel.id);
-    
-    if (isSelected) {
-      // Remover reel da seleção
-      setSelectedReels(prev => prev.filter(item => item.id !== reel.id));
-    } else {
-      // Adicionar reel à seleção
-      setSelectedReels(prev => [...prev, reel]);
-    }
+  const handleClosePaymentModal = () => {
+    setPaymentData(null);
+    router.push('/dashboard');
   };
 
   if (!profileData || !service) {
@@ -617,8 +545,8 @@ export default function Step2Page() {
                   />
                   <Input
                     placeholder="Telefone"
-                    value={formData.whatsapp}
-                    onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   />
                   
                   <div className="pt-4 border-t space-y-2">
@@ -685,11 +613,8 @@ export default function Step2Page() {
       {paymentData && (
         <PaymentPixModal
           isOpen={!!paymentData}
-          onClose={() => {
-            setPaymentData(null);
-            router.push('/');
-          }}
-          qrCode={paymentData.qrCode}
+          onClose={handleClosePaymentModal}
+          qrCode={paymentData.qrCodeBase64}
           qrCodeText={paymentData.qrCodeText}
           amount={paymentData.amount}
           qrCodeBase64={paymentData.qrCodeBase64}

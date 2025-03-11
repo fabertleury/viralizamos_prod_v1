@@ -31,7 +31,7 @@ interface Service {
   preco: number;
   quantidade: number;
   provider_id: string;
-  type: string; // Adicionar tipo do serviço
+  type: string;
 }
 
 interface Post {
@@ -96,7 +96,7 @@ export default function Step2Page() {
 
   // Calcular o número total de itens selecionados
   const selectedItemsCount = selectedPosts.length + selectedReels.length;
-  const maxTotalItems = 5; // Máximo de 5 itens no total entre posts e reels
+  const maxTotalItems = 10; // Máximo de 10 itens no total entre posts e reels
   
   // Calcular comentários por item
   const comentariosPerItem = service?.quantidade && selectedItemsCount > 0 
@@ -493,7 +493,7 @@ export default function Step2Page() {
         postCode: postCode,
         postLink: `https://instagram.com/p/${postCode}`,
         comentarios: index === 0 ? comentariosPerItem + remainingComentarios : comentariosPerItem,
-        type: 'post' // Adicionar tipo explícito para posts
+        type: 'post'
       };
     });
 
@@ -505,14 +505,14 @@ export default function Step2Page() {
         postCode: reelCode,
         postLink: `https://instagram.com/reel/${reelCode}`,
         comentarios: comentariosPerItem,
-        type: 'reel' // Adicionar tipo explícito para reels
+        type: 'reel'
       };
     });
 
     return {
       user_id: formData.name || null,
       order_id: paymentData.paymentId,
-      type: service.type, // Usar o tipo do serviço
+      type: service.type,
       amount: service.preco,
       status: 'pending',
       payment_method: 'pix',
@@ -600,7 +600,7 @@ export default function Step2Page() {
           quantity: service.quantidade,
           quantidade: service.quantidade,
           provider_id: service.provider_id,
-          type: service.type // Usar o tipo do serviço
+          type: service.type
         },
         profile: profileData,
         customer: {
@@ -929,18 +929,15 @@ export default function Step2Page() {
         )}
       </main>
 
-      {paymentData ? (
-        <div className="mt-6">
-          <PaymentPixModal
-            qrCodeText={paymentData.qrCodeText}
-            qrCodeBase64={paymentData.qrCodeBase64}
-            amount={paymentData.amount}
-            paymentId={paymentData.paymentId}
-            onClose={() => setPaymentData(null)}
-            isOpen={!!paymentData}
-          />
-        </div>
-      ) : null}
+      {paymentData && (
+        <PaymentPixModal
+          qrCodeText={paymentData.qrCodeText}
+          qrCodeBase64={paymentData.qrCodeBase64}
+          amount={paymentData.amount}
+          onClose={handleClosePaymentModal}
+          isOpen={!!paymentData}
+        />
+      )}
     </div>
   );
 }
