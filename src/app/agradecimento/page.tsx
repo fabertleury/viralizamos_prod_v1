@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/client';
 import { Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import CookieConsent from '@/components/CookieConsent';
 import type { CustomerData } from '@/types/customer';
 
 export default function AgradecimentoPage() {
@@ -339,7 +338,6 @@ export default function AgradecimentoPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-white to-gray-100">
-      <CookieConsent />
       <div className="max-w-md w-full bg-white rounded-lg shadow-xl overflow-hidden">
         <div className="p-6 sm:p-8">
           <div className="flex justify-center mb-6">
@@ -403,14 +401,14 @@ export default function AgradecimentoPage() {
             <div className="pt-4 space-y-3">
               <Link 
                 href={`/acompanhar-pedido?email=${encodeURIComponent(email || (customer?.email || ''))}`}
-                className="inline-block w-full bg-primary hover:bg-primary-dark text-white font-bold py-2 px-6 rounded-lg transition-colors duration-200"
+                className="inline-block w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-200"
               >
                 Acompanhar meu pedido
               </Link>
               
               <Link 
                 href="/" 
-                className="inline-block w-full border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2 px-6 rounded-lg transition-colors duration-200"
+                className="inline-block w-full bg-pink-500 hover:bg-pink-600 text-white font-medium py-2 px-6 rounded-lg transition-colors duration-200"
               >
                 Voltar para a página inicial
               </Link>
