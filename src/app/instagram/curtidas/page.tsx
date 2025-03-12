@@ -237,6 +237,7 @@ export default function CurtidasPage() {
                             <h3 className="text-2xl font-bold text-gray-900 break-words">
                               {service.name}
                             </h3>
+                            <p className="text-purple-600">Divida a quantidade em até 05 posts.</p>
                           </div>
 
                           {/* Detalhes adicionais do serviço */}
