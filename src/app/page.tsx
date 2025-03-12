@@ -263,7 +263,7 @@ export default function HomeV3() {
   const [username, setUsername] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPrivateMessage, setShowPrivateMessage] = useState(false);
-  const [timer, setTimer] = useState(300);
+  const [timer, setTimer] = useState(30);
   const router = useRouter();
   const { fetchInstagramProfileInfo } = useInstagramAPI();
 
@@ -298,13 +298,13 @@ export default function HomeV3() {
   // Contador regressivo para o timer
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (showPrivateMessage && timer > 0) {
+    if (profilePreviewData?.is_private && timer > 0) {
       interval = setInterval(() => {
         setTimer((prevTimer) => prevTimer - 1);
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [showPrivateMessage, timer]);
+  }, [profilePreviewData?.is_private, timer]);
 
   const [socialNetworks, setSocialNetworks] = useState<SocialNetwork[]>([]);
   const [whatsappConfig, setWhatsappConfig] = useState({
@@ -496,15 +496,15 @@ export default function HomeV3() {
 
             <div className="flex justify-between w-full mb-4">
               <div className="text-center">
-                <strong>{profilePreviewData.totalPosts || 0}</strong>
+                <strong>{profilePreviewData.totalPosts || profilePreviewData.media_count || 0}</strong>
                 <p className="text-sm text-gray-500">Posts</p>
               </div>
               <div className="text-center">
-                <strong>{profilePreviewData.followers || 0}</strong>
+                <strong>{profilePreviewData.followers || profilePreviewData.follower_count || 0}</strong>
                 <p className="text-sm text-gray-500">Seguidores</p>
               </div>
               <div className="text-center">
-                <strong>{profilePreviewData.following || 0}</strong>
+                <strong>{profilePreviewData.following || profilePreviewData.following_count || 0}</strong>
                 <p className="text-sm text-gray-500">Seguindo</p>
               </div>
             </div>
@@ -515,18 +515,54 @@ export default function HomeV3() {
               </p>
             )}
 
-            {profilePreviewData.is_private && (
-              <button 
-                onClick={() => {
-                  setProfilePreviewData(prevData => ({ ...prevData, is_private: false }));
-                  handleContinueAnalysis();
-                }}
-                className="bg-[#C43582] text-white px-6 py-2 rounded-full text-base font-bold hover:bg-[#a62c6c] transition"
-              >
-                Já coloquei público
-              </button>
-            )}
-            {!profilePreviewData.is_private && (
+            {profilePreviewData.is_private ? (
+              <div className="w-full bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                <div className="flex items-center mb-3">
+                  <FaLock className="text-red-500 mr-2 text-xl" />
+                  <h3 className="font-bold text-red-700">Perfil Privado Detectado</h3>
+                </div>
+                
+                <p className="text-gray-700 mb-3">
+                  Para analisar seu perfil, precisamos que ele esteja público. Siga estas instruções:
+                </p>
+                
+                <div className="bg-white rounded p-3 mb-3 border border-red-100">
+                  <ol className="list-decimal pl-5 space-y-1 text-sm text-gray-700">
+                    <li>Abra o Instagram no seu celular</li>
+                    <li>Vá para o seu perfil (ícone de usuário)</li>
+                    <li>Toque em "Editar perfil"</li>
+                    <li>Role para baixo até "Privacidade da conta"</li>
+                    <li>Desative a opção "Conta privada"</li>
+                    <li>Confirme a alteração</li>
+                  </ol>
+                </div>
+                
+                <div className="flex flex-col items-center">
+                  <div className="w-full bg-gray-100 rounded-full h-4 mb-2">
+                    <div 
+                      className="bg-[#C43582] h-4 rounded-full transition-all duration-1000 ease-linear" 
+                      style={{ width: `${(timer / 30) * 100}%` }}
+                    ></div>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Aguarde {timer} segundos ou clique no botão quando seu perfil estiver público
+                  </p>
+                  
+                  <button 
+                    onClick={() => {
+                      setProfilePreviewData(prevData => ({ ...prevData, is_private: false }));
+                      handleContinueAnalysis();
+                    }}
+                    disabled={timer > 0}
+                    className={`w-full py-2 rounded-full font-bold transition ${timer > 0 
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                      : 'bg-[#C43582] text-white hover:bg-[#a62c6c]'}`}
+                  >
+                    {timer > 0 ? `Aguarde ${timer}s` : 'Já coloquei meu perfil público'}
+                  </button>
+                </div>
+              </div>
+            ) : (
               <button 
                 onClick={handleContinueAnalysis}
                 className="bg-[#C43582] text-white px-6 py-2 rounded-full text-base font-bold hover:bg-[#a62c6c] transition"
@@ -544,6 +580,7 @@ export default function HomeV3() {
     setIsLoading(true);
     setShowPrivateMessage(false);
     setShowProfilePreviewModal(true);
+    setTimer(30); // Reiniciar o timer para 30 segundos
 
     try {
       console.log(`Verificando perfil: ${usernameToCheck}`);
@@ -566,19 +603,23 @@ export default function HomeV3() {
         profile_pic_url: data.profile_pic_url,
         follower_count: data.follower_count,
         following_count: data.following_count,
-        totalPosts: data.totalPosts,
+        totalPosts: data.media_count || data.totalPosts || 0,
         is_private: data.is_private,
         is_verified: data.is_verified,
+        biography: data.biography || '',
+        followers: data.follower_count,
+        following: data.following_count,
         source: data.source
       };
+      
+      console.log('Dados formatados do perfil:', profileInfo);
 
       // Atualizar o estado do modal com todos os dados
       setProfilePreviewData(profileInfo);
 
       if (profileInfo.is_private) {
-        // Exibir mensagem de perfil privado
-        toast.error('O perfil é privado. Por favor, torne-o público para continuar.');
-        setShowProfilePreviewModal(true);
+        // Iniciar o timer para o botão de "Já coloquei público"
+        setTimer(30);
         return;
       }
 
@@ -586,6 +627,7 @@ export default function HomeV3() {
       handleContinueAnalysis();
     } catch (error: any) {
       console.error('Erro ao verificar perfil:', error);
+      toast.error('Erro ao verificar perfil. Tente novamente.');
     } finally {
       setIsLoading(false);
     }
