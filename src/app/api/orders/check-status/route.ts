@@ -27,7 +27,22 @@ export async function POST(request: NextRequest) {
     
     // Verificar se o pedido tem um provedor associado (em qualquer um dos campos possíveis)
     if (!order.external_order_id) {
-      return NextResponse.json({ error: 'Pedido não tem ID externo' }, { status: 400 });
+      // Verificar se é um pedido que precisa ser reprocessado
+      if (order.status === 'needs_retry') {
+        return NextResponse.json({
+          success: true,
+          status: order.status,
+          data: order,
+          provider_response: {
+            status: 'needs_retry',
+            message: 'Este pedido precisa ser reprocessado devido a um erro de conexão com o provedor.',
+            connection_error: true,
+            updated_at: new Date().toISOString()
+          }
+        });
+      } else {
+        return NextResponse.json({ error: 'Pedido não tem ID externo' }, { status: 400 });
+      }
     }
     
     try {

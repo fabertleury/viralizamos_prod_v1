@@ -286,8 +286,26 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
       return;
     }
     
+    // Se o pedido já está marcado como needs_retry, mostrar mensagem apropriada
+    if (order.status === 'needs_retry') {
+      toast.info('Este pedido precisa ser reprocessado devido a um erro de conexão com o provedor.');
+      setSelectedOrderStatus({
+        order: order,
+        provider_response: {
+          status: 'needs_retry',
+          message: 'Este pedido precisa ser reprocessado devido a um erro de conexão com o provedor.',
+          connection_error: true,
+          updated_at: new Date().toISOString()
+        }
+      });
+      setStatusModalOpen(true);
+      return;
+    }
+    
     try {
       setCheckingStatus(prev => ({ ...prev, [order.id]: true }));
+      
+      console.log(`Verificando status do pedido ${order.id}`);
       
       const response = await fetch('/api/orders/check-status', {
         method: 'POST',
@@ -297,17 +315,26 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
         body: JSON.stringify({ order_id: order.id }),
       });
       
+      console.log(`Resposta da API para o pedido ${order.id}:`, {
+        status: response.status,
+        statusText: response.statusText
+      });
+      
       let result;
       try {
         result = await response.json();
+        console.log(`Dados da resposta para o pedido ${order.id}:`, result);
       } catch (parseError) {
         console.error('Erro ao analisar resposta JSON:', parseError);
-        throw new Error('Erro ao processar resposta do servidor');
+        toast.error('Erro ao processar resposta do servidor');
+        return;
       }
       
       if (!response.ok) {
         const errorMessage = result && result.error ? result.error : 'Erro ao verificar status do pedido';
-        throw new Error(errorMessage);
+        console.error('Erro na resposta da API:', errorMessage);
+        toast.error(errorMessage);
+        return;
       }
       
       // Traduzir o status para português para a mensagem de sucesso
