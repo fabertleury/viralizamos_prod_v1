@@ -99,7 +99,7 @@ export function Header() {
           <Link href="/" className="flex items-center">
             <Image
               src="/images/viralizamos-color.png"
-              alt="Viralizai"
+              alt="Viralizamos"
               width={150}
               height={50}
               style={{ width: 'auto', height: 'auto' }}

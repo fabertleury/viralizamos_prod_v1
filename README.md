@@ -1,4 +1,4 @@
-# Viralizai
+# Viralizamos
 
 ## Configuração Local
 

@@ -1,11 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ['www.viralizai.com', 'cnquhqmqxibpnioullsm.supabase.co'],
+    domains: ['www.viralizamos.com', 'cnquhqmqxibpnioullsm.supabase.co'],
   },
   experimental: {
     serverActions: {
-      allowedOrigins: ['www.viralizai.com', 'localhost:3000'],
+      allowedOrigins: ['www.viralizamos.com', 'localhost:3000'],
     },
   },
 };

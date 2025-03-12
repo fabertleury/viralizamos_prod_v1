@@ -13,7 +13,7 @@ import Script from 'next/script';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Viralizai - Impulsione seu Instagram',
+  title: 'Viralizamos - Impulsione seu Instagram',
   description: 'Aumente seu alcance no Instagram com likes reais e seguidores engajados.',
 };
 

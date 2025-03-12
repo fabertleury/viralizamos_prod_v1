@@ -42,7 +42,7 @@ export function GrowthAnalysis({ data }: GrowthAnalysisProps) {
     const currentLikes = data.posts.map(post => ({
       data: new Date(post.timestamp * 1000).toLocaleDateString('pt-BR'),
       atual: post.likes_count || 0,
-      projetado: Math.round((post.likes_count || 0) * 2.5) // Projeção com Viralizai
+      projetado: Math.round((post.likes_count || 0) * 2.5) // Projeção com Viralizamos
     })).slice(0, 12); // Últimos 12 posts
 
     return currentLikes.reverse(); // Ordem cronológica
@@ -105,7 +105,7 @@ export function GrowthAnalysis({ data }: GrowthAnalysisProps) {
             <Line
               type="monotone"
               dataKey="projetado"
-              name="Com Viralizai"
+              name="Com Viralizamos"
               stroke="#FF00C4"
               strokeWidth={2}
             />
@@ -123,7 +123,7 @@ export function GrowthAnalysis({ data }: GrowthAnalysisProps) {
             <Tooltip />
             <Legend />
             <Bar dataKey="atual" name="Atual" fill="#9CA3AF" />
-            <Bar dataKey="projetado" name="Com Viralizai" fill="#FF00C4" />
+            <Bar dataKey="projetado" name="Com Viralizamos" fill="#FF00C4" />
           </BarChart>
         </ResponsiveContainer>
       </div>

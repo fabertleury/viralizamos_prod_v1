@@ -43,7 +43,7 @@ export default function SetupPage() {
         <img
           className="mx-auto h-12 w-auto"
           src="/images/logo.png"
-          alt="Viralizai"
+          alt="Viralizamos"
         />
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
           Setup Admin User

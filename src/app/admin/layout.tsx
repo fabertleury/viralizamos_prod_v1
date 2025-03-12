@@ -211,7 +211,7 @@ export default function AdminLayout({
                   <div className="flex h-16 shrink-0 items-center">
                     <Image
                       src="/images/viralizamos-color.png"
-                      alt="ViralizAI"
+                      alt="Viralizamos"
                       width={150}
                       height={40}
                       className="h-8 w-auto"
@@ -267,7 +267,7 @@ export default function AdminLayout({
           <div className="flex h-16 shrink-0 items-center">
             <Image
               src="/images/viralizamos-color.png"
-              alt="ViralizAI"
+              alt="Viralizamos"
               width={150}
               height={40}
               className="h-8 w-auto"
