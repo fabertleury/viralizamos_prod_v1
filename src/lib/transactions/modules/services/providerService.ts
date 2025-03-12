@@ -35,7 +35,9 @@ export class ProviderService {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(formattedRequestData)
+        body: JSON.stringify(formattedRequestData),
+        // Adicionar timeout para a requisição
+        signal: AbortSignal.timeout(15000) // 15 segundos de timeout
       });
       
       if (!response.ok) {
@@ -54,6 +56,30 @@ export class ProviderService {
       };
     } catch (error) {
       console.error('[ProviderService] Erro ao enviar pedido para o provedor:', error);
+      
+      // Verificar se é um erro de timeout ou conexão
+      const isConnectionError = 
+        error instanceof TypeError || 
+        (error instanceof Error && 
+          (error.message.includes('timeout') || 
+           error.message.includes('network') ||
+           error.message.includes('fetch failed') ||
+           error.message.includes('connect')));
+      
+      if (isConnectionError) {
+        console.log('[ProviderService] Erro de conexão detectado, retornando resposta para reprocessamento');
+        // Retornar um objeto especial que indica que o pedido precisa ser reprocessado
+        return {
+          order: null,
+          orderId: null,
+          status: 'needs_retry',
+          error: error.message,
+          needs_retry: true,
+          connection_error: true
+        };
+      }
+      
+      // Se não for um erro de conexão, propagar o erro
       throw error;
     }
   }

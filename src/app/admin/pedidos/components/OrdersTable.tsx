@@ -11,7 +11,8 @@ import {
   AlertCircle,
   CheckCircle,
   Code,
-  Send
+  Send,
+  RepeatCircle
 } from 'lucide-react';
 import {
   Dialog,
@@ -694,9 +695,13 @@ export default function OrdersTable({ orders }: OrdersTableProps) {
                           order.status === 'processing' ? 'bg-blue-100 text-blue-800' :
                           order.status === 'cancelled' ? 'bg-red-100 text-red-800' :
                           order.status === 'partial' ? 'bg-purple-100 text-purple-800' :
+                          order.status === 'needs_retry' ? 'bg-orange-100 text-orange-800' :
+                          order.status === 'retrying' ? 'bg-indigo-100 text-indigo-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
-                          {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                          {order.status === 'needs_retry' ? 'Requer Reenvio' :
+                           order.status === 'retrying' ? 'Reenviando' :
+                           order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                         </span>
                         <button
                           onClick={() => checkOrderStatus(order)}

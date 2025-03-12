@@ -95,7 +95,11 @@ export class DatabaseService {
       
       console.log('[DatabaseService] Valor final de amount:', finalAmount);
       
-      // Se não houver external_order_id na resposta, não criar o pedido
+      // Verificar se é um pedido que precisa ser reprocessado devido a erro de conexão
+      const needsRetry = orderResponse.needs_retry === true;
+      const isConnectionError = orderResponse.connection_error === true;
+      
+      // Se não houver external_order_id na resposta, verificar se é um caso especial
       if (!orderResponse.order && !orderResponse.orderId) {
         // Verificar se a resposta contém um erro sobre pedido já existente
         if (orderResponse.error && orderResponse.error.includes('active order with this link')) {
@@ -118,8 +122,20 @@ export class DatabaseService {
           }
         }
         
-        console.error('[DatabaseService] Resposta do provedor não contém ID do pedido:', orderResponse);
-        throw new Error('Resposta do provedor não contém ID do pedido');
+        // Se for um erro de conexão, criar o pedido mesmo sem ID externo
+        if (needsRetry && isConnectionError) {
+          console.log('[DatabaseService] Erro de conexão com o provedor. Criando pedido para reprocessamento posterior.');
+          // Continuar com a criação do pedido, mas com status especial
+        } else {
+          console.error('[DatabaseService] Resposta do provedor não contém ID do pedido:', orderResponse);
+          throw new Error('Resposta do provedor não contém ID do pedido');
+        }
+      }
+      
+      // Determinar o status do pedido
+      let orderStatus = orderResponse.status || 'pending';
+      if (needsRetry && isConnectionError) {
+        orderStatus = 'needs_retry'; // Status especial para pedidos que precisam ser reprocessados
       }
       
       // Preparar os dados do pedido - removendo campos que não existem na tabela
@@ -132,8 +148,8 @@ export class DatabaseService {
         // provider_id: provider.id,
         // Remover external_id que não existe na tabela
         // external_id: transaction.service?.external_id || transaction.metadata?.service?.external_id,
-        external_order_id: orderResponse.order || orderResponse.orderId,
-        status: orderResponse.status || 'pending',
+        external_order_id: orderResponse.order || orderResponse.orderId || null, // Pode ser null para pedidos que precisam ser reprocessados
+        status: orderStatus,
         amount: finalAmount, // Alterado para usar o valor calculado
         quantity: quantity,
         // Remover link pois a coluna não existe mais
@@ -153,7 +169,13 @@ export class DatabaseService {
           provider_id: provider.id,
           provider_name: provider.name,
           // Armazenar o external_id no metadata já que não temos a coluna
-          external_id: transaction.service?.external_id || transaction.metadata?.service?.external_id
+          external_id: transaction.service?.external_id || transaction.metadata?.service?.external_id,
+          // Adicionar informações sobre o erro de conexão, se houver
+          connection_error: isConnectionError ? true : undefined,
+          needs_retry: needsRetry ? true : undefined,
+          error_message: orderResponse.error || undefined,
+          retry_count: 0, // Contador de tentativas de reprocessamento
+          last_retry_at: null // Data da última tentativa de reprocessamento
         },
         created_at: new Date().toISOString()
       };
