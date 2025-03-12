@@ -230,8 +230,23 @@ export function PostSelector({
             };
           });
           
-          setPosts(processedPosts);
-          setFilteredPosts(processedPosts);
+          // Filtrar para remover reels da lista de posts
+          const onlyPosts = processedPosts.filter((post: InstagramPost) => {
+            // Verificar se não é um reel
+            const isReel = post.is_reel || 
+                          post.product_type === 'clips' || 
+                          post.product_type === 'reels';
+            
+            if (isReel) {
+              console.log('Excluindo reel da lista de posts:', post.id);
+            }
+            
+            return !isReel;
+          });
+          
+          console.log(`Filtrados ${processedPosts.length - onlyPosts.length} reels da lista de posts`);
+          setPosts(onlyPosts);
+          setFilteredPosts(onlyPosts);
           setLoading(false);
         } catch (error) {
           console.error('Erro ao buscar posts:', error);
@@ -255,8 +270,24 @@ export function PostSelector({
       loadPosts();
     } else {
       console.log('Usando posts iniciais fornecidos via props:', initialPosts.length);
-      setPosts(initialPosts);
-      setFilteredPosts(initialPosts);
+      
+      // Filtrar para remover reels da lista de posts
+      const onlyPosts = initialPosts.filter((post: InstagramPost) => {
+        // Verificar se não é um reel
+        const isReel = post.is_reel || 
+                      post.product_type === 'clips' || 
+                      post.product_type === 'reels';
+        
+        if (isReel) {
+          console.log('Excluindo reel da lista de posts:', post.id);
+        }
+        
+        return !isReel;
+      });
+      
+      console.log(`Filtrados ${initialPosts.length - onlyPosts.length} reels da lista de posts`);
+      setPosts(onlyPosts);
+      setFilteredPosts(onlyPosts);
     }
   }, [username, initialPosts]);
 

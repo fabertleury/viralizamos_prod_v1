@@ -12,6 +12,7 @@ export interface InstagramPost {
   views_count?: number;
   is_video?: boolean;
   is_reel?: boolean;
+  product_type?: string;
   caption?: string | {
     text: string;
   };
