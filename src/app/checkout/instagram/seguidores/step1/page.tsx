@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { useInstagramAPI } from '@/hooks/useInstagramAPI';
-import { LoadingProfileModal } from '../../components/LoadingProfileModal';
 import { toast } from 'sonner';
 import { Header } from '@/components/layout/header';
 import { useForm } from 'react-hook-form';
@@ -16,6 +15,7 @@ import {
   faBolt, faMedal, faTrophy, faGem, faCrown, faFire, faSmile, faLock, faUnlock 
 } from '@fortawesome/free-solid-svg-icons';
 import { createClient } from '@/lib/supabase/client';
+import { ProfileVerificationModal } from '@/components/modals/ProfileVerificationModal';
 
 interface ServiceDetail {
   title: string;
@@ -141,23 +141,25 @@ export default function Step1Page() {
     fetchServiceData();
   }, [serviceId, quantity]);
 
-  // Função para verificar o perfil do Instagram usando a API em cascata
+  // Função para verificar o perfil do Instagram usando o sistema de rotação de APIs
   const checkProfile = async (usernameToCheck: string) => {
     setIsLoading(true);
     setError(null);
-    setShowModal(true);
-    setLoadingStage('loading');
     
     try {
       console.log(`Verificando perfil: ${usernameToCheck}`);
       
-      // Usar a API em cascata para verificar o perfil
+      // Usar o graphql-check como verificador principal para aproveitar a rotação de APIs
       const response = await fetch(`/api/instagram/graphql-check?username=${usernameToCheck}`);
       const data = await response.json();
       
       if (!response.ok) {
         throw new Error(data.message || 'Erro ao verificar perfil');
       }
+      
+      console.log('Resposta do graphql-check:', data);
+      console.log('Status do perfil:', data.is_private ? 'Privado' : 'Público');
+      console.log('API utilizada:', data.source || 'desconhecida');
       
       // Formatar os dados do perfil
       const profileInfo = {
@@ -166,22 +168,23 @@ export default function Step1Page() {
         profile_pic_url: data.profile_pic_url,
         follower_count: data.follower_count,
         following_count: data.following_count,
+        media_count: data.media_count || 0,
         is_private: data.is_private,
         is_verified: data.is_verified,
+        biography: data.biography || '',
         source: data.source
       };
       
-      console.log('Dados do perfil:', profileInfo);
+      console.log('Dados do perfil formatados:', profileInfo);
       setProfileData(profileInfo);
+      setShowModal(true);
       
       if (profileInfo.is_private) {
-        console.log('Perfil privado detectado:', profileInfo);
-        setLoadingStage('error');
+        console.log('Perfil privado detectado. Exibindo modal de erro.');
         return;
       }
       
       // Perfil está público, redirecionar para a próxima etapa
-      setLoadingStage('done');
       
       // Armazenar dados do perfil e do serviço no localStorage para a próxima etapa
       const checkoutData = {
@@ -201,7 +204,7 @@ export default function Step1Page() {
     } catch (error: any) {
       console.error('Erro ao verificar perfil:', error);
       setError(error.message || 'Erro ao verificar o perfil');
-      setLoadingStage('error');
+      setShowModal(true);
     } finally {
       setIsLoading(false);
     }
@@ -394,13 +397,15 @@ export default function Step1Page() {
           </div>
         </div>
 
-        <LoadingProfileModal 
-          open={showModal}
-          onOpenChange={setShowModal}
-          loadingStage={loadingStage}
+        <ProfileVerificationModal
           profileData={profileData}
-          error={error}
-          checkoutSlug="seguidores"
+          isOpen={showModal}
+          onClose={() => setShowModal(false)}
+          onContinue={() => {
+            if (profileData) {
+              router.push(`/checkout/instagram/seguidores/step2?username=${encodeURIComponent(profileData.username)}&service_id=${serviceId}`);
+            }
+          }}
           onRetryAfterPrivate={handleRetryAfterPrivate}
         />
       </main>
