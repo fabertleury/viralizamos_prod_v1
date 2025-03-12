@@ -98,6 +98,14 @@ export function PostSelector({
     return 'unknown';
   };
 
+  // Função para obter URL da imagem através do proxy
+  const getProxiedImageUrl = (url: string | undefined): string => {
+    if (!url) {
+      return '/images/placeholder-post.svg';
+    }
+    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  };
+
   // Função para selecionar um post
   const handleSelectPost = (post: Post) => {
     console.log('Selecionando post:', post);
@@ -126,13 +134,13 @@ export function PostSelector({
       return;
     }
 
-    // Adicionar post com emoji de coração e código correto
+    // Adicionar post com emoji de olhos e código correto
     const selectedPost = {
       ...post,
       code: postCode, // Usar o código extraído
       shortcode: postCode,
       selected: true,
-      displayName: `❤️ ${post.caption || 'Post sem legenda'}`
+      displayName: `👀 ${post.caption || 'Post sem legenda'}`
     };
 
     console.log('✅ Post adicionado à seleção:', {

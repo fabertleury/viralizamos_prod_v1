@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import axios from 'axios';
-import { getProxiedImageUrl } from '@/app/checkout/instagram/utils/proxy-image';
 import { toast } from 'sonner';
 
 interface Reel {
@@ -123,6 +122,14 @@ export function ReelSelector({
     return Math.floor(totalViews / totalSelectedItems);
   };
 
+  // Função para obter URL da imagem através do proxy
+  const getProxiedImageUrl = (url: string | undefined): string => {
+    if (!url) {
+      return '/images/placeholder-reel.svg';
+    }
+    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  };
+
   // Função para selecionar um reel
   const handleSelectReel = (reel: Reel) => {
     console.log('Selecionando reel:', reel);
@@ -143,11 +150,11 @@ export function ReelSelector({
       return;
     }
 
-    // Adicionar reel com emoji de coração e código correto
+    // Adicionar reel com emoji de olhos e código correto
     const selectedReel = {
       ...reel,
       selected: true,
-      displayName: `❤️ ${reel.caption || 'Reel sem legenda'}`
+      displayName: `👀 ${reel.caption || 'Reel sem legenda'}`
     };
 
     console.log('✅ Reel adicionado à seleção:', {
@@ -233,7 +240,7 @@ export function ReelSelector({
                     <div className="p-2 bg-white">
                       <p className="text-xs truncate">{reel.caption || 'Sem legenda'}</p>
                       <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
-                        <span>{formatNumber(reel.views_count || reel.play_count || 0)} 👁️</span>
+                        <span>{formatNumber(reel.views_count || reel.play_count || 0)} 👀</span>
                         <span>{formatNumber(reel.comment_count || 0)} 💬</span>
                       </div>
                     </div>

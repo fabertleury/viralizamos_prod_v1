@@ -10,7 +10,7 @@ interface ReelSelectorProps {
   onSelectReels?: (reels: InstagramPost[]) => void;
   maxReels?: number;
   selectedPosts?: InstagramPost[];
-  totalLikes?: number;
+  totalViews?: number;
   loading?: boolean;
   selectedReels?: InstagramPost[];
 }
@@ -22,7 +22,7 @@ function ReelSelector({
   onSelectReels, 
   maxReels = 5,
   selectedPosts = [],  
-  totalLikes = 100, 
+  totalViews = 100, 
   loading: initialLoading = false,
   selectedReels: initialSelectedReels = []
 }: ReelSelectorProps) {
@@ -156,7 +156,7 @@ function ReelSelector({
 
             if (allReels.length > 0) {
               // Processar os reels e adicionar as URLs de imagem
-              const processedReels = allReels.map(reel => {
+              const processedReels = allReels.map((reel: any) => {
                 const processedReel = processReelData(reel);
                 processedReel.image_url = selectBestImageUrl(reel);
                 
@@ -171,7 +171,7 @@ function ReelSelector({
                 return processedReel;
               });
 
-              console.log('Reels processados com visualizações:', processedReels.map(r => ({
+              console.log('Reels processados com visualizações:', processedReels.map((r: any) => ({
                 id: r.id,
                 viewsCount: r.views_count,
                 formattedViews: formatNumber(r.views_count || 0),
@@ -240,7 +240,7 @@ function ReelSelector({
   }, [initialSelectedReels]);
 
   // Função para obter URL da imagem através do proxy
-  const getProxiedImageUrl = (url: string): string => {
+  const getProxiedImageUrl = (url: string | undefined): string => {
     if (!url || url.includes('placeholder')) {
       return '/images/placeholder-reel.svg';
     }
@@ -299,11 +299,11 @@ function ReelSelector({
     return post.id;
   };
 
-  // Função para calcular curtidas por item
-  const calculateLikesPerItem = () => {
+  // Função para calcular visualizações por item
+  const calculateViewsPerItem = () => {
     const totalSelectedItems = selectedReels.length + (selectedPosts?.length || 0);
     if (!totalSelectedItems) return 0;
-    return Math.floor(totalLikes / totalSelectedItems);
+    return Math.floor(totalViews / totalSelectedItems);
   };
 
   const handleSelectReel = (reel: InstagramPost) => {
@@ -344,7 +344,7 @@ function ReelSelector({
       code: reelCode, // Usar o código extraído
       shortcode: reelCode,
       selected: true,
-      displayName: `❤️ ${reel.caption || 'Reel sem legenda'}`
+      displayName: `👀 ${reel.caption || 'Reel sem legenda'}`
     };
 
     console.log('✅ Reel adicionado à seleção:', {
@@ -360,18 +360,17 @@ function ReelSelector({
     if (onSelectReels) onSelectReels(updatedSelectedReels);
   };
 
-  // Recalcular distribuição de curtidas quando a seleção mudar
   useEffect(() => {
     if (selectedReels.length > 0) {
-      const likesPerItem = calculateLikesPerItem();
-      const updatedReels = selectedReels.map(reel => ({
+      const viewsPerItem = calculateViewsPerItem();
+      const updatedReels = selectedReels.map((reel: InstagramPost) => ({
         ...reel,
-        likesDistribution: likesPerItem
+        viewsDistribution: viewsPerItem
       }));
       setSelectedReels(updatedReels);
       if (onSelectReels) onSelectReels(updatedReels);
     }
-  }, [selectedReels.length, totalLikes]);
+  }, [selectedReels.length, totalViews]);
 
   // Renderização condicional baseada no estado de carregamento
   if (loading) {
@@ -395,7 +394,7 @@ function ReelSelector({
 
   return (
     <div className="grid grid-cols-4 gap-2">
-      {reels.slice(0, 12).map(reel => {
+      {reels.slice(0, 12).map((reel: InstagramPost) => {
         const proxiedImageUrl = getProxiedImageUrl(reel.image_url);
         const isSelected = selectedReels.some(selectedReel => selectedReel.id === reel.id);
 
@@ -409,17 +408,9 @@ function ReelSelector({
             `}
           >
             <div className="relative">
-              {/* Log para depuração */}
-              {console.log('Renderizando reel:', {
-                id: reel.id,
-                viewsCount: reel.views_count,
-                formattedViews: formatNumber(reel.views_count || 0),
-                likeCount: reel.like_count,
-                commentCount: reel.comment_count
-              })}
               <Image
                 src={proxiedImageUrl}
-                alt={reel.caption?.text || 'Sem legenda'}
+                alt={typeof reel.caption === 'object' ? reel.caption.text || 'Sem legenda' : reel.caption || 'Sem legenda'}
                 width={640}
                 height={640}
                 className={`w-full h-40 object-cover rounded
@@ -444,22 +435,22 @@ function ReelSelector({
                   
                   {/* Emoji de visualização centralizado */}
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-4xl text-pink-500">❤️</div>
+                    <div className="text-4xl text-pink-500">👀</div>
                   </div>
                   
                   {/* Contador de curtidas distribuídas */}
                   <div className="absolute bottom-8 left-0 right-0 text-center text-white font-bold bg-pink-500 bg-opacity-70 py-1">
-                    {formatNumber(calculateLikesPerItem())} curtidas
+                    {formatNumber(calculateViewsPerItem())} visualizações
                   </div>
                 </>
               )}
               
               <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-1 flex justify-between text-xs">
                 <span className="flex items-center">
-                  ❤️ {formatNumber(reel.like_count || 0)}
+                  👀 {formatNumber(reel.views_count || 0)}
                 </span>
                 <span className="flex items-center">
-                  👀 {formatNumber(reel.views_count || 0)}
+                  ❤️ {formatNumber(reel.like_count || 0)}
                 </span>
                 <span className="flex items-center">
                   💬 {formatNumber(reel.comment_count || 0)}

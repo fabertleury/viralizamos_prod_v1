@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import PostSelector from '@/components/instagram/curtidas/PostSelector';
-import ReelSelector from '@/components/instagram/curtidas/ReelSelector';
+import PostSelector from '@/components/instagram/comentarios/PostSelector';
+import ReelSelector from '@/components/instagram/comentarios/ReelSelector';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -98,7 +98,7 @@ export default function Step2Page() {
   const maxTotalItems = 5; // Máximo de 5 itens no total entre posts e reels
   
   // Calcular curtidas por item
-  const likesPerItem = service?.quantidade && selectedItemsCount > 0 
+  const commentsPerItem = service?.quantidade && selectedItemsCount > 0 
     ? Math.floor(service.quantidade / selectedItemsCount) 
     : 0;
 
@@ -477,11 +477,11 @@ export default function Step2Page() {
       return null;
     }
 
-    // Calcular quantidade de likes por post
+    // Calcular quantidade de comentários por post
     const totalItems = selectedPosts.length + selectedReels.length;
-    const totalLikes = service.quantidade;
-    const likesPerItem = Math.floor(totalLikes / totalItems);
-    const remainingLikes = totalLikes % totalItems;
+    const totalComments = service.quantidade;
+    const commentsPerItem = Math.floor(totalComments / totalItems);
+    const remainingComments = totalComments % totalItems;
 
     // Preparar metadados dos posts
     const postsMetadata = selectedPosts.map((post, index) => {
@@ -491,7 +491,7 @@ export default function Step2Page() {
         postId: post.id,
         postCode: postCode,
         postLink: `https://instagram.com/p/${postCode}`,
-        likes: index === 0 ? likesPerItem + remainingLikes : likesPerItem,
+        comments: index === 0 ? commentsPerItem + remainingComments : commentsPerItem,
         type: 'post' // Adicionar tipo explícito para posts
       };
     });
@@ -503,7 +503,7 @@ export default function Step2Page() {
         postId: reel.id,
         postCode: reelCode,
         postLink: `https://instagram.com/reel/${reelCode}`,
-        likes: likesPerItem,
+        comments: commentsPerItem,
         type: 'reel' // Adicionar tipo explícito para reels
       };
     });
@@ -511,7 +511,7 @@ export default function Step2Page() {
     return {
       user_id: formData.name || null,
       order_id: paymentData.paymentId,
-      type: 'curtidas',
+      type: 'comentarios',
       amount: service.preco,
       status: 'pending',
       payment_method: 'pix',
@@ -743,7 +743,7 @@ export default function Step2Page() {
                   maxPosts={maxTotalItems}
                   service={service}
                   posts={instagramPosts}
-                  totalLikes={service?.quantidade || 100}
+                  totalComments={service?.quantidade || 100}
                   loading={loadingPosts}
                 />
               ) : (
@@ -753,7 +753,7 @@ export default function Step2Page() {
                   selectedReels={selectedReels}
                   selectedPosts={selectedPosts}
                   maxReels={maxTotalItems}
-                  totalLikes={service?.quantidade || 100}
+                  totalComments={service?.quantidade || 100}
                   loading={loadingReels}
                 />
               )}
@@ -783,13 +783,13 @@ export default function Step2Page() {
                   
                   <div className="pt-4 border-t space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>Quantidade de curtidas:</span>
+                      <span>Quantidade de comentários:</span>
                       <span>{service.quantidade.toLocaleString()}</span>
                     </div>
                     {(selectedPosts.length + selectedReels.length) > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span>Curtidas por item:</span>
-                        <span>{likesPerItem.toLocaleString()}</span>
+                        <span>Comentários por item:</span>
+                        <span>{commentsPerItem.toLocaleString()}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm">

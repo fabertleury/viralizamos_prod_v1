@@ -10,7 +10,7 @@ interface ReelSelectorProps {
   onSelectReels?: (reels: InstagramPost[]) => void;
   maxReels?: number;
   selectedPosts?: InstagramPost[];
-  totalComments?: number; 
+  totalViews?: number;
   loading?: boolean;
   selectedReels?: InstagramPost[];
 }
@@ -22,7 +22,7 @@ function ReelSelector({
   onSelectReels, 
   maxReels = 5,
   selectedPosts = [],  
-  totalComments = 100, 
+  totalViews = 100, 
   loading: initialLoading = false,
   selectedReels: initialSelectedReels = []
 }: ReelSelectorProps) {
@@ -32,11 +32,13 @@ function ReelSelector({
   const [loading, setLoading] = useState(initialLoading);
 
   const processReelData = (reel: any) => {
+    // Verificar se já é um objeto processado
     if (reel.id && typeof reel.id === 'string') {
       return reel;
     }
 
-    console.log(' Processando reel raw data:', {
+    // Log detalhado para depuração
+    console.log('Processando reel raw data:', {
       id: reel.id || reel.pk || reel.fbid,
       play_count: reel.play_count,
       view_count: reel.view_count,
@@ -44,32 +46,35 @@ function ReelSelector({
       ig_play_count: reel.ig_play_count
     });
 
+    // Extrair ID do reel
     const id = reel.id || reel.pk || reel.fbid || '';
     
+    // Determinar a contagem de visualizações
     let viewsCount = 0;
     
     if (typeof reel.ig_play_count === 'number' && reel.ig_play_count > 0) {
       viewsCount = reel.ig_play_count;
-      console.log(` Usando ig_play_count: ${viewsCount} para reel ${id}`);
+      console.log(`Usando ig_play_count: ${viewsCount} para reel ${id}`);
     } else if (typeof reel.play_count === 'number' && reel.play_count > 0) {
       viewsCount = reel.play_count;
-      console.log(` Usando play_count: ${viewsCount} para reel ${id}`);
+      console.log(`Usando play_count: ${viewsCount} para reel ${id}`);
     } else if (typeof reel.fb_play_count === 'number' && reel.fb_play_count > 0) {
       viewsCount = reel.fb_play_count;
-      console.log(` Usando fb_play_count: ${viewsCount} para reel ${id}`);
+      console.log(`Usando fb_play_count: ${viewsCount} para reel ${id}`);
     } else if (typeof reel.view_count === 'number' && reel.view_count > 0) {
       viewsCount = reel.view_count;
-      console.log(` Usando view_count: ${viewsCount} para reel ${id}`);
+      console.log(`Usando view_count: ${viewsCount} para reel ${id}`);
     } else if (typeof reel.views_count === 'number' && reel.views_count > 0) {
       viewsCount = reel.views_count;
-      console.log(` Usando views_count: ${viewsCount} para reel ${id}`);
+      console.log(`Usando views_count: ${viewsCount} para reel ${id}`);
     } else if (typeof reel.video_play_count === 'number' && reel.video_play_count > 0) {
       viewsCount = reel.video_play_count;
-      console.log(` Usando video_play_count: ${viewsCount} para reel ${id}`);
+      console.log(`Usando video_play_count: ${viewsCount} para reel ${id}`);
     } else {
       console.warn(`Nenhuma contagem de visualizações encontrada para reel ${id}`);
     }
     
+    // Extrair outras métricas
     const likeCount = 
       reel.like_count || 
       reel.likes_count || 
@@ -81,10 +86,12 @@ function ReelSelector({
       reel.comments_count || 
       0;
     
+    // Lidar com caption que pode ser objeto ou string
     const caption = reel.caption?.text || 
                    (typeof reel.caption === 'string' ? reel.caption : '') || 
                    '';
     
+    // Criar objeto processado
     const processedReel = {
       id,
       views_count: viewsCount,
@@ -103,7 +110,8 @@ function ReelSelector({
       instagram_url: `https://instagram.com/reel/${reel.code || reel.shortcode || id}`
     };
     
-    console.log(' Reel processado:', {
+    // Log do reel processado
+    console.log('Reel processado:', {
       id: processedReel.id,
       code: processedReel.code,
       views: processedReel.views_count,
@@ -114,27 +122,97 @@ function ReelSelector({
     return processedReel;
   };
 
-  const calculateCommentsPerItem = () => {
-    const totalSelectedItems = selectedPosts.length + selectedReels.length;
+  // Função para selecionar a melhor URL de imagem disponível
+  const selectBestImageUrl = (reel: any): string => {
+    // Verificar todas as possíveis fontes de imagem
+    if (reel.thumbnail_url) return reel.thumbnail_url;
+    if (reel.thumbnail_src) return reel.thumbnail_src;
+    if (reel.display_url) return reel.display_url;
+    
+    // Tentar extrair de image_versions
+    if (reel.image_versions && reel.image_versions.items && reel.image_versions.items.length > 0) {
+      return reel.image_versions.items[0].url;
+    }
+    
+    // Tentar extrair de carousel_media
+    if (reel.carousel_media && reel.carousel_media.length > 0) {
+      const firstMedia = reel.carousel_media[0];
+      if (firstMedia.image_versions && firstMedia.image_versions.items && firstMedia.image_versions.items.length > 0) {
+        return firstMedia.image_versions.items[0].url;
+      }
+    }
+    
+    // Fallback para imagem padrão
+    return '/images/placeholder-post.svg';
+  };
+
+  // Função para obter URL da imagem através do proxy
+  const getProxiedImageUrl = (url: string | undefined): string => {
+    if (!url) {
+      return '/images/placeholder-post.svg';
+    }
+    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  };
+
+  // Função para extrair o código correto de um post do Instagram
+  const extractPostCode = (post: any): string => {
+    // Se o post já tem um código que não é numérico, usar esse código
+    if (post.code && !/^\d+$/.test(post.code)) {
+      console.log('✅ Usando código existente:', post.code);
+      return post.code;
+    }
+    
+    // Se tem shortcode, usar o shortcode
+    if (post.shortcode) {
+      console.log('✅ Usando shortcode:', post.shortcode);
+      return post.shortcode;
+    }
+    
+    // Se tem permalink ou link, extrair o código da URL
+    if (post.permalink || post.link) {
+      const url = post.permalink || post.link;
+      const match = url.match(/instagram\.com\/reel\/([^\/]+)/);
+      if (match && match[1]) {
+        console.log('✅ Código extraído da URL:', match[1]);
+        return match[1];
+      }
+    }
+    
+    // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
+    console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
+    return post.id;
+  };
+
+  // Função para calcular visualizações por item
+  const calculateViewsPerItem = () => {
+    const totalSelectedItems = selectedReels.length + (selectedPosts?.length || 0);
     if (!totalSelectedItems) return 0;
-    return Math.floor(totalComments / totalSelectedItems);
+    return Math.floor(totalViews / totalSelectedItems);
   };
 
   const handleSelectReel = (reel: InstagramPost) => {
-    const totalSelectedItems = selectedPosts.length + selectedReels.length;
-    const isAlreadySelected = selectedReels.some(selectedReel => selectedReel.id === reel.id);
+    const totalSelectedItems = selectedReels.length + (selectedPosts?.length || 0);
+    const isAlreadySelected = selectedReels.some(r => r.id === reel.id);
     
-    console.log(' Reel selecionado - dados completos:', {
+    // Log detalhado do reel selecionado
+    console.log('🔍 Reel selecionado - dados completos:', {
       id: reel.id,
       code: reel.code,
       shortcode: reel.shortcode,
-      views: reel.views_count
+      image_url: reel.image_url,
+      caption: reel.caption
     });
-
+    
+    // Extrair o código correto
+    const reelCode = extractPostCode(reel);
+    console.log('🔍 Código extraído para o reel:', reelCode);
+    
     if (isAlreadySelected) {
-      const updatedSelectedReels = selectedReels.filter(selectedReel => selectedReel.id !== reel.id);
+      // Se já selecionado, remover
+      const updatedSelectedReels = selectedReels.filter(r => r.id !== reel.id);
       setSelectedReels(updatedSelectedReels);
       
+      // Atualizar callbacks
       if (onSelectReels) onSelectReels(updatedSelectedReels);
       return;
     }
@@ -144,13 +222,16 @@ function ReelSelector({
       return;
     }
 
+    // Adicionar reel com emoji de olhos e código correto
     const selectedReel = {
       ...reel,
+      code: reelCode, // Usar o código extraído
+      shortcode: reelCode,
       selected: true,
-      displayName: `💬 ${typeof reel.caption === 'string' ? reel.caption : 'Reel sem legenda'}`
+      displayName: `👀 ${reel.caption || 'Reel sem legenda'}`
     };
 
-    console.log(' Reel adicionado à seleção:', {
+    console.log('✅ Reel adicionado à seleção:', {
       id: selectedReel.id,
       code: selectedReel.code,
       url: `https://instagram.com/reel/${selectedReel.code}`
@@ -159,6 +240,7 @@ function ReelSelector({
     const updatedSelectedReels = [...selectedReels, selectedReel];
     setSelectedReels(updatedSelectedReels);
     
+    // Atualizar callbacks
     if (onSelectReels) onSelectReels(updatedSelectedReels);
   };
 
@@ -166,8 +248,23 @@ function ReelSelector({
     async function loadReels() {
       if (!username) return;
       
+      // Verificar cache na sessão
+      const cachedReels = sessionStorage.getItem(`reels_${username}`);
+      if (cachedReels) {
+        try {
+          const parsedReels = JSON.parse(cachedReels);
+          console.log(`Usando cache da sessão para reels de ${username}`);
+          setReels(parsedReels);
+          return;
+        } catch (e) {
+          console.error('Erro ao parsear reels do cache:', e);
+          // Continuar com a busca normal
+        }
+      }
+      
+      // Verificar cache em memória
       if (reelsCache[username]) {
-        console.log(` Usando cache para reels de ${username}`);
+        console.log(`Usando cache em memória para reels de ${username}`);
         setReels(reelsCache[username]);
         return;
       }
@@ -180,78 +277,98 @@ function ReelSelector({
           setLoading(true);
           setError(null);
           
-          const response = await fetch(`/api/instagram/reels/${username}`, {
+          const options = {
+            method: 'GET',
+            url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/reels',
+            params: {
+              username_or_id_or_url: username
+            },
             headers: {
-              'Cache-Control': 'no-cache',
+              'X-RapidAPI-Key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY,
+              'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com'
             }
-          });
+          };
           
-          if (!response.ok) {
-            throw new Error(`Erro ao buscar reels: ${response.status}`);
+          const response = await axios.request(options);
+          const reelsData = response.data;
+          
+          console.log('Resposta da API de reels:', reelsData);
+          
+          if (reelsData && reelsData.data && reelsData.data.items) {
+            const allReels = reelsData.data.items;
+            console.log('Reels após processamento inicial:', allReels);
+
+            if (allReels.length > 0) {
+              // Processar os reels e adicionar as URLs de imagem
+              const processedReels = allReels.map((reel: any) => {
+                const processedReel = processReelData(reel);
+                processedReel.image_url = selectBestImageUrl(reel);
+                
+                // Garantir que views_count tenha um valor válido
+                if (!processedReel.views_count || processedReel.views_count === 0) {
+                  // Extrair o valor de visualizações do campo mais confiável
+                  const viewsCount = reel.ig_play_count || reel.play_count || reel.view_count || reel.views_count || reel.video_play_count || 0;
+                  processedReel.views_count = viewsCount;
+                  console.log(`Usando valor de visualizações extraído: ${processedReel.views_count}`);
+                }
+                
+                return processedReel;
+              });
+
+              console.log('Reels processados com visualizações:', processedReels.map((r: any) => ({
+                id: r.id,
+                viewsCount: r.views_count,
+                formattedViews: formatNumber(r.views_count || 0),
+                likeCount: r.like_count,
+                commentCount: r.comment_count
+              })));
+
+              // Salvar no cache
+              sessionStorage.setItem(`reels_${username}`, JSON.stringify(processedReels));
+              
+              setReels(processedReels);
+            } else {
+              console.warn('Nenhum reel encontrado para o usuário:', username);
+              setReels([]);
+            }
+          } else {
+            console.error('Formato de resposta inesperado da API de reels:', reelsData);
+            setError('Formato de resposta inesperado da API');
+            setReels([]);
           }
-          
-          const data = await response.json();
-          console.log(` Recebidos ${data.length} reels para ${username}`);
-          
-          const processedReels = data.map(processReelData);
-          
-          reelsCache[username] = processedReels;
-          
-          setReels(processedReels);
-          setLoading(false);
         } catch (error) {
           console.error('Erro ao buscar reels:', error);
           
           if (retryCount < MAX_RETRIES) {
             retryCount++;
-            console.log(` Tentando novamente (${retryCount}/${MAX_RETRIES})...`);
-            setTimeout(fetchWithRetry, 2000); 
-          } else {
-            setError('Não foi possível carregar os reels. Por favor, tente novamente mais tarde.');
-            setLoading(false);
+            console.log(`Tentando novamente (${retryCount}/${MAX_RETRIES})...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return fetchWithRetry();
           }
+          
+          setError('Falha ao buscar reels. Por favor, tente novamente.');
+          setReels([]);
+        } finally {
+          setLoading(false);
         }
       };
-      
+
       fetchWithRetry();
     }
-    
+
     loadReels();
   }, [username]);
 
-  const getProxiedImageUrl = (url: string | undefined): string => {
-    if (!url || url.includes('placeholder')) {
-      return '/images/placeholder-post.svg';
-    }
-    
-    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
-  };
-
-  if (error) {
-    return (
-      <div className="p-4 bg-red-50 text-red-700 rounded-lg mb-4">
-        <p className="font-medium">Erro</p>
-        <p>{error}</p>
-        <button 
-          onClick={() => setError(null)} 
-          className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-        >
-          Tentar novamente
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="w-full">
-      <div className="mb-4">
-        <h3 className="text-lg font-medium mb-2">Selecione os reels para receber comentários</h3>
-        <p className="text-sm text-gray-600 mb-2">
-          Você pode selecionar até {maxReels} itens (posts + reels)
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between">
+        <h3 className="text-lg font-medium">Selecione os Reels</h3>
+        <p className="text-sm text-gray-500">
+          {selectedReels.length} de {maxReels} reels selecionados
         </p>
         {selectedReels.length > 0 && (
           <p className="text-sm font-medium text-green-600">
-            Cada item receberá aproximadamente {formatNumber(calculateCommentsPerItem())} comentários
+            Cada item receberá aproximadamente {formatNumber(calculateViewsPerItem())} visualizações
           </p>
         )}
       </div>
@@ -320,7 +437,7 @@ function ReelSelector({
                               : 'Sem legenda')}
                       </p>
                       <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
-                        <span>{formatNumber(reel.views_count || 0)} 👁️</span>
+                        <span>{formatNumber(reel.views_count || 0)} 👀</span>
                         <span>{formatNumber(reel.comment_count || 0)} 💬</span>
                       </div>
                     </div>

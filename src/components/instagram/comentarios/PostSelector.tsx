@@ -86,13 +86,11 @@ export function PostSelector({
     return '/images/placeholder-post.svg';
   };
 
-  // Função para processar a URL da imagem através de um proxy
-  const getProxiedImageUrl = (url: string): string => {
-    if (!url || url.includes('placeholder-post.svg')) {
+  // Função para obter URL da imagem através do proxy
+  const getProxiedImageUrl = (url: string | undefined): string => {
+    if (!url) {
       return '/images/placeholder-post.svg';
     }
-    
-    // Usar o proxy de imagens para evitar problemas de CORS
     return `/api/proxy-image?url=${encodeURIComponent(url)}`;
   };
 
@@ -164,13 +162,13 @@ export function PostSelector({
       return;
     }
 
-    // Adicionar post com emoji de coração e código correto
+    // Adicionar post com emoji de comentário e código correto
     const selectedPost = {
       ...post,
       code: postCode, // Usar o código extraído
       shortcode: postCode,
       selected: true,
-      displayName: `❤️ ${post.caption || 'Post sem legenda'}`
+      displayName: `💬 ${post.caption || 'Post sem legenda'}`
     };
 
     console.log('✅ Post adicionado à seleção:', {
@@ -321,7 +319,9 @@ export function PostSelector({
                     <div className="aspect-square relative">
                       <Image
                         src={imageUrl}
-                        alt={post.caption || 'Instagram post'}
+                        alt={typeof post.caption === 'object' 
+                          ? (post.caption.text || 'Sem legenda') 
+                          : (post.caption || 'Sem legenda')}
                         fill
                         sizes="(max-width: 768px) 50vw, 33vw"
                         className="object-cover"

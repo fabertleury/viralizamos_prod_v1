@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import ReelSelector from '@/components/instagram/curtidas/ReelSelector';
+import ReelSelector from '@/components/instagram/reels/ReelSelector';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -556,7 +556,7 @@ export default function Step2Page() {
                 selectedReels={selectedReels}
                 selectedPosts={[]}
                 maxReels={maxTotalItems}
-                totalLikes={service?.quantidade || 100}
+                totalViews={service?.quantidade || 100}
                 loading={loadingReels}
               />
             </Card>
