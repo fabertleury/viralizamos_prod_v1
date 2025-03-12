@@ -589,7 +589,7 @@ export default function Step2Page() {
       {paymentData && (
         <PaymentPixModal
           isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
+          onClose={() => { setIsModalOpen(false); setPaymentData(null); }}
           qrCodeText={paymentData.qrCodeText}
           qrCodeBase64={paymentData.qrCodeBase64}
           amount={paymentData.amount}

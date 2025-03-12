@@ -658,7 +658,6 @@ export default function Step2Page() {
 
   const handleClosePaymentModal = () => {
     setPaymentData(null);
-    router.push('/dashboard');
   };
 
   return (

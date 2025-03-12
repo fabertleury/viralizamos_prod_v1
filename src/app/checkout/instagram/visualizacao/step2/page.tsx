@@ -418,7 +418,6 @@ export default function Step2Page() {
 
   const handleClosePaymentModal = () => {
     setPaymentData(null);
-    router.push('/dashboard');
   };
 
   if (!profileData || !service) {

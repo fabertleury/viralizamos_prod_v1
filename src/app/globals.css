@@ -10,6 +10,10 @@
   .post-card.selected {
     @apply border-purple-600;
   }
+  
+  .animate-spin-slow {
+    animation: spin 4s linear infinite;
+  }
 
   .check-overlay {
     @apply hidden absolute inset-0 bg-black bg-opacity-50 items-center justify-center;

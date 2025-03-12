@@ -53,7 +53,6 @@ export default function Step2Page() {
   const supabase = createClient();
 
   const handleReelSelect = useCallback((reels: InstagramPost[]) => {
-    console.log('Reels selecionados:', reels);
     setSelectedReels(reels as Post[]);
   }, []);
 
@@ -171,34 +170,13 @@ export default function Step2Page() {
       // Verificar se já temos dados de pagamento
       if (!paymentData) {
         // Preparar dados para o pagamento
-        // Determinar o link correto a ser enviado
-        let profileUrl = `https://instagram.com/${profileData.username}/`;
-        
-        // Se houver apenas um reel selecionado, usar o link do reel específico
-        if (selectedReels.length === 1) {
-          const reelCode = selectedReels[0].code || selectedReels[0].shortcode || selectedReels[0].id;
-          if (reelCode) {
-            profileUrl = `https://instagram.com/reel/${reelCode}`;
-            console.log('🔗 Usando link específico do reel para pagamento:', profileUrl);
-          }
-        }
-        
         const paymentData = {
           amount: finalAmount || service.preco,
           service_id: service.id,
-          profile_username: profileData.username,  // Campo obrigatório para a API
-          profile_url: profileUrl,  // Link específico do reel ou do perfil
           customer_name: formData.name,
           customer_email: formData.email,
           customer_phone: formData.phone,
-          coupon_code: appliedCoupon || undefined,
-          checkout_type: 'reels',  // Especificar o tipo de checkout
-          // Incluir informações adicionais sobre os reels selecionados
-          reels_data: selectedReels.map(reel => ({
-            id: reel.id,
-            code: reel.code || reel.shortcode || reel.id,
-            url: `https://instagram.com/reel/${reel.code || reel.shortcode || reel.id}`
-          }))
+          coupon_code: appliedCoupon || undefined
         };
 
         console.log('Enviando dados para criação de pagamento:', paymentData);
@@ -305,12 +283,11 @@ export default function Step2Page() {
                 </div>
               ) : (
                 <ReelSelector 
-                  username={profileData.username}
-                  onSelectReels={handleReelSelect}
-                  maxReels={maxTotalItems}
-                  selectedReels={selectedReels}
+                  posts={instagramReels} 
+                  onSelect={handleReelSelect}
+                  maxItems={maxTotalItems}
+                  viewsPerItem={viewsPerItem}
                   totalViews={service?.quantidade || 0}
-                  loading={loadingReels}
                 />
               )}
             </Card>
