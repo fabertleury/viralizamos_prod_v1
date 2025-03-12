@@ -76,8 +76,51 @@ export class DatabaseService {
       
       // Garantir que amount nunca seja nulo e nunca seja zero
       // Se for zero ou nulo, usar 1 centavo como valor mínimo
-      const finalAmount = calculatedAmount && calculatedAmount > 0 ? calculatedAmount : 1;
+      // Converter o valor para número para garantir que não seja NaN
+      let finalAmount = 1; // Valor padrão de 1 centavo
+      
+      if (calculatedAmount !== undefined && calculatedAmount !== null) {
+        // Tentar converter para número se for string
+        const numAmount = typeof calculatedAmount === 'string' ? parseFloat(calculatedAmount) : calculatedAmount;
+        // Verificar se é um número válido e maior que zero
+        if (!isNaN(numAmount) && numAmount > 0) {
+          finalAmount = numAmount;
+        }
+      }
+      
+      // Se o valor for a transação original, verificar se é 0.01 (1 centavo)
+      if (calculatedAmount === transaction.amount && transaction.amount === 0.01) {
+        finalAmount = 0.01; // Garantir que seja 1 centavo
+      }
+      
       console.log('[DatabaseService] Valor final de amount:', finalAmount);
+      
+      // Se não houver external_order_id na resposta, não criar o pedido
+      if (!orderResponse.order && !orderResponse.orderId) {
+        // Verificar se a resposta contém um erro sobre pedido já existente
+        if (orderResponse.error && orderResponse.error.includes('active order with this link')) {
+          console.log('[DatabaseService] Provedor indicou que já existe um pedido ativo para este link. Buscando pedido existente...');
+          
+          // Buscar pedidos existentes para esta transação
+          const { data: existingOrders } = await this.supabase
+            .from('orders')
+            .select('*')
+            .eq('transaction_id', transaction.id)
+            .order('created_at', { ascending: false });
+            
+          // Se já existe um pedido com external_order_id, retornar este pedido
+          if (existingOrders && existingOrders.length > 0) {
+            const validOrder = existingOrders.find(o => o.external_order_id);
+            if (validOrder) {
+              console.log('[DatabaseService] Retornando pedido existente com ID externo:', validOrder);
+              return validOrder;
+            }
+          }
+        }
+        
+        console.error('[DatabaseService] Resposta do provedor não contém ID do pedido:', orderResponse);
+        throw new Error('Resposta do provedor não contém ID do pedido');
+      }
       
       // Preparar os dados do pedido - removendo campos que não existem na tabela
       const orderData = {

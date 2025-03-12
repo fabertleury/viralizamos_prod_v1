@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import PostSelector from '@/components/instagram/comentarios/PostSelector';
-import ReelSelector from '@/components/instagram/comentarios/ReelSelector';
+import PostSelector from '@/components/instagram/curtidas/PostSelector';
+import ReelSelector from '@/components/instagram/curtidas/ReelSelector';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -31,7 +31,6 @@ interface Service {
   preco: number;
   quantidade: number;
   provider_id: string;
-  type: string;
 }
 
 interface Post {
@@ -96,10 +95,10 @@ export default function Step2Page() {
 
   // Calcular o número total de itens selecionados
   const selectedItemsCount = selectedPosts.length + selectedReels.length;
-  const maxTotalItems = 10; // Máximo de 10 itens no total entre posts e reels
+  const maxTotalItems = 5; // Máximo de 5 itens no total entre posts e reels
   
-  // Calcular comentários por item
-  const comentariosPerItem = service?.quantidade && selectedItemsCount > 0 
+  // Calcular curtidas por item
+  const likesPerItem = service?.quantidade && selectedItemsCount > 0 
     ? Math.floor(service.quantidade / selectedItemsCount) 
     : 0;
 
@@ -478,11 +477,11 @@ export default function Step2Page() {
       return null;
     }
 
-    // Calcular quantidade de comentários por post
+    // Calcular quantidade de likes por post
     const totalItems = selectedPosts.length + selectedReels.length;
-    const totalComentarios = service.quantidade;
-    const comentariosPerItem = Math.floor(totalComentarios / totalItems);
-    const remainingComentarios = totalComentarios % totalItems;
+    const totalLikes = service.quantidade;
+    const likesPerItem = Math.floor(totalLikes / totalItems);
+    const remainingLikes = totalLikes % totalItems;
 
     // Preparar metadados dos posts
     const postsMetadata = selectedPosts.map((post, index) => {
@@ -492,8 +491,8 @@ export default function Step2Page() {
         postId: post.id,
         postCode: postCode,
         postLink: `https://instagram.com/p/${postCode}`,
-        comentarios: index === 0 ? comentariosPerItem + remainingComentarios : comentariosPerItem,
-        type: 'post'
+        likes: index === 0 ? likesPerItem + remainingLikes : likesPerItem,
+        type: 'post' // Adicionar tipo explícito para posts
       };
     });
 
@@ -504,15 +503,15 @@ export default function Step2Page() {
         postId: reel.id,
         postCode: reelCode,
         postLink: `https://instagram.com/reel/${reelCode}`,
-        comentarios: comentariosPerItem,
-        type: 'reel'
+        likes: likesPerItem,
+        type: 'reel' // Adicionar tipo explícito para reels
       };
     });
 
     return {
       user_id: formData.name || null,
       order_id: paymentData.paymentId,
-      type: service.type,
+      type: 'curtidas',
       amount: service.preco,
       status: 'pending',
       payment_method: 'pix',
@@ -599,8 +598,7 @@ export default function Step2Page() {
           preco: finalAmount || service.preco,
           quantity: service.quantidade,
           quantidade: service.quantidade,
-          provider_id: service.provider_id,
-          type: service.type
+          provider_id: service.provider_id
         },
         profile: profileData,
         customer: {
@@ -745,7 +743,7 @@ export default function Step2Page() {
                   maxPosts={maxTotalItems}
                   service={service}
                   posts={instagramPosts}
-                  totalComments={service?.quantidade || 100}
+                  totalLikes={service?.quantidade || 100}
                   loading={loadingPosts}
                 />
               ) : (
@@ -755,7 +753,7 @@ export default function Step2Page() {
                   selectedReels={selectedReels}
                   selectedPosts={selectedPosts}
                   maxReels={maxTotalItems}
-                  totalComments={service?.quantidade || 100}
+                  totalLikes={service?.quantidade || 100}
                   loading={loadingReels}
                 />
               )}
@@ -785,13 +783,13 @@ export default function Step2Page() {
                   
                   <div className="pt-4 border-t space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>Quantidade de comentários:</span>
+                      <span>Quantidade de curtidas:</span>
                       <span>{service.quantidade.toLocaleString()}</span>
                     </div>
                     {(selectedPosts.length + selectedReels.length) > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span>Comentários por item:</span>
-                        <span>{comentariosPerItem.toLocaleString()}</span>
+                        <span>Curtidas por item:</span>
+                        <span>{likesPerItem.toLocaleString()}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm">
@@ -929,15 +927,18 @@ export default function Step2Page() {
         )}
       </main>
 
-      {paymentData && (
-        <PaymentPixModal
-          qrCodeText={paymentData.qrCodeText}
-          qrCodeBase64={paymentData.qrCodeBase64}
-          amount={paymentData.amount}
-          onClose={handleClosePaymentModal}
-          isOpen={!!paymentData}
-        />
-      )}
+      {paymentData ? (
+        <div className="mt-6">
+          <PaymentPixModal
+            qrCodeText={paymentData.qrCodeText}
+            qrCodeBase64={paymentData.qrCodeBase64}
+            amount={paymentData.amount}
+            paymentId={paymentData.paymentId}
+            onClose={() => setPaymentData(null)}
+            isOpen={!!paymentData}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -171,7 +171,9 @@ export default function Step2Page() {
               : 'Sem legenda',
           like_count: reel.like_count || reel.likes_count || 0,
           comment_count: reel.comment_count || reel.comments_count || 0,
-          // Campos específicos para reels
+          // Alterar o nome de 'Curtidas' para 'Visualizações'
+          display_name: 'Visualizações',
+          display_icon: '👁️', // Emoji de visualização
           thumbnail_url: reel.thumbnail_url || '',
           display_url: reel.display_url || '',
           image_versions: reel.image_versions || null
@@ -543,9 +545,6 @@ export default function Step2Page() {
                   bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-105 shadow-lg"
                 >
                   <span className="flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
                     Reels ({instagramReels?.length || 0})
                   </span>
                 </div>
@@ -620,7 +619,7 @@ export default function Step2Page() {
                               />
                               <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
                               <div className="absolute bottom-0 left-0 right-0 text-white text-[8px] bg-purple-500 text-center">
-                                Reel
+                                Reels
                               </div>
                               {/* Botão X para remover */}
                               <button 

@@ -87,31 +87,21 @@ export const useInstagramAPI = () => {
   const checkInstagramProfile = async (username: string): Promise<boolean> => {
     try {
       console.log(`[useInstagramAPI] Verificando perfil: ${username}`);
-      
-      // Primeiro, tenta verificar com o scraper próprio
-      try {
-        console.log(`[useInstagramAPI] Tentando verificar com scraper próprio`);
-        const scraperResult = await checkInstagramProfilePublic(username);
-        
-        if (scraperResult.error) {
-          console.log(`[useInstagramAPI] Scraper retornou erro: ${scraperResult.error}`);
-        } else {
-          console.log(`[useInstagramAPI] Scraper determinou que o perfil é ${scraperResult.isPublic ? 'público' : 'privado'}`);
-          return scraperResult.isPublic;
-        }
-      } catch (scraperError) {
-        console.error(`[useInstagramAPI] Erro ao usar scraper próprio:`, scraperError);
+
+      // Usar a API graphql-check para verificar o perfil
+      const response = await fetch(`/api/instagram/graphql-check?username=${username}`);
+      const data = await response.json();
+
+      console.log('Resposta da API graphql-check:', data);
+      console.log('Status do perfil:', data.is_private ? 'Privado' : 'Público');
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Erro ao verificar perfil');
       }
-      
-      // Se o scraper falhar, tenta com a API principal
-      console.log(`[useInstagramAPI] Tentando verificar com API principal`);
-      const profileInfo = await makeRequest(`${BASE_URL}/v1/info`, { 
-        username_or_id_or_url: username 
-      });
-      
-      const isPublic = profileInfo ? !profileInfo.is_private : false;
-      console.log(`[useInstagramAPI] API principal determinou que o perfil é ${isPublic ? 'público' : 'privado'}`);
-      
+
+      const isPublic = !data.is_private;
+      console.log(`[useInstagramAPI] O perfil é ${isPublic ? 'público' : 'privado'}`);
+
       return isPublic;
     } catch (error) {
       console.error('Erro ao verificar perfil:', error);

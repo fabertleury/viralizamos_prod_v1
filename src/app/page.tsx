@@ -515,24 +515,80 @@ export default function HomeV3() {
               </p>
             )}
 
-            <div className="flex space-x-4">
+            {profilePreviewData.is_private && (
               <button 
-                onClick={() => setShowProfilePreviewModal(false)}
-                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md"
+                onClick={() => {
+                  setProfilePreviewData(prevData => ({ ...prevData, is_private: false }));
+                  handleContinueAnalysis();
+                }}
+                className="bg-[#C43582] text-white px-6 py-2 rounded-full text-base font-bold hover:bg-[#a62c6c] transition"
               >
-                Cancelar
+                Já coloquei público
               </button>
+            )}
+            {!profilePreviewData.is_private && (
               <button 
                 onClick={handleContinueAnalysis}
                 className="bg-[#C43582] text-white px-6 py-2 rounded-full text-base font-bold hover:bg-[#a62c6c] transition"
               >
                 Continuar Análise
               </button>
-            </div>
+            )}
           </div>
         </div>
       </div>
     );
+  };
+
+  const checkProfile = async (usernameToCheck: string) => {
+    setIsLoading(true);
+    setShowPrivateMessage(false);
+    setShowProfilePreviewModal(true);
+
+    try {
+      console.log(`Verificando perfil: ${usernameToCheck}`);
+
+      // Usar a API graphql-check para verificar o perfil
+      const response = await fetch(`/api/instagram/graphql-check?username=${usernameToCheck}`);
+      const data = await response.json();
+
+      console.log('Resposta da API graphql-check:', data);
+      console.log('Status do perfil:', data.is_private ? 'Privado' : 'Público');
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Erro ao verificar perfil');
+      }
+
+      // Formatar os dados do perfil
+      const profileInfo = {
+        username: data.username,
+        full_name: data.full_name,
+        profile_pic_url: data.profile_pic_url,
+        follower_count: data.follower_count,
+        following_count: data.following_count,
+        totalPosts: data.totalPosts,
+        is_private: data.is_private,
+        is_verified: data.is_verified,
+        source: data.source
+      };
+
+      // Atualizar o estado do modal com todos os dados
+      setProfilePreviewData(profileInfo);
+
+      if (profileInfo.is_private) {
+        // Exibir mensagem de perfil privado
+        toast.error('O perfil é privado. Por favor, torne-o público para continuar.');
+        setShowProfilePreviewModal(true);
+        return;
+      }
+
+      // Se o perfil não for privado, continuar com a análise
+      handleContinueAnalysis();
+    } catch (error: any) {
+      console.error('Erro ao verificar perfil:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -548,23 +604,8 @@ export default function HomeV3() {
     setShowPrivateMessage(false);
 
     try {
-      const profileInfo = await fetchInstagramProfileInfo(cleanUsername);
-      
-      // Log completo da resposta para debug
-      console.log('Resposta completa da API:', JSON.stringify(profileInfo, null, 2));
-
-      // Verificação robusta da privacidade do perfil
-      const isPrivate = profileInfo.is_private ?? false;
-
-      // Verificar se o perfil é público
-      if (isPrivate) {
-        setShowPrivateMessage(true);
-        setTimer(60); // 1 minuto
-      } else {
-        // Mostrar modal de confirmação
-        setProfilePreviewData(profileInfo);
-        setShowProfilePreviewModal(true);
-      }
+      // Chamar a função checkProfile para verificar o perfil
+      await checkProfile(cleanUsername);
     } catch (error) {
       console.error('Erro ao validar perfil:', error);
       toast.error('Erro ao validar perfil. Tente novamente.');

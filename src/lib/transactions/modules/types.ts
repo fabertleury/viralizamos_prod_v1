@@ -106,6 +106,7 @@ export interface OrderResponse {
   order?: string;
   orderId?: string;
   status?: string;
+  error?: string;
 }
 
 export interface ProviderRequestData {
