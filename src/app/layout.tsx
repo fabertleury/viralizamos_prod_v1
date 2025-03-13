@@ -15,6 +15,11 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Viralizamos - Impulsione seu Instagram',
   description: 'Aumente seu alcance no Instagram com likes reais e seguidores engajados.',
+  icons: {
+    icon: '/images/favicon.png',
+    shortcut: '/images/favicon.png',
+    apple: '/images/favicon.png',
+  }
 };
 
 async function getPathname() {
@@ -34,7 +39,7 @@ export default async function RootLayout({
     return (
       <html lang="pt-BR" suppressHydrationWarning>
         <head>
-          <link rel="icon" type="image/png" href="/images/favicon.png" />
+          {/* Favicon é configurado via metadata */}
           <link
             rel="stylesheet"
             href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"

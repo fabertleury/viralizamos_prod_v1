@@ -33,9 +33,8 @@ export async function GET(request: NextRequest) {
   let apiOrder: ApiOrder[] = [
     { id: 1, name: 'rocketapi_get_info', enabled: true, order: 1, max_requests: 100, current_requests: 0 },
     { id: 2, name: 'instagram_scraper', enabled: true, order: 2, max_requests: 50, current_requests: 0 },
-    { id: 3, name: 'realtime_instagram_scraper', enabled: true, order: 3, max_requests: 50, current_requests: 0 },
-    { id: 4, name: 'instagram230', enabled: true, order: 4, max_requests: 100, current_requests: 0 },
-    { id: 5, name: 'instagram_statistics', enabled: true, order: 5, max_requests: 50, current_requests: 0 }
+    { id: 4, name: 'instagram230', enabled: true, order: 3, max_requests: 100, current_requests: 0 },
+    { id: 5, name: 'instagram_statistics', enabled: true, order: 4, max_requests: 50, current_requests: 0 }
   ];
 
   try {
@@ -233,52 +232,6 @@ export async function GET(request: NextRequest) {
           }
         } catch (error) {
           console.error('Erro na API Instagram Scraper:', error);
-        }
-      }
-
-      // Real-Time Instagram Scraper (50 requisições/mês)
-      else if (api.name === 'realtime_instagram_scraper') {
-        try {
-          const response = await axios.request({
-            method: 'GET',
-            url: 'https://real-time-instagram-scraper-api1.p.rapidapi.com/v1/user_info',
-            params: {
-              username_or_id: username
-            },
-            headers: {
-              'x-rapidapi-key': 'cbfd294384msh525c1f1508b114ap1863a2jsn6c295cc5d3c8',
-              'x-rapidapi-host': 'real-time-instagram-scraper-api1.p.rapidapi.com'
-            }
-          });
-
-          // Verificar a estrutura da resposta
-          if (response.data && 
-              response.data.status === 'ok' && 
-              response.data.data) {
-            
-            const userData = response.data.data;
-            
-            // Verificar se temos as informações necessárias
-            if (userData.username) {
-              // Atualizar contador de requisições
-              await updateRequestCount('realtime_instagram_scraper');
-              
-              // Registrar no histórico
-              await updateVerificationHistory('realtime_instagram_scraper');
-              
-              return NextResponse.json({
-                username: userData.username,
-                full_name: userData.full_name || '',
-                is_private: userData.is_private === true,
-                follower_count: userData.follower_count || 0,
-                following_count: userData.following_count || 0,
-                profile_pic_url: userData.profile_pic_url || userData.hd_profile_pic_url_info?.url || '',
-                source: 'realtime_instagram_scraper'
-              });
-            }
-          }
-        } catch (error) {
-          console.error('Erro na API Real-Time Instagram Scraper:', error);
         }
       }
 

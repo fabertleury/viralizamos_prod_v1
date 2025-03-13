@@ -91,6 +91,12 @@ export function PostSelector({
     if (!url) {
       return '/images/placeholder-post.svg';
     }
+    
+    // Se a URL já estiver usando o proxy, retorná-la diretamente
+    if (url.startsWith('/api/proxy-image') || url.startsWith('/api/proxy/image')) {
+      return url;
+    }
+    
     return `/api/proxy-image?url=${encodeURIComponent(url)}`;
   };
 

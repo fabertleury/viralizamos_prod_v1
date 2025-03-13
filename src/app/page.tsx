@@ -279,7 +279,29 @@ export default function HomeV3() {
         username.replace(/^@/, '').trim().toLowerCase();
 
       setShowProfilePreviewModal(false);
-      router.push(`/analisar-perfil?username=${cleanUsername}`);
+      setIsLoading(true);
+      
+      // Verificar novamente com a API Instagram-Scraper
+      fetch('/api/instagram/instagram-scraper', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username: cleanUsername })
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log('Resposta da API Instagram-Scraper:', data);
+        setIsLoading(false);
+        // Redirecionar para a página de análise com o username
+        router.push(`/analisar-perfil?username=${cleanUsername}`);
+      })
+      .catch(error => {
+        console.error('Erro ao verificar com Instagram-Scraper:', error);
+        setIsLoading(false);
+        // Redirecionar mesmo em caso de erro
+        router.push(`/analisar-perfil?username=${cleanUsername}`);
+      });
     }
   };
 
@@ -585,15 +607,21 @@ export default function HomeV3() {
     try {
       console.log(`Verificando perfil: ${usernameToCheck}`);
 
-      // Usar a API graphql-check para verificar o perfil
+      // Usar o graphql-check como verificador principal para aproveitar a rotação de APIs
       const response = await fetch(`/api/instagram/graphql-check?username=${usernameToCheck}`);
       const data = await response.json();
 
-      console.log('Resposta da API graphql-check:', data);
-      console.log('Status do perfil:', data.is_private ? 'Privado' : 'Público');
-
       if (!response.ok) {
         throw new Error(data.message || 'Erro ao verificar perfil');
+      }
+      
+      console.log('Resposta do graphql-check:', data);
+      console.log('Status do perfil:', data.is_private ? 'Privado' : 'Público');
+      
+      // Se o perfil for público, redirecionar para /analisar-perfil
+      if (!data.is_private) {
+        router.push(`/analisar-perfil?username=${usernameToCheck}`);
+        return;
       }
 
       // Formatar os dados do perfil

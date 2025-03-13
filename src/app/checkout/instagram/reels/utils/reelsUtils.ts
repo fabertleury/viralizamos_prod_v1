@@ -57,31 +57,31 @@ export interface FormData {
 
 // Função para extrair o código correto de um reel do Instagram
 export const extractPostCode = (post: any): string => {
-  // Se o post já tem um código que não é numérico, usar esse código
-  if (post.code && !/^\d+$/.test(post.code)) {
-    console.log('✅ Usando código existente:', post.code);
+  if (post.code) {
     return post.code;
   }
   
-  // Se tem shortcode, usar o shortcode
   if (post.shortcode) {
-    console.log('✅ Usando shortcode:', post.shortcode);
     return post.shortcode;
   }
   
-  // Se tem permalink ou link, extrair o código da URL
-  if (post.permalink || post.link) {
-    const url = post.permalink || post.link;
-    const match = url.match(/instagram\.com\/reel\/([^\/]+)/);
+  if (post.link) {
+    // Extrair o código do link
+    const match = post.link.match(/\/reel\/([^\/\?]+)/);
     if (match && match[1]) {
-      console.log('✅ Código extraído da URL:', match[1]);
       return match[1];
     }
   }
   
-  // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
-  console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
-  return post.id;
+  if (post.url) {
+    // Extrair o código da URL
+    const match = post.url.match(/\/reel\/([^\/\?]+)/);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return post.id?.toString() || '';
 };
 
 // Função para buscar reels do Instagram
@@ -97,60 +97,44 @@ export const fetchInstagramReels = async (
       return instagramReels;
     }
 
-    const options = {
-      method: 'GET',
-      url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/reels',
-      params: { username_or_id_or_url: username },
-      headers: {
-        'x-rapidapi-key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY,
-        'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
-      }
-    };
-    const response = await axios.request(options);
-    console.log('Resposta da API de reels:', response.data);
-
+    console.log('Buscando reels para o usuário:', username);
+    
+    // Usar a API de posts com parâmetro type=reels para filtrar apenas reels
+    const response = await fetch(`/api/instagram/posts/${username}?type=reels`);
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Erro ao buscar reels: ${response.statusText}`);
+    }
+    
+    const responseData = await response.json();
+    console.log('Resposta da API de posts (filtrada para reels):', responseData);
+    
     // Verificar se a resposta tem a estrutura esperada
-    const reels = response.data.data?.items || response.data.items || [];
-    console.log('Reels encontrados:', reels.length);
-
-    // Mapear os reels para o formato esperado
-    const formattedReels: Post[] = reels.map((reel: any) => {
-      // Tentar diferentes caminhos para a imagem do reel
-      const imageUrl = 
-        reel.image_versions?.items?.[0]?.url || 
-        reel.thumbnail_url || 
-        reel.cover_frame_url || 
-        reel.display_url;
-
-      // Extrair o código correto do reel para a URL
-      const reelCode = extractPostCode(reel);
+    if (responseData && typeof responseData === 'object') {
+      // Se não tem posts (que neste caso são reels filtrados)
+      if (responseData.hasPosts === false) {
+        console.log('Nenhum reel encontrado para o usuário:', responseData.message);
+        return [];
+      }
       
-      return {
-        id: reel.id || '',
-        code: reelCode,
-        shortcode: reelCode,
-        image_url: imageUrl,
-        caption: reel.caption 
-            ? (typeof reel.caption === 'object' 
-              ? reel.caption.text || 'Sem legenda'
-              : String(reel.caption)) 
-            : 'Sem legenda',
-        like_count: reel.like_count || reel.likes_count || 0,
-        comment_count: reel.comment_count || reel.comments_count || 0,
-        // Alterar o nome de 'Curtidas' para 'Visualizações'
-        display_name: 'Visualizações',
-        display_icon: '👁️', // Emoji de visualização
-        thumbnail_url: reel.thumbnail_url || '',
-        display_url: reel.display_url || '',
-        image_versions: reel.image_versions || null
-      };
-    }).filter(reel => reel.image_url || reel.thumbnail_url || reel.display_url); // Remover reels sem imagem
-
-    console.log('Reels formatados:', formattedReels.length);
-    return formattedReels;
+      // Se a resposta é um array, usar diretamente
+      if (Array.isArray(responseData)) {
+        return responseData.filter(post => post.is_reel);
+      }
+      
+      // Se a resposta tem a propriedade posts, usar ela
+      if (Array.isArray(responseData.posts)) {
+        return responseData.posts.filter(post => post.is_reel);
+      }
+    }
+    
+    // Se chegou aqui, a resposta não tem o formato esperado
+    console.error('Formato de resposta inesperado:', responseData);
+    return [];
   } catch (error) {
     console.error('Erro ao buscar reels do Instagram:', error);
-    return [];
+    throw error;
   }
 };
 
@@ -282,9 +266,9 @@ export const prepareTransactionData = (
     const reelCode = selectedReels[0].code || selectedReels[0].shortcode || selectedReels[0].id;
     specificReelLink = `https://instagram.com/reel/${reelCode}`;
     targetLink = specificReelLink;
-    console.log('🔗 Enviando link específico do reel para o provedor:', targetLink);
+    console.log(' Enviando link específico do reel para o provedor:', targetLink);
   } else {
-    console.log('🔗 Enviando link do perfil para o provedor (múltiplos reels):', targetLink);
+    console.log(' Enviando link do perfil para o provedor (múltiplos reels):', targetLink);
   }
 
   // Adicionar os posts completos na raiz do objeto
@@ -305,7 +289,7 @@ export const prepareTransactionData = (
     };
   });
 
-  console.log('📊 Enviando', posts.length, 'reels completos para o provedor');
+  console.log(' Enviando', posts.length, 'reels completos para o provedor');
 
   return {
     user_id: formData.name || null,

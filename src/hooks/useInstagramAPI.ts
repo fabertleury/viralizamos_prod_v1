@@ -1,40 +1,96 @@
 import axios from 'axios';
-import { checkInstagramProfilePublic } from '@/lib/instagram/profileScraper';
 
-export interface InstagramProfileInfo {
+// Definir interfaces para tipagem
+interface InstagramProfile {
   username: string;
   full_name: string;
   biography: string;
   followers_count: number;
   following_count: number;
-  media_count: number;
   profile_pic_url: string;
   is_private: boolean;
+  is_verified: boolean;
+  media_count: number;
 }
 
-export interface InstagramPost {
+interface InstagramPost {
   id: string;
   code: string;
-  type: 'image' | 'video' | 'carousel';
-  media_url: string;
-  caption?: string;
+  type: string;
+  caption: string;
   likes_count: number;
   comments_count: number;
-  timestamp: number;
+  media_url: string;
+  thumbnail_url?: string;
+  is_video: boolean;
+  video_url?: string;
+  views_count?: number;
+  timestamp?: string;
 }
 
-export interface InstagramReel {
+interface InstagramReel {
   id: string;
   code: string;
-  media_url: string;
-  caption?: string;
+  shortcode?: string;
+  type: string;
+  caption: string;
   likes_count: number;
   comments_count: number;
+  media_url: string;
+  thumbnail_url: string;
+  video_url: string;
   views_count: number;
-  timestamp: number;
+  timestamp?: string;
+  is_video?: boolean;
+  is_reel?: boolean;
+  media_type?: number;
+  link?: string;
+  display_url?: string;
+  owner?: {
+    username: string;
+    full_name: string;
+    id: string;
+  };
 }
 
-export interface InstagramLikes {
+// Interface para os dados brutos recebidos da API
+interface RawPostData {
+  id: string;
+  code?: string;
+  shortcode?: string;
+  is_video?: boolean;
+  is_carousel?: boolean;
+  is_reel?: boolean;
+  caption?: string | { text: string };
+  like_count?: number;
+  comment_count?: number;
+  display_url?: string;
+  image_versions?: { items?: Array<{ url: string }> };
+  thumbnail_src?: string;
+  video_url?: string;
+  views_count?: number;
+  timestamp?: string;
+  [key: string]: any; // Para outras propriedades que possam existir
+}
+
+// Interface para os dados brutos de reels recebidos da API
+interface RawReelData {
+  id: string;
+  code?: string;
+  shortcode?: string;
+  caption?: string | { text: string };
+  like_count?: number;
+  comment_count?: number;
+  display_url?: string;
+  image_versions?: { items?: Array<{ url: string }> };
+  thumbnail_url?: string;
+  video_url?: string;
+  views_count?: number;
+  timestamp?: string;
+  [key: string]: any; // Para outras propriedades que possam existir
+}
+
+interface InstagramLikes {
   likes_count: number;
   likes_list?: {
     username: string;
@@ -43,13 +99,13 @@ export interface InstagramLikes {
   }[];
 }
 
-export interface InstagramAPIStatus {
+interface InstagramAPIStatus {
   status: 'online' | 'offline' | 'degraded';
   detail: string;
   last_checked: Date;
 }
 
-export interface ContentData {
+interface ContentData {
   id: string;
   code: string;
   type: "video" | "image" | "carousel" | string;
@@ -62,19 +118,14 @@ export interface ContentData {
 }
 
 export const useInstagramAPI = () => {
-  const BASE_URL = 'https://instagram-scraper-api2.p.rapidapi.com';
-  const HEADERS = {
-    'x-rapidapi-key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY,
-    'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
-  };
+  const APIFY_API_URL = 'https://api.apify.com/v2';
+  const APIFY_ACTOR_ID = 'shu8hvrXbJbY3Eb9W';
+  const APIFY_API_KEY = process.env.NEXT_PUBLIC_APIFY_API_KEY || 'apify_api_LyHgc3Oha6R1gy42O04Gy96JOhN9Wi1mNQXC';
 
   const makeRequest = async (url: string, params: Record<string, string>) => {
     try {
-      const response = await axios.request({
-        method: 'GET',
-        url,
-        params,
-        headers: HEADERS
+      const response = await axios.get(url, {
+        params
       });
       return response.data;
     } catch (error) {
@@ -84,183 +135,187 @@ export const useInstagramAPI = () => {
     }
   };
 
-  const checkInstagramProfile = async (username: string): Promise<boolean> => {
+  const checkInstagramProfile = async (username: string): Promise<InstagramProfile | null> => {
     try {
-      console.log(`[useInstagramAPI] Verificando perfil: ${username}`);
-
-      // Usar a API graphql-check para verificar o perfil
-      const response = await fetch(`/api/instagram/graphql-check?username=${username}`);
+      console.log('Verificando perfil do Instagram com API:', username);
+      
+      // Usar a API de verificação de perfil
+      const response = await fetch(`/api/instagram/profile/${username}`);
       const data = await response.json();
-
-      console.log('Resposta da API graphql-check:', data);
-      console.log('Status do perfil:', data.is_private ? 'Privado' : 'Público');
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Erro ao verificar perfil');
+      
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Erro ao verificar perfil');
       }
-
-      const isPublic = !data.is_private;
-      console.log(`[useInstagramAPI] O perfil é ${isPublic ? 'público' : 'privado'}`);
-
-      return isPublic;
+      
+      // Extrair dados do perfil
+      const profileData: InstagramProfile = {
+        username: data.username || username,
+        full_name: data.full_name || '',
+        biography: data.biography || data.bio || '',
+        followers_count: data.followers_count || data.followers || 0,
+        following_count: data.following_count || data.following || 0,
+        profile_pic_url: data.profile_pic_url || data.profilePicture || '',
+        is_private: data.is_private || false,
+        is_verified: data.is_verified || data.isVerified || false,
+        media_count: data.media_count || data.totalPosts || 0
+      };
+      
+      console.log('Perfil encontrado:', profileData);
+      return profileData;
     } catch (error) {
-      console.error('Erro ao verificar perfil:', error);
-      return false;
+      console.error('Erro ao verificar perfil do Instagram:', error);
+      return null;
     }
   };
 
-  const fetchInstagramPosts = async (username: string) => {
+  const fetchInstagramPosts = async (username: string): Promise<InstagramPost[]> => {
     try {
-      const options = {
-        method: 'GET',
-        url: `${BASE_URL}/v1/posts`,
-        params: { username_or_id_or_url: username },
-        headers: HEADERS
-      };
-
-      const response = await axios.request(options);
-      console.log('Resposta completa de posts:', response.data);
-
-      // Verificar diferentes possíveis estruturas de resposta
-      const postsData = response.data.data || response.data;
+      console.log('Buscando posts do Instagram com Apify API:', username);
       
-      // Verificar se há uma lista de itens
-      const postsList = postsData.items || postsData.posts || postsData;
-
-      // Se ainda não for um array, retornar vazio
-      if (!Array.isArray(postsList)) {
-        console.warn('Nenhum post encontrado ou formato de resposta inesperado');
-        return [];
-      }
-
-      return postsList.map((post: any) => {
-        // Lidar com diferentes tipos de posts (imagem, carrossel, vídeo)
-        const mediaType = post.media_type || post.type;
-        const isCarousel = mediaType === 8 || post.carousel_media;
-        const isVideo = mediaType === 2 || post.is_video;
-
-        // Selecionar URL da imagem/mídia
-        const getMediaUrl = () => {
-          if (isCarousel && post.carousel_media && post.carousel_media.length > 0) {
-            return post.carousel_media[0].image_versions?.items[0]?.url || 
-                   post.carousel_media[0].display_url || 
-                   '';
-          }
-          
-          if (post.image_versions?.items && post.image_versions.items.length > 0) {
-            return post.image_versions.items[0].url;
-          }
-          
-          return post.display_url || post.media_url || '';
-        };
-
-        return {
-          id: post.pk || post.id || post.code,
-          code: post.code || post.shortcode || post.pk || post.id,
-          type: isVideo ? 'video' : 
-                isCarousel ? 'carousel' : 
-                'image',
-          caption: post.caption?.text || 
-                   post.caption?.caption || 
-                   post.caption || 
-                   '',
-          likes_count: post.like_count || 
-                       post.likes_count || 
-                       post.likes?.count || 
-                       0,
-          comments_count: post.comment_count || 
-                          post.comments_count || 
-                          post.comments?.count || 
-                          0,
-          media_url: getMediaUrl(),
-          timestamp: post.taken_at || 
-                     post.timestamp || 
-                     post.created_at || 
-                     Date.now()
-        };
-      });
-    } catch (error: any) {
-      console.error('Erro ao buscar posts:', error.response?.data || error.message);
+      // Usar a API local que chama o Apify
+      const response = await fetch(`/api/instagram/posts/${username}`);
       
-      // Tratamento de erros específicos
-      if (error.response?.status === 403) {
-        throw new Error('Perfil privado. Por favor, torne o perfil público.');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Erro ao buscar posts: ${errorData.error || response.statusText}`);
       }
       
-      if (error.response?.status === 404) {
-        console.warn('Nenhum post encontrado');
-        return [];
+      const responseData = await response.json();
+      
+      // Verificar a estrutura da resposta
+      if (!responseData || !responseData.data || !responseData.data.items) {
+        console.error('Estrutura de resposta inválida:', responseData);
+        throw new Error('Formato de resposta inválido da API de posts');
       }
       
+      const data = responseData.data.items;
+      
+      // Mapear para o formato esperado
+      const formattedPosts: InstagramPost[] = data
+        .filter((post: RawPostData) => !post.is_reel) // Filtrar apenas posts (não reels)
+        .map((post: RawPostData): InstagramPost => ({
+          id: post.id || '',
+          code: post.code || post.shortcode || '',
+          type: post.is_video ? 'video' : (post.is_carousel ? 'carousel' : 'image'),
+          caption: typeof post.caption === 'object' ? post.caption.text || '' : (post.caption || ''),
+          likes_count: post.like_count || 0,
+          comments_count: post.comment_count || 0,
+          media_url: post.display_url || (post.image_versions?.items?.[0]?.url) || '',
+          thumbnail_url: post.thumbnail_src || post.display_url || '',
+          is_video: post.is_video || false,
+          video_url: post.video_url || '',
+          views_count: post.views_count || 0,
+          timestamp: post.timestamp || new Date().toISOString()
+        }));
+      
+      console.log(`Encontrados ${formattedPosts.length} posts com Apify API`);
+      return formattedPosts;
+    } catch (error) {
+      console.error('Erro ao buscar posts do Instagram:', error);
       throw error;
     }
   };
 
-  const fetchInstagramReels = async (username: string) => {
+  const fetchInstagramReels = async (username: string): Promise<InstagramReel[]> => {
     try {
-      const options = {
-        method: 'GET',
-        url: `${BASE_URL}/v1/reels`,
-        params: { username_or_id_or_url: username },
-        headers: HEADERS
-      };
-
-      const response = await axios.request(options);
-      console.log('Resposta completa de reels:', response.data);
-
-      // Verificar diferentes possíveis estruturas de resposta
-      const reelsData = response.data.data || 
-                        response.data.reels || 
-                        response.data || 
-                        [];
-
-      // Verificar se reelsData é um array
-      const reelsList = Array.isArray(reelsData) ? 
-        reelsData : 
-        (reelsData.results || reelsData.items || []);
-
-      // Se ainda não for um array, retornar vazio
-      if (!Array.isArray(reelsList)) {
-        console.warn('Nenhum reel encontrado ou formato de resposta inesperado');
-        return [];
-      }
-
-      return reelsList.map((reel: any) => ({
-        id: reel.pk || reel.id || reel.code,
-        code: reel.code || reel.shortcode || reel.pk || reel.id,
-        type: 'video',
-        caption: reel.caption?.text || reel.caption || '',
-        likes_count: reel.like_count || reel.likes_count || 0,
-        comments_count: reel.comment_count || reel.comments_count || 0,
-        media_url: reel.image_versions2?.candidates[0]?.url || 
-                   reel.display_url || 
-                   reel.media_url || 
-                   '',
-        timestamp: reel.taken_at || reel.timestamp || Date.now(),
-        views_count: reel.view_count || reel.views_count || 0
-      }));
-    } catch (error: any) {
-      console.error('Erro ao buscar reels:', error.response?.data || error.message);
+      console.log('Buscando reels do Instagram com API específica de reels:', username);
       
-      // Tratamento de erros específicos
-      if (error.response?.status === 403) {
-        throw new Error('Perfil privado. Por favor, torne o perfil público.');
+      // Usar a API específica de reels com o novo formato de input
+      const response = await fetch(`/api/instagram/reels/${username}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Erro ao buscar reels: ${errorData.error || response.statusText}`);
       }
       
-      if (error.response?.status === 404) {
-        console.warn('Nenhum reel encontrado');
-        return [];
+      const responseData = await response.json();
+      console.log('Resposta da API de reels:', responseData);
+      
+      // Verificar se o usuário tem reels
+      if (responseData && typeof responseData === 'object' && 'hasReels' in responseData) {
+        if (!responseData.hasReels) {
+          console.log('Usuário não possui reels disponíveis:', responseData.message);
+          return [];
+        }
+        
+        // Se tem reels, processar a lista
+        if (Array.isArray(responseData.reels)) {
+          const reelsData = responseData.reels;
+          
+          // Mapear para o formato esperado
+          const formattedReels: InstagramReel[] = reelsData.map((reel: RawReelData): InstagramReel => ({
+            id: reel.id || '',
+            code: reel.code || reel.shortcode || '',
+            shortcode: reel.shortcode || reel.code || '',
+            type: 'reel',
+            media_type: reel.media_type || 2,
+            is_video: true,
+            is_reel: true,
+            likes_count: reel.likes_count || 0,
+            comments_count: reel.comment_count || 0,
+            views_count: reel.views_count || 0,
+            caption: typeof reel.caption === 'object' ? reel.caption.text || '' : (reel.caption || ''),
+            link: reel.link || `https://www.instagram.com/reel/${reel.shortcode || reel.code}/`,
+            media_url: reel.display_url || reel.thumbnail_url || '',
+            display_url: reel.display_url || reel.thumbnail_url || '',
+            thumbnail_url: reel.thumbnail_url || reel.display_url || '',
+            video_url: reel.video_url || '',
+            timestamp: reel.timestamp || new Date().toISOString(),
+            owner: {
+              username: reel.owner?.username || username,
+              full_name: reel.owner?.full_name || '',
+              id: reel.owner?.id || ''
+            }
+          }));
+          
+          return formattedReels;
+        }
       }
       
+      // Fallback para o caso de resposta em formato antigo (array direto)
+      if (Array.isArray(responseData)) {
+        const reelsData = responseData;
+        
+        // Mapear para o formato esperado
+        const formattedReels: InstagramReel[] = reelsData.map((reel: RawReelData): InstagramReel => ({
+          id: reel.id || '',
+          code: reel.code || reel.shortcode || '',
+          shortcode: reel.shortcode || reel.code || '',
+          type: 'reel',
+          media_type: reel.media_type || 2,
+          is_video: true,
+          is_reel: true,
+          likes_count: reel.likes_count || 0,
+          comments_count: reel.comment_count || 0,
+          views_count: reel.views_count || 0,
+          caption: typeof reel.caption === 'object' ? reel.caption.text || '' : (reel.caption || ''),
+          link: reel.link || `https://www.instagram.com/reel/${reel.shortcode || reel.code}/`,
+          media_url: reel.display_url || reel.thumbnail_url || '',
+          display_url: reel.display_url || reel.thumbnail_url || '',
+          thumbnail_url: reel.thumbnail_url || reel.display_url || '',
+          video_url: reel.video_url || '',
+          timestamp: reel.timestamp || new Date().toISOString(),
+          owner: {
+            username: reel.owner?.username || username,
+            full_name: reel.owner?.full_name || '',
+            id: reel.owner?.id || ''
+          }
+        }));
+        
+        return formattedReels;
+      }
+      
+      console.error('Estrutura de resposta inválida:', responseData);
+      throw new Error('Formato de resposta inválido da API de reels');
+    } catch (error) {
+      console.error('Erro ao buscar reels do Instagram:', error);
       throw error;
     }
   };
 
   const fetchPostLikes = async (postCode: string): Promise<InstagramLikes | null> => {
     try {
-      const likesData = await makeRequest(`${BASE_URL}/v1/likes`, { 
-        code_or_id_or_url: postCode 
-      });
+      const likesData = await makeRequest(`/api/instagram/likes/${postCode}`, {});
 
       if (!likesData) {
         console.error('Não foi possível buscar os likes');
@@ -283,20 +338,14 @@ export const useInstagramAPI = () => {
 
   const checkInstagramAPIStatus = async (): Promise<InstagramAPIStatus> => {
     try {
-      const options = {
-        method: 'GET',
-        url: `${BASE_URL}/v1/status`,
-        headers: HEADERS
-      };
-
-      const startTime = Date.now();
-      const response = await axios.request(options);
-      const endTime = Date.now();
-      const responseTime = endTime - startTime;
-
+      // Verificar o status da API do Apify
+      const response = await axios.get(`${APIFY_API_URL}/acts/${APIFY_ACTOR_ID}?token=${APIFY_API_KEY}`);
+      
+      const isOnline = response.status === 200 && response.data && response.data.data;
+      
       const status: InstagramAPIStatus = {
-        status: response.data.detail === 'All is awesome' ? 'online' : 'degraded',
-        detail: response.data.detail || 'Status indisponível',
+        status: isOnline ? 'online' : 'degraded',
+        detail: isOnline ? 'API disponível' : 'API com funcionamento limitado',
         last_checked: new Date()
       };
 
@@ -323,26 +372,26 @@ export const useInstagramAPI = () => {
 
       // Combinar posts e reels em um único array
       const combinedContent: ContentData[] = [
-        ...postsData.map(post => ({
+        ...postsData.map((post: RawPostData) => ({
           id: post.id,
-          code: post.code,
-          type: post.type as "image" | "video" | "carousel" | string,
-          caption: post.caption || '',
-          likes: post.likes_count,
-          comments: post.comments_count,
-          mediaUrl: post.media_url,
-          timestamp: post.timestamp.toString(),
-          views: undefined
+          code: post.code || post.shortcode || '',
+          type: post.is_video ? 'video' : (post.is_carousel ? 'carousel' : 'image'),
+          caption: typeof post.caption === 'object' ? post.caption.text || '' : (post.caption || ''),
+          likes: post.like_count || 0,
+          comments: post.comment_count || 0,
+          mediaUrl: post.display_url || (post.image_versions?.items?.[0]?.url) || '',
+          timestamp: post.timestamp || new Date().toISOString(),
+          views: post.views_count
         })),
-        ...reelsData.map(reel => ({
+        ...reelsData.map((reel: RawReelData) => ({
           id: reel.id,
-          code: reel.code,
-          type: 'video' as "video",
-          caption: reel.caption || '',
-          likes: reel.likes_count,
-          comments: reel.comments_count,
-          mediaUrl: reel.media_url,
-          timestamp: reel.timestamp.toString(),
+          code: reel.code || reel.shortcode || '',
+          type: 'video',
+          caption: typeof reel.caption === 'object' ? reel.caption.text || '' : (reel.caption || ''),
+          likes: reel.like_count || 0,
+          comments: reel.comment_count || 0,
+          mediaUrl: reel.display_url || (reel.image_versions?.items?.[0]?.url) || '',
+          timestamp: reel.timestamp || new Date().toISOString(),
           views: reel.views_count
         }))
       ];
@@ -358,31 +407,29 @@ export const useInstagramAPI = () => {
   const fetchInstagramProfileInfo = async (username: string): Promise<any> => {
     try {
       console.log(`[useInstagramAPI] Buscando informações do perfil: ${username}`);
-      const profileInfo = await makeRequest(`${BASE_URL}/v1/info`, { 
-        username_or_id_or_url: username 
-      });
       
-      if (!profileInfo) {
-        throw new Error('Não foi possível buscar as informações do perfil');
+      // Usar o sistema de cascata para verificação de perfil
+      const response = await fetch(`/api/instagram/profile/${username}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Erro ao verificar perfil');
       }
       
-      // Extrair dados da resposta da API, que podem estar em diferentes estruturas
-      const data = profileInfo.data || profileInfo;
+      console.log('Resposta da API de perfil:', data);
       
       return {
-        username: data.username || profileInfo.username || username,
-        full_name: data.full_name || profileInfo.full_name || '',
-        biography: data.biography || profileInfo.biography || '',
-        followers: data.follower_count || data.followers_count || data.followers || 0,
+        username: data.username || username,
+        full_name: data.full_name || '',
+        biography: data.bio || data.biography || '',
+        followers: data.followers_count || data.followers || 0,
         following: data.following_count || data.following || 0,
-        totalPosts: data.media_count || data.posts || 0,
-        profilePicture: data.hd_profile_pic_url_info?.url || 
-                       data.profile_pic_url_hd || 
-                       data.profile_pic_url || 
-                       '',
-        is_private: data.is_private || profileInfo.is_private || false,
-        // Incluir todos os dados originais para debug
-        data: data
+        totalPosts: data.posts_count || data.media_count || 0,
+        profilePicture: data.profile_pic_url || data.profilePicture || '',
+        isVerified: data.is_verified || data.isVerified || false,
+        is_private: data.is_private || false,
+        // Incluir a fonte da API para debug
+        source: data.source || 'API'
       };
     } catch (error: unknown) {
       console.error('Erro ao buscar informações do perfil:', error);

@@ -13,6 +13,7 @@ interface ReelSelectorProps {
   totalComments?: number; 
   loading?: boolean;
   selectedReels?: InstagramPost[];
+  showReelsOnly?: boolean;
 }
 
 const reelsCache: { [key: string]: InstagramPost[] } = {};
@@ -24,7 +25,8 @@ function ReelSelector({
   selectedPosts = [],  
   totalComments = 100, 
   loading: initialLoading = false,
-  selectedReels: initialSelectedReels = []
+  selectedReels: initialSelectedReels = [],
+  showReelsOnly = false
 }: ReelSelectorProps) {
   const [reels, setReels] = useState<InstagramPost[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -191,14 +193,131 @@ function ReelSelector({
           }
           
           const data = await response.json();
-          console.log(` Recebidos ${data.length} reels para ${username}`);
+          console.log(` Resposta da API de reels:`, data);
           
-          const processedReels = data.map(processReelData);
+          let reelsArray = [];
           
-          reelsCache[username] = processedReels;
-          
-          setReels(processedReels);
-          setLoading(false);
+          // Verificar se a resposta tem a estrutura esperada
+          if (data && typeof data === 'object') {
+            // Se não tem posts/reels
+            if (data.hasPosts === false || data.hasReels === false) {
+              console.log('Nenhum conteúdo encontrado para o usuário:', data.message);
+              toast.warning(data.message || 'Nenhum conteúdo encontrado para este perfil.');
+              setReels([]);
+              setLoading(false);
+              return;
+            }
+            
+            // Determinar onde estão os dados dos posts/reels na resposta
+            let reelsData: any[] = [];
+            
+            if (Array.isArray(data)) {
+              // Se a resposta é um array direto
+              console.log('Resposta é um array direto com', data.length, 'itens');
+              reelsData = data;
+            } else if (data.posts && Array.isArray(data.posts)) {
+              // Se a resposta tem a propriedade posts (API de posts)
+              console.log('Resposta tem a propriedade posts com', data.posts.length, 'itens');
+              reelsData = data.posts;
+            } else if (data.posts && data.posts.data && data.posts.data.items && Array.isArray(data.posts.data.items)) {
+              // Se a resposta tem a estrutura posts.data.items
+              console.log('Resposta tem a estrutura posts.data.items com', data.posts.data.items.length, 'itens');
+              reelsData = data.posts.data.items;
+            } else if (data.reels && Array.isArray(data.reels)) {
+              // Se a resposta tem a propriedade reels (API de reels)
+              console.log('Resposta tem a propriedade reels com', data.reels.length, 'itens');
+              reelsData = data.reels;
+            } else if (data.comentarios && Array.isArray(data.comentarios)) {
+              // Se a resposta tem a propriedade comentarios (API de comentários)
+              console.log('Resposta tem a propriedade comentarios com', data.comentarios.length, 'itens');
+              reelsData = data.comentarios;
+            } else if (data.data && data.data.items && Array.isArray(data.data.items)) {
+              // Se a resposta tem a estrutura data.items (formato Apify direto)
+              console.log('Resposta tem a estrutura data.items com', data.data.items.length, 'itens');
+              reelsData = data.data.items;
+            } else {
+              console.error('Formato de resposta inesperado:', data);
+              toast.error('Formato de resposta inesperado. Por favor, tente novamente mais tarde.');
+              setReels([]);
+              setLoading(false);
+              return;
+            }
+            
+            // Filtrar apenas reels se necessário
+            if (showReelsOnly) {
+              const reelsOnly = reelsData.filter((post: any) => 
+                post.is_reel || 
+                post.product_type === 'clips' ||
+                post.type === 'video' ||
+                post.media_type === 2 ||
+                (post.is_video && (post.video_url || post.videoUrl))
+              );
+              
+              if (reelsOnly.length === 0) {
+                console.log('Nenhum reel encontrado para o usuário');
+                toast.warning('Nenhum reel encontrado para este perfil.');
+                setReels([]);
+                setLoading(false);
+                return;
+              }
+              
+              console.log(`Encontrados ${reelsOnly.length} reels de ${reelsData.length} posts`);
+              reelsData = reelsOnly;
+            }
+            
+            // Processar os posts/reels para o formato esperado pelo componente
+            const processedReels = reelsData.map((reel: any) => {
+              // Verificar se já está no formato esperado
+              if (reel.id && reel.thumbnail_url && reel.comment_count !== undefined) {
+                return reel;
+              }
+              
+              // Extrair informações do post/reel
+              const id = reel.id || reel.pk || reel.shortCode || `post_${Math.random().toString(36).substring(2, 11)}`;
+              const code = reel.code || reel.shortCode || '';
+              const caption = typeof reel.caption === 'string' ? reel.caption : (reel.caption?.text || '');
+              
+              // Extrair URL da thumbnail
+              const thumbnailUrl = 
+                reel.thumbnail_url || 
+                reel.display_url || 
+                reel.image_url ||
+                (reel.image_versions2?.candidates?.[0]?.url) || 
+                '/images/placeholder-post.svg';
+              
+              // Extrair contagens
+              const commentCount = reel.comment_count || reel.commentsCount || 0;
+              const likeCount = reel.like_count || reel.likesCount || 0;
+              
+              // Determinar se é um reel ou um post normal
+              const isReel = reel.is_reel || reel.isReel || reel.is_video || reel.media_type === 'VIDEO';
+              
+              return {
+                id,
+                code,
+                shortcode: code,
+                thumbnail_url: thumbnailUrl,
+                image_url: thumbnailUrl,
+                display_url: thumbnailUrl,
+                caption,
+                like_count: likeCount,
+                comment_count: commentCount,
+                is_reel: isReel,
+                video_url: reel.videoUrl || reel.video_url || ''
+              };
+            });
+            
+            reelsCache[username] = processedReels;
+            
+            setReels(processedReels);
+            setLoading(false);
+          } else {
+            console.error('Formato de resposta inesperado:', data);
+            toast.error('Formato de resposta inesperado. Por favor, tente novamente mais tarde.');
+            setReels([]);
+            setLoading(false);
+            return;
+          }
         } catch (error) {
           console.error('Erro ao buscar reels:', error);
           
@@ -217,11 +336,16 @@ function ReelSelector({
     }
     
     loadReels();
-  }, [username]);
+  }, [username, showReelsOnly]);
 
   const getProxiedImageUrl = (url: string | undefined): string => {
     if (!url || url.includes('placeholder')) {
       return '/images/placeholder-post.svg';
+    }
+    
+    // Se a URL já estiver usando o proxy, retorná-la diretamente
+    if (url.startsWith('/api/proxy-image') || url.startsWith('/api/proxy/image')) {
+      return url;
     }
     
     return `/api/proxy-image?url=${encodeURIComponent(url)}`;

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { InstagramPost } from '@/types/instagram';
 import Image from 'next/image';
-import axios from 'axios';
 import { toast } from 'sonner'; // Importar biblioteca de toast
 import { formatNumber } from '@/utils/formatNumber'; // Importar função de formatação
 
@@ -14,8 +13,6 @@ interface ReelSelectorProps {
   loading?: boolean;
   selectedReels?: InstagramPost[];
 }
-
-const reelsCache: { [key: string]: InstagramPost[] } = {};
 
 function ReelSelector({ 
   username, 
@@ -31,84 +28,44 @@ function ReelSelector({
   const [selectedReels, setSelectedReels] = useState<InstagramPost[]>(initialSelectedReels);
   const [loading, setLoading] = useState(initialLoading);
 
-  const processReelData = (reel: any) => {
-    // Verificar se já é um objeto processado
-    if (reel.id && typeof reel.id === 'string') {
-      return reel;
-    }
-
-    // Log detalhado para depuração
-    console.log('Processando reel raw data:', {
-      id: reel.id || reel.pk || reel.fbid,
-      play_count: reel.play_count,
-      view_count: reel.view_count,
-      views_count: reel.views_count,
-      ig_play_count: reel.ig_play_count
-    });
-
-    // Extrair ID do reel
-    const id = reel.id || reel.pk || reel.fbid || '';
-    
-    // Extrair contagem de visualizações - verificar todas as possíveis propriedades
-    let viewsCount = 0;
-    
-    // Verificar campos específicos de visualizações em ordem de prioridade
-    if (typeof reel.ig_play_count === 'number' && reel.ig_play_count > 0) {
-      viewsCount = reel.ig_play_count;
-      console.log(`Usando ig_play_count: ${viewsCount} para reel ${id}`);
-    } else if (typeof reel.play_count === 'number' && reel.play_count > 0) {
-      viewsCount = reel.play_count;
-      console.log(`Usando play_count: ${viewsCount} para reel ${id}`);
-    } else if (typeof reel.fb_play_count === 'number' && reel.fb_play_count > 0) {
-      viewsCount = reel.fb_play_count;
-      console.log(`Usando fb_play_count: ${viewsCount} para reel ${id}`);
-    } else if (typeof reel.view_count === 'number' && reel.view_count > 0) {
-      viewsCount = reel.view_count;
-      console.log(`Usando view_count: ${viewsCount} para reel ${id}`);
-    } else if (typeof reel.views_count === 'number' && reel.views_count > 0) {
-      viewsCount = reel.views_count;
-      console.log(`Usando views_count: ${viewsCount} para reel ${id}`);
-    } else if (typeof reel.video_play_count === 'number' && reel.video_play_count > 0) {
-      viewsCount = reel.video_play_count;
-      console.log(`Usando video_play_count: ${viewsCount} para reel ${id}`);
-    } else {
-      console.warn(`Nenhuma contagem de visualizações encontrada para reel ${id}`);
+  // Função para extrair o código correto de um post do Instagram
+  const extractPostCode = (post: any): string => {
+    // Se o post já tem um código que não é numérico, usar esse código
+    if (post.code && !/^\d+$/.test(post.code)) {
+      return post.code;
     }
     
-    // Extrair contagem de curtidas
-    const likeCount = 
-      reel.like_count || 
-      reel.likes_count || 
-      reel.fb_like_count || 
-      0;
+    // Se tem shortcode, usar o shortcode
+    if (post.shortcode) {
+      return post.shortcode;
+    }
     
-    // Extrair contagem de comentários
-    const commentCount = 
-      reel.comment_count || 
-      reel.comments_count || 
-      0;
+    // Se tem permalink ou link, extrair o código da URL
+    if (post.permalink || post.link) {
+      const url = post.permalink || post.link;
+      const match = url.match(/instagram\.com\/p\/([^\/]+)/);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
     
-    // Extrair legenda
-    const caption = reel.caption?.text || 
-                   (typeof reel.caption === 'string' ? reel.caption : '') || 
-                   '';
+    // Se nada funcionar, usar o ID
+    return post.id;
+  };
+
+  // Função para obter URL da imagem através do proxy
+  const getProxiedImageUrl = (url: string | undefined): string => {
+    if (!url || url.includes('placeholder')) {
+      return '/images/placeholder-reel.svg';
+    }
     
-    // Processar o reel para o formato esperado
-    const processedReel = {
-      id,
-      views_count: viewsCount,
-      like_count: likeCount,
-      comment_count: commentCount,
-      caption: { text: caption },
-      image_url: '',  // Será preenchido pelo selectBestImageUrl
-      thumbnail_url: reel.thumbnail_url || '',
-      video_url: reel.video_url || '',
-      username: reel.user?.username || username
-    };
+    // Se a URL já estiver usando o proxy, retorná-la diretamente
+    if (url.startsWith('/api/proxy-image') || url.startsWith('/api/proxy/image')) {
+      return url;
+    }
     
-    console.log('Reel processado:', processedReel);
-    
-    return processedReel;
+    // Usar o proxy de imagens para evitar problemas de CORS
+    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
   };
 
   useEffect(() => {
@@ -133,82 +90,162 @@ function ReelSelector({
           
           console.log('Buscando reels para:', username);
           
-          const options = {
-            method: 'GET',
-            url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/reels',
-            params: {
-              username_or_id_or_url: username
-            },
-            headers: {
-              'X-RapidAPI-Key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY,
-              'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com'
+          try {
+            // Usar a API de posts com parâmetro type=reels para filtrar apenas reels
+            const response = await fetch(`/api/instagram/posts/${username}?type=reels`);
+            
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.message || `Erro ao buscar reels: ${response.statusText}`);
             }
-          };
-          
-          const response = await axios.request(options);
-          const reelsData = response.data;
-          
-          console.log('Resposta da API de reels:', reelsData);
-          
-          if (reelsData && reelsData.data && reelsData.data.items) {
-            const allReels = reelsData.data.items;
-            console.log('Reels após processamento inicial:', allReels);
-
-            if (allReels.length > 0) {
-              // Processar os reels e adicionar as URLs de imagem
-              const processedReels = allReels.map((reel: any) => {
-                const processedReel = processReelData(reel);
-                processedReel.image_url = selectBestImageUrl(reel);
-                
-                // Garantir que views_count tenha um valor válido
-                if (!processedReel.views_count || processedReel.views_count === 0) {
-                  // Extrair o valor de visualizações do campo mais confiável
-                  const viewsCount = reel.ig_play_count || reel.play_count || reel.view_count || reel.views_count || reel.video_play_count || 0;
-                  processedReel.views_count = viewsCount;
-                  console.log(`Usando valor de visualizações extraído: ${processedReel.views_count}`);
+            
+            const responseData = await response.json();
+            
+            console.log('Resposta da API de posts (filtrada para reels):', responseData);
+            
+            // Verificar se a resposta tem a estrutura esperada
+            if (responseData && typeof responseData === 'object') {
+              // Se não tem posts/reels
+              if (responseData.hasPosts === false || responseData.hasReels === false) {
+                console.log('Nenhum reel encontrado para o usuário:', responseData.message);
+                toast.warning(responseData.message || 'Nenhum reel encontrado para este perfil.');
+                setReels([]);
+                return;
+              }
+              
+              // Determinar onde estão os dados dos reels na resposta
+              let reelsData: any[] = [];
+              
+              if (Array.isArray(responseData)) {
+                // Se a resposta é um array direto
+                console.log('Resposta é um array direto com', responseData.length, 'itens');
+                reelsData = responseData;
+              } else if (responseData.posts && Array.isArray(responseData.posts)) {
+                // Se a resposta tem a propriedade posts (API de posts)
+                console.log('Resposta tem a propriedade posts com', responseData.posts.length, 'itens');
+                reelsData = responseData.posts;
+              } else if (responseData.posts && responseData.posts.data && responseData.posts.data.items && Array.isArray(responseData.posts.data.items)) {
+                // Se a resposta tem a estrutura posts.data.items
+                console.log('Resposta tem a estrutura posts.data.items com', responseData.posts.data.items.length, 'itens');
+                reelsData = responseData.posts.data.items;
+              } else if (responseData.reels && Array.isArray(responseData.reels)) {
+                // Se a resposta tem a propriedade reels (API de reels)
+                console.log('Resposta tem a propriedade reels com', responseData.reels.length, 'itens');
+                reelsData = responseData.reels;
+              } else if (responseData.data && responseData.data.items && Array.isArray(responseData.data.items)) {
+                // Se a resposta tem a estrutura data.items (formato Apify direto)
+                console.log('Resposta tem a estrutura data.items com', responseData.data.items.length, 'itens');
+                reelsData = responseData.data.items;
+              } else if (responseData.posts && responseData.posts.data && Array.isArray(responseData.posts.data)) {
+                // Se a resposta tem a estrutura posts.data
+                console.log('Resposta tem a estrutura posts.data com', responseData.posts.data.length, 'itens');
+                reelsData = responseData.posts.data;
+              } else {
+                console.error('Formato de resposta inesperado:', responseData);
+                toast.error('Formato de resposta inesperado. Por favor, tente novamente mais tarde.');
+                setReels([]);
+                return;
+              }
+              
+              // Filtrar apenas reels
+              const reelsOnly = reelsData.filter((post: any) => 
+                post.is_reel || 
+                post.product_type === 'clips' ||
+                post.type === 'video' ||
+                post.media_type === 2 ||
+                (post.is_video && (post.video_url || post.videoUrl))
+              );
+              
+              if (reelsOnly.length === 0) {
+                console.log('Nenhum reel encontrado para o usuário');
+                toast.warning('Nenhum reel encontrado para este perfil.');
+                setReels([]);
+                return;
+              }
+              
+              console.log(`Encontrados ${reelsOnly.length} reels de ${reelsData.length} posts`);
+              
+              // Processar os reels para o formato esperado pelo componente
+              const processedReels = reelsOnly.map((reel: any) => {
+                // Verificar se já está no formato esperado
+                if (reel.id && reel.thumbnail_url && reel.views_count !== undefined) {
+                  return reel;
                 }
                 
-                return processedReel;
+                // Extrair informações do reel
+                const id = reel.id || reel.pk || reel.shortCode || `reel_${Math.random().toString(36).substring(2, 11)}`;
+                const code = reel.code || reel.shortCode || '';
+                const caption = typeof reel.caption === 'string' ? reel.caption : (reel.caption?.text || '');
+                
+                // Extrair URL da thumbnail
+                const thumbnailUrl = 
+                  reel.thumbnail_url || 
+                  reel.display_url || 
+                  reel.image_url ||
+                  (reel.image_versions2?.candidates?.[0]?.url) || 
+                  '/images/placeholder-reel.svg';
+                
+                // Extrair contagens
+                const viewsCount = 
+                  reel.views_count || 
+                  reel.videoViewCount || 
+                  reel.videoPlayCount || 
+                  reel.view_count || 
+                  reel.play_count || 
+                  0;
+                  
+                const likeCount = reel.like_count || reel.likesCount || 0;
+                const commentCount = reel.comment_count || reel.commentsCount || 0;
+                
+                return {
+                  id,
+                  code,
+                  shortcode: code,
+                  thumbnail_url: thumbnailUrl,
+                  image_url: thumbnailUrl,
+                  display_url: thumbnailUrl,
+                  caption,
+                  like_count: likeCount,
+                  comment_count: commentCount,
+                  views_count: viewsCount,
+                  play_count: viewsCount,
+                  is_reel: true,
+                  video_url: reel.videoUrl || reel.video_url || ''
+                };
               });
 
-              console.log('Reels processados com visualizações:', processedReels.map((r: any) => ({
-                id: r.id,
-                viewsCount: r.views_count,
-                formattedViews: formatNumber(r.views_count || 0),
-                likeCount: r.like_count,
-                commentCount: r.comment_count
-              })));
+              console.log('Reels processados:', processedReels);
 
               // Salvar no cache
               sessionStorage.setItem(`reels_${username}`, JSON.stringify(processedReels));
               
               setReels(processedReels);
             } else {
-              console.warn('Nenhum reel encontrado para o usuário:', username);
+              console.error('Formato de resposta inesperado:', responseData);
               setReels([]);
             }
-          } else {
-            console.error('Formato de resposta inesperado da API de reels:', reelsData);
-            toast.warning('Nenhum reel encontrado para este perfil.');
+          } catch (error) {
+            console.error('Erro ao carregar reels:', error);
+            
+            if (retryCount < MAX_RETRIES) {
+              const delay = Math.pow(2, retryCount) * 1000;
+              retryCount++;
+              
+              console.warn(`Erro detectado. Retrying in ${delay/1000} seconds. Attempt ${retryCount}`);
+              
+              await new Promise(resolve => setTimeout(resolve, delay));
+              return fetchWithRetry();
+            }
+            
+            toast.error('Erro ao carregar reels. Tente novamente.');
             setReels([]);
+          } finally {
+            setLoading(false);
           }
         } catch (error) {
           console.error('Erro ao carregar reels:', error);
-          
-          if (retryCount < MAX_RETRIES) {
-            const delay = Math.pow(2, retryCount) * 1000;
-            retryCount++;
-            
-            console.warn(`Erro detectado. Retrying in ${delay/1000} seconds. Attempt ${retryCount}`);
-            
-            await new Promise(resolve => setTimeout(resolve, delay));
-            return fetchWithRetry();
-          }
-          
           toast.error('Erro ao carregar reels. Tente novamente.');
           setReels([]);
-        } finally {
-          setLoading(false);
         }
       };
 
@@ -239,227 +276,144 @@ function ReelSelector({
     }
   }, [initialSelectedReels]);
 
-  // Função para obter URL da imagem através do proxy
-  const getProxiedImageUrl = (url: string | undefined): string => {
-    if (!url || url.includes('placeholder')) {
-      return '/images/placeholder-reel.svg';
-    }
-    
-    // Usar o proxy de imagens para evitar problemas de CORS
-    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
-  };
-
-  // Função para selecionar a melhor URL de imagem disponível
-  const selectBestImageUrl = (post: any): string => {
-    // Se for um carrossel, usar a imagem principal ou a primeira do carrossel
-    if (post.is_carousel && post.image_versions?.items?.[0]?.url) {
-      return post.image_versions.items[0].url;
-    }
-    
-    // Tentar obter a URL da imagem de várias propriedades possíveis
-    if (post.image_url) return post.image_url;
-    if (post.display_url) return post.display_url;
-    if (post.thumbnail_url) return post.thumbnail_url;
-    
-    // Verificar se temos image_versions
-    if (post.image_versions?.items?.[0]?.url) {
-      return post.image_versions.items[0].url;
-    }
-    
-    // Se nada funcionar, usar um placeholder
-    return '/images/placeholder-post.svg';
-  };
-
-  // Função para extrair o código correto de um post do Instagram
-  const extractPostCode = (post: any): string => {
-    // Se o post já tem um código que não é numérico, usar esse código
-    if (post.code && !/^\d+$/.test(post.code)) {
-      console.log('✅ Usando código existente:', post.code);
-      return post.code;
-    }
-    
-    // Se tem shortcode, usar o shortcode
-    if (post.shortcode) {
-      console.log('✅ Usando shortcode:', post.shortcode);
-      return post.shortcode;
-    }
-    
-    // Se tem permalink ou link, extrair o código da URL
-    if (post.permalink || post.link) {
-      const url = post.permalink || post.link;
-      const match = url.match(/instagram\.com\/p\/([^\/]+)/);
-      if (match && match[1]) {
-        console.log('✅ Código extraído da URL:', match[1]);
-        return match[1];
-      }
-    }
-    
-    // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
-    console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
-    return post.id;
-  };
-
   // Função para calcular visualizações por item
   const calculateViewsPerItem = () => {
-    const totalSelectedItems = selectedReels.length + (selectedPosts?.length || 0);
-    if (!totalSelectedItems) return 0;
-    return Math.floor(totalViews / totalSelectedItems);
+    if (selectedReels.length === 0) return 0;
+    return Math.floor(totalViews / selectedReels.length);
   };
 
-  const handleSelectReel = (reel: InstagramPost) => {
-    const totalSelectedItems = selectedReels.length + (selectedPosts?.length || 0);
-    const isAlreadySelected = selectedReels.some(r => r.id === reel.id);
+  // Função para alternar a seleção de um reel
+  const toggleReelSelection = (reel: InstagramPost) => {
+    // Verificar se o reel já está selecionado
+    const isSelected = selectedReels.some(r => r.id === reel.id);
     
-    // Log detalhado do reel selecionado
-    console.log('🔍 Reel selecionado - dados completos:', {
-      id: reel.id,
-      code: reel.code,
-      shortcode: reel.shortcode,
-      image_url: reel.image_url,
-      caption: reel.caption
-    });
-    
-    // Extrair o código correto
-    const reelCode = extractPostCode(reel);
-    console.log('🔍 Código extraído para o reel:', reelCode);
-    
-    if (isAlreadySelected) {
-      // Se já selecionado, remover
-      const updatedSelectedReels = selectedReels.filter(r => r.id !== reel.id);
-      setSelectedReels(updatedSelectedReels);
+    if (isSelected) {
+      // Remover o reel da seleção
+      const updatedSelection = selectedReels.filter(r => r.id !== reel.id);
+      setSelectedReels(updatedSelection);
       
-      // Atualizar callbacks
-      if (onSelectReels) onSelectReels(updatedSelectedReels);
-      return;
+      // Notificar o componente pai
+      if (onSelectReels) {
+        onSelectReels(updatedSelection);
+      }
+    } else {
+      // Verificar se já atingimos o limite de seleção
+      if (selectedReels.length >= maxReels) {
+        toast.warning(`Você só pode selecionar até ${maxReels} reels.`);
+        return;
+      }
+      
+      // Adicionar o reel à seleção
+      const updatedSelection = [...selectedReels, reel];
+      setSelectedReels(updatedSelection);
+      
+      // Notificar o componente pai
+      if (onSelectReels) {
+        onSelectReels(updatedSelection);
+      }
     }
-
-    if (totalSelectedItems >= maxReels) {
-      toast.warning(`Você pode selecionar no máximo ${maxReels} itens entre posts e reels`);
-      return;
-    }
-
-    // Adicionar reel com emoji de coração e código correto
-    const selectedReel = {
-      ...reel,
-      code: reelCode, // Usar o código extraído
-      shortcode: reelCode,
-      selected: true,
-      displayName: `🎬 ${reel.caption || 'Reel sem legenda'}`
-    };
-
-    console.log('✅ Reel adicionado à seleção:', {
-      id: selectedReel.id,
-      code: selectedReel.code,
-      url: `https://instagram.com/p/${selectedReel.code}`
-    });
-
-    const updatedSelectedReels = [...selectedReels, selectedReel];
-    setSelectedReels(updatedSelectedReels);
-    
-    // Atualizar callbacks
-    if (onSelectReels) onSelectReels(updatedSelectedReels);
   };
 
-  useEffect(() => {
-    if (selectedReels.length > 0) {
-      const viewsPerItem = calculateViewsPerItem();
-      const updatedReels = selectedReels.map((reel: InstagramPost) => ({
-        ...reel,
-        viewsDistribution: viewsPerItem
-      }));
-      setSelectedReels(updatedReels);
-      if (onSelectReels) onSelectReels(updatedReels);
-    }
-  }, [selectedReels.length, totalViews]);
-
-  // Renderização condicional baseada no estado de carregamento
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center p-8 space-y-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-500"></div>
-        <p className="text-gray-600 font-medium">Carregando reels...</p>
-      </div>
-    );
-  }
-
-  // Se não há reels para mostrar
-  if (reels.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center p-8 space-y-4">
-        <div className="text-5xl">🎬</div>
-        <p className="text-gray-600 font-medium">Nenhum reel encontrado</p>
-      </div>
-    );
-  }
-
+  // Renderizar o componente
   return (
-    <div className="grid grid-cols-4 gap-2">
-      {reels.slice(0, 12).map((reel: InstagramPost) => {
-        const proxiedImageUrl = getProxiedImageUrl(reel.image_url);
-        const isSelected = selectedReels.some(selectedReel => selectedReel.id === reel.id);
-
-        return (
-          <div 
-            key={reel.id || `reel-${Math.random()}`}
-            onClick={() => handleSelectReel(reel)}
-            className={`
-              relative cursor-pointer transition-all duration-300 
-              ${isSelected ? 'border-4 border-pink-500' : 'hover:opacity-80'}
-            `}
-          >
-            <div className="relative">
-              <Image
-                src={proxiedImageUrl}
-                alt={typeof reel.caption === 'object' ? reel.caption.text || 'Sem legenda' : reel.caption || 'Sem legenda'}
-                width={640}
-                height={640}
-                className={`w-full h-40 object-cover rounded
-                  ${isSelected ? 'opacity-40' : ''}
-                `}
-                onError={(e) => {
-                  console.error('Erro ao carregar imagem do reel:', e);
-                  const target = e.target as HTMLImageElement;
-                  if (!target.src.includes('placeholder-reel.svg')) {
-                    target.src = '/images/placeholder-reel.svg';
-                  }
-                }}
-                unoptimized={proxiedImageUrl.includes('placeholder-reel.svg')}
-              />
-              
-              {isSelected && (
-                <>
-                  {/* Contador no canto superior direito */}
-                  <div className="absolute top-2 right-2 bg-pink-500 text-white rounded-full px-2 py-1 text-xs">
-                    {selectedReels.findIndex(r => r.id === reel.id) + 1}/{selectedReels.length + selectedPosts.length}
+    <div className="w-full">
+      {error && <div className="text-red-500 mb-4">{error}</div>}
+      
+      {loading ? (
+        <div className="flex justify-center items-center h-40">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (
+        <>
+          {reels.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {reels.map((reel) => {
+                const isSelected = selectedReels.some(r => r.id === reel.id);
+                
+                return (
+                  <div 
+                    key={reel.id} 
+                    className={`relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
+                      isSelected ? 'border-blue-500 shadow-lg' : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    onClick={() => toggleReelSelection(reel)}
+                  >
+                    <div className="relative w-full h-48">
+                      <Image
+                        src={getProxiedImageUrl(reel.image_url)}
+                        alt={typeof reel.caption === 'object' ? reel.caption.text : reel.caption || 'Reel do Instagram'}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                      />
+                      
+                      {/* Ícone de reel */}
+                      <div className="absolute top-2 right-2 bg-black bg-opacity-70 rounded-full p-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-4 h-4">
+                          <path d="M12 1.5a.75.75 0 0 1 .75.75V4.5a.75.75 0 0 1-1.5 0V2.25A.75.75 0 0 1 12 1.5Zm0 15a.75.75 0 0 1 .75.75v2.25a.75.75 0 0 1-1.5 0v-2.25a.75.75 0 0 1 .75-.75ZM12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z" />
+                        </svg>
+                      </div>
+                      
+                      {/* Overlay de seleção */}
+                      {isSelected && (
+                        <div className="absolute inset-0 bg-blue-500 bg-opacity-30 flex items-center justify-center">
+                          <div className="bg-blue-500 rounded-full p-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-6 h-6">
+                              <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.739a.75.75 0 0 1 1.04-.208Z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="p-2 bg-white">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-gray-600 mr-1">
+                            <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+                            <path fillRule="evenodd" d="M1.323 11.447C2.811 6.976 7.028 3.75 12.001 3.75c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113-1.487 4.471-5.705 7.697-10.677 7.697-4.97 0-9.186-3.223-10.675-7.69a1.762 1.762 0 0 1 0-1.113ZM17.25 12a5.25 5.25 0 1 1-10.5 0 5.25 5.25 0 0 1 10.5 0Z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium">
+                            {formatNumber(reel.views_count || 0)}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-gray-600 mr-1">
+                            <path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z" />
+                          </svg>
+                          <span className="text-xs font-medium">
+                            {formatNumber(reel.like_count || 0)}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <p className="text-xs text-gray-600 truncate">
+                        {typeof reel.caption === 'object' ? reel.caption.text : reel.caption || ''}
+                      </p>
+                    </div>
                   </div>
-                  
-                  {/* Emoji de visualização centralizado */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-4xl text-pink-500">👀</div>
-                  </div>
-                  
-                  {/* Contador de curtidas distribuídas */}
-                  <div className="absolute bottom-8 left-0 right-0 text-center text-white font-bold bg-pink-500 bg-opacity-70 py-1">
-                    {formatNumber(calculateViewsPerItem())} visualizações
-                  </div>
-                </>
-              )}
-              
-              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-1 flex justify-between text-xs">
-                <span className="flex items-center">
-                  👀 {formatNumber(reel.views_count || 0)}
-                </span>
-                <span className="flex items-center">
-                  ❤️ {formatNumber(reel.like_count || 0)}
-                </span>
-                <span className="flex items-center">
-                  💬 {formatNumber(reel.comment_count || 0)}
-                </span>
-              </div>
+                );
+              })}
             </div>
-          </div>
-        );
-      })}
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-500">Nenhum reel encontrado para este perfil.</p>
+            </div>
+          )}
+          
+          {selectedReels.length > 0 && (
+            <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+              <h3 className="font-medium text-blue-800 mb-2">
+                {selectedReels.length} {selectedReels.length === 1 ? 'reel selecionado' : 'reels selecionados'}
+              </h3>
+              <p className="text-sm text-blue-600">
+                Cada reel receberá aproximadamente {formatNumber(calculateViewsPerItem())} visualizações.
+              </p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

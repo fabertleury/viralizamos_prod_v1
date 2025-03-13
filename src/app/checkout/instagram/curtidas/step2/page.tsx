@@ -15,6 +15,7 @@ import { getProxiedImageUrl } from '../../utils/proxy-image';
 import { PaymentPixModal } from '@/components/payment/PaymentPixModal';
 import { CouponInput } from '@/components/checkout/CouponInput';
 import axios from 'axios';
+import { useInstagramAPI } from '@/hooks/useInstagramAPI';
 
 interface ProfileData {
   username: string;
@@ -56,6 +57,7 @@ interface InstagramPost {
 
 export default function Step2Page() {
   const router = useRouter();
+  const { fetchInstagramPosts: fetchPostsFromAPI, fetchInstagramReels: fetchReelsFromAPI } = useInstagramAPI();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -139,23 +141,12 @@ export default function Step2Page() {
         return instagramPosts;
       }
 
+      console.log('Buscando posts do Instagram para:', username);
       setLoadingPosts(true);
       
-      const options = {
-        method: 'GET',
-        url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/posts',
-        params: { username_or_id_or_url: username },
-        headers: {
-          'x-rapidapi-key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY,
-          'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
-        }
-      };
-      const response = await axios.request(options);
-      console.log('Resposta da API de posts:', response.data);
-
-      // Verificar se a resposta tem a estrutura esperada
-      const posts = response.data.data?.items || response.data.items || [];
-      console.log('Posts encontrados:', posts.length);
+      // Usar o hook useInstagramAPI para buscar posts com a cascata de APIs
+      const posts = await fetchPostsFromAPI(username);
+      console.log('Posts encontrados com o hook useInstagramAPI:', posts.length);
 
       // Filtrar para remover reels e vídeos
       const filteredPosts = posts.filter((post: any) => {
@@ -163,21 +154,19 @@ export default function Step2Page() {
         console.log('Analisando post:', {
           id: post.id,
           code: post.code,
+          type: post.type,
           media_type: post.media_type,
-          is_video: post.is_video,
-          product_type: post.product_type,
-          is_reel: post.product_type === 'clips' || post.product_type === 'reels'
+          is_video: post.is_video
         });
         
         // Filtrar apenas posts de imagem (não reels, não vídeos)
-        const isNotReel = post.product_type !== 'clips' && post.product_type !== 'reels';
-        const isImageOrCarousel = (post.media_type === 1 || post.media_type === 8);
-        const isNotVideo = !post.is_video;
+        const isNotVideo = post.type !== 'video' && !post.is_video;
+        const isImageOrCarousel = post.type === 'image' || post.type === 'carousel';
         
-        const shouldInclude = isNotReel && isImageOrCarousel && isNotVideo;
+        const shouldInclude = isNotVideo && isImageOrCarousel;
         
         if (!shouldInclude) {
-          console.log(`Excluindo post ${post.id}: ${!isNotReel ? 'É um reel' : !isImageOrCarousel ? 'Não é imagem/carrossel' : 'É um vídeo'}`);
+          console.log(`Excluindo post ${post.id}: ${!isNotVideo ? 'É um vídeo' : !isImageOrCarousel ? 'Não é imagem/carrossel' : 'Outro motivo'}`);
         }
         
         return shouldInclude;
@@ -187,30 +176,24 @@ export default function Step2Page() {
 
       // Mapear os posts para o formato esperado
       const formattedPosts: Post[] = filteredPosts.map((post: any) => {
-        // Para posts de carrossel, usar a primeira imagem
-        const imageUrl = 
-          post.carousel_media?.[0]?.image_versions?.items?.[0]?.url || 
-          post.image_versions?.items?.[0]?.url || 
-          post.display_url;
-
         // Extrair o código correto do post para a URL
-        const postCode = extractPostCode(post);
+        const postCode = post.code || extractPostCode(post);
         
         return {
           id: post.id || '',
           code: postCode,
           shortcode: postCode,
-          image_url: imageUrl,
+          image_url: post.media_url || post.thumbnail_url || '',
           caption: post.caption 
               ? (typeof post.caption === 'object' 
                 ? post.caption.text || 'Sem legenda'
                 : String(post.caption)) 
               : 'Sem legenda',
-          like_count: post.like_count || post.likes_count || 0,
-          comment_count: post.comment_count || post.comments_count || 0,
-          thumbnail_url: post.thumbnail_url || '',
-          display_url: post.display_url || '',
-          image_versions: post.image_versions || null
+          like_count: post.likes_count || post.like_count || 0,
+          comment_count: post.comments_count || post.comment_count || 0,
+          thumbnail_url: post.thumbnail_url || post.media_url || '',
+          display_url: post.media_url || post.thumbnail_url || '',
+          image_versions: null
         };
       }).filter(post => post.image_url); // Remover posts sem imagem
 
@@ -218,11 +201,14 @@ export default function Step2Page() {
       setInstagramPosts(formattedPosts);
       setPostsLoaded(true);
       setLoadingPosts(false);
+      
       return formattedPosts;
     } catch (error) {
       console.error('Erro ao buscar posts do Instagram:', error);
       setLoadingPosts(false);
       return [];
+    } finally {
+      setLoadingPosts(false);
     }
   };
 
@@ -236,63 +222,131 @@ export default function Step2Page() {
 
       setLoadingReels(true);
       
-      const options = {
-        method: 'GET',
-        url: 'https://instagram-scraper-api2.p.rapidapi.com/v1/reels',
-        params: { username_or_id_or_url: username },
-        headers: {
-          'x-rapidapi-key': process.env.NEXT_PUBLIC_RAPIDAPI_KEY,
-          'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
-        }
-      };
-      const response = await axios.request(options);
-      console.log('Resposta da API de reels:', response.data);
-
-      // Verificar se a resposta tem a estrutura esperada
-      const reels = response.data.data?.items || response.data.items || [];
-      console.log('Reels encontrados:', reels.length);
-
+      // Usar o hook useInstagramAPI para buscar reels com a cascata de APIs
+      console.log('Buscando reels com o hook useInstagramAPI...');
+      const reels = await fetchReelsFromAPI(username);
+      console.log('Reels encontrados com o hook useInstagramAPI:', reels.length);
+      
       // Mapear os reels para o formato esperado
-      const formattedReels: Post[] = reels.map((reel: any) => {
-        // Tentar diferentes caminhos para a imagem do reel
-        const imageUrl = 
-          reel.image_versions?.items?.[0]?.url || 
-          reel.thumbnail_url || 
-          reel.cover_frame_url || 
-          reel.display_url;
-
+      const formattedReels = reels.map((reel: any) => {
         // Extrair o código correto do reel para a URL
-        const reelCode = extractPostCode(reel);
+        const reelCode = reel.code || reel.shortcode || '';
         
         return {
           id: reel.id || '',
           code: reelCode,
           shortcode: reelCode,
-          image_url: imageUrl,
+          image_url: reel.thumbnail_url || reel.media_url || '',
           caption: reel.caption 
               ? (typeof reel.caption === 'object' 
                 ? reel.caption.text || 'Sem legenda'
                 : String(reel.caption)) 
               : 'Sem legenda',
-          like_count: reel.like_count || reel.likes_count || 0,
-          comment_count: reel.comment_count || reel.comments_count || 0,
-          // Campos específicos para reels
-          thumbnail_url: reel.thumbnail_url || '',
-          display_url: reel.display_url || '',
-          image_versions: reel.image_versions || null
+          like_count: reel.likes_count || reel.like_count || 0,
+          comment_count: reel.comments_count || reel.comment_count || 0,
+          thumbnail_url: reel.thumbnail_url || reel.media_url || '',
+          display_url: reel.media_url || reel.thumbnail_url || '',
+          image_versions: null,
+          is_video: true,
+          video_url: reel.video_url || '',
+          view_count: reel.views_count || reel.view_count || 0
         };
-      }).filter(reel => reel.image_url || reel.thumbnail_url || reel.display_url); // Remover reels sem imagem
-
+      }).filter(reel => reel.image_url); // Remover reels sem imagem
+      
       console.log('Reels formatados:', formattedReels.length);
       setInstagramReels(formattedReels);
       setReelsLoaded(true);
       setLoadingReels(false);
+      
       return formattedReels;
     } catch (error) {
       console.error('Erro ao buscar reels do Instagram:', error);
       setLoadingReels(false);
       return [];
+    } finally {
+      setLoadingReels(false);
     }
+  };
+  
+  // Função auxiliar para processar dados de reels
+  const processReelsData = (reels: Record<string, any>[], username: string): Post[] => {
+    return reels.map(reel => {
+      // Extrair ID do reel
+      const id = reel.id || reel.pk || '';
+      
+      // Extrair código/shortcode
+      const code = reel.code || reel.shortcode || extractCodeFromUrl(reel.permalink || reel.link) || id;
+      
+      // Extrair contagem de visualizações
+      const viewsCount = 
+        reel.play_count || 
+        reel.view_count || 
+        reel.views_count || 
+        reel.video_play_count || 
+        0;
+      
+      // Extrair contagem de curtidas
+      const likeCount = 
+        reel.like_count || 
+        reel.likes_count || 
+        0;
+      
+      // Extrair contagem de comentários
+      const commentCount = 
+        reel.comment_count || 
+        reel.comments_count || 
+        0;
+      
+      // Extrair legenda
+      const caption = 
+        reel.caption?.text || 
+        (typeof reel.caption === 'string' ? reel.caption : '') || 
+        '';
+      
+      // Extrair URL da imagem
+      const imageUrl = 
+        reel.image_versions?.items?.[0]?.url || 
+        reel.thumbnail_url || 
+        reel.display_url || 
+        reel.cover_frame_url || 
+        '';
+      
+      // Extrair URL do vídeo
+      const videoUrl = reel.video_url || '';
+      
+      return {
+        id,
+        code,
+        shortcode: code,
+        is_reel: true,
+        product_type: 'clips',
+        media_type: 'video',
+        views_count: viewsCount,
+        like_count: likeCount,
+        comment_count: commentCount,
+        caption: { text: caption },
+        image_url: imageUrl,
+        thumbnail_url: imageUrl,
+        display_url: imageUrl,
+        video_url: videoUrl,
+        username: reel.user?.username || username
+      } as Post;
+    });
+  };
+  
+  // Função auxiliar para extrair código de URL
+  const extractCodeFromUrl = (url: string | undefined): string | null => {
+    if (!url) return null;
+    
+    // Tentar extrair código de URL de post
+    const postMatch = url.match(/instagram\.com\/p\/([^\/]+)/);
+    if (postMatch && postMatch[1]) return postMatch[1];
+    
+    // Tentar extrair código de URL de reel
+    const reelMatch = url.match(/instagram\.com\/reel\/([^\/]+)/);
+    if (reelMatch && reelMatch[1]) return reelMatch[1];
+    
+    return null;
   };
 
   const fetchService = async (externalId: string) => {

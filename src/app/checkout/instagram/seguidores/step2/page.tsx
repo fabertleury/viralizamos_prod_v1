@@ -156,8 +156,67 @@ export default function Step2Page() {
   const fetchProfileData = async (username: string) => {
     try {
       console.log('Buscando dados do perfil:', username);
-      const response = await fetch(`/api/instagram/info/${username}`);
-      const data = await response.json();
+      
+      // Tentar com a nova API Apify
+      let response = await fetch(`/api/instagram/seguidores/${username}`);
+      let data = await response.json();
+
+      if (response.ok && data.success) {
+        const profileInfo = data.data;
+        setProfileData({
+          username: profileInfo.username,
+          full_name: profileInfo.fullName,
+          profile_pic_url: profileInfo.profilePicUrl,
+          follower_count: profileInfo.followersCount,
+          following_count: profileInfo.followsCount,
+          is_private: profileInfo.private
+        });
+        return;
+      }
+
+      // Se falhar, tentar com a API padrão
+      response = await fetch(`/api/instagram/info/${username}`);
+      data = await response.json();
+
+      // Se falhar, tentar com a Rocket API diretamente
+      if (!response.ok || data.error) {
+        console.log('API padrão falhou, tentando Rocket API diretamente...');
+        const RAPIDAPI_KEY = process.env.NEXT_PUBLIC_RAPIDAPI_KEY || '';
+        
+        response = await fetch(
+          `https://instagram-data1.p.rapidapi.com/user/get-info?username=${username}`,
+          {
+            headers: {
+              'x-rapidapi-host': 'instagram-data1.p.rapidapi.com',
+              'x-rapidapi-key': RAPIDAPI_KEY
+            }
+          }
+        );
+        
+        if (!response.ok) {
+          throw new Error('Todas as APIs falharam');
+        }
+        
+        data = await response.json();
+        
+        // Adaptar o formato da resposta da Rocket API para o formato esperado
+        if (data && data.response && data.response.status === "ok") {
+          const rocketData = data.response.body.data.user;
+          data = {
+            data: {
+              username: rocketData.username,
+              full_name: rocketData.full_name,
+              profile_pic_url: rocketData.profile_pic_url,
+              follower_count: rocketData.edge_followed_by.count,
+              following_count: rocketData.edge_follow.count,
+              media_count: rocketData.edge_owner_to_timeline_media.count,
+              is_private: rocketData.is_private,
+              is_verified: rocketData.is_verified,
+              biography: rocketData.biography || ''
+            }
+          };
+        }
+      }
 
       if (data.error) {
         console.error('Erro ao buscar perfil:', data.error);

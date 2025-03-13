@@ -98,7 +98,21 @@ export default function ProfileAnalyzerPage() {
 
   // Estado para controlar o modal de confirmação
   const [showProfilePreviewModal, setShowProfilePreviewModal] = useState(false);
-  const [profilePreviewData, setProfilePreviewData] = useState<any>(null);
+  // Interface para os dados de preview do perfil
+  interface ProfilePreviewData {
+    username: string;
+    full_name: string;
+    biography?: string;
+    followers_count: number;
+    following_count: number;
+    media_count: number;
+    profile_pic_url: string;
+    is_verified?: boolean;
+    is_private: boolean;
+    source?: string;
+  }
+
+  const [profilePreviewData, setProfilePreviewData] = useState<ProfilePreviewData | null>(null);
 
   // Efeito para iniciar análise ou mostrar modal de confirmação
   useEffect(() => {
@@ -131,10 +145,41 @@ export default function ProfileAnalyzerPage() {
 
   // Função para continuar análise após visualizar preview
   const handleContinueAnalysis = async () => {
-    const username = searchParams.get('username');
-    if (username) {
+    if (profilePreviewData) {
+      // Extrair username de forma mais flexível
+      const cleanUsername = 
+        profilePreviewData.username || 
+        searchParams.get('username') || '';
+      
       setShowProfilePreviewModal(false);
-      await startProfileAnalysis(username);
+      setLoading(true);
+      
+      // Se o perfil era privado, verificar novamente com a API Instagram-Scraper
+      if (profilePreviewData.is_private) {
+        try {
+          // Verificar novamente com a API Instagram-Scraper
+          const response = await fetch('/api/instagram/instagram-scraper', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ username: cleanUsername })
+          });
+          
+          const data = await response.json();
+          console.log('Resposta da API Instagram-Scraper:', data);
+          
+          // Continuar com a análise independentemente do resultado
+          await startProfileAnalysis(cleanUsername);
+        } catch (error) {
+          console.error('Erro ao verificar com Instagram-Scraper:', error);
+          // Continuar com a análise mesmo em caso de erro
+          await startProfileAnalysis(cleanUsername);
+        }
+      } else {
+        // Se o perfil já era público, continuar normalmente
+        await startProfileAnalysis(cleanUsername);
+      }
     }
   };
 
@@ -160,7 +205,7 @@ export default function ProfileAnalyzerPage() {
 
             <div className="flex justify-between w-full mb-4">
               <div className="text-center">
-                <strong>{profilePreviewData.posts_count || 0}</strong>
+                <strong>{profilePreviewData.media_count || 0}</strong>
                 <p className="text-sm text-gray-500">Posts</p>
               </div>
               <div className="text-center">
@@ -179,20 +224,65 @@ export default function ProfileAnalyzerPage() {
               </p>
             )}
 
-            <div className="flex space-x-4">
-              <button 
-                onClick={() => setShowProfilePreviewModal(false)}
-                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={handleContinueAnalysis}
-                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-              >
-                Continuar Análise
-              </button>
-            </div>
+            {profilePreviewData.is_private ? (
+              <div className="w-full">
+                <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4">
+                  <p className="font-bold">Perfil Privado</p>
+                  <p>Para continuar a análise, é necessário tornar o perfil público.</p>
+                </div>
+                
+                <div className="bg-white rounded p-3 mb-3 border border-red-100">
+                  <ol className="list-decimal pl-5 space-y-1 text-sm text-gray-700">
+                    <li>Abra o Instagram no seu celular</li>
+                    <li>Vá para o seu perfil (ícone de usuário)</li>
+                    <li>Toque em "Editar perfil"</li>
+                    <li>Role para baixo até "Privacidade da conta"</li>
+                    <li>Desative a opção "Conta privada"</li>
+                    <li>Confirme a alteração</li>
+                  </ol>
+                </div>
+                
+                <div className="flex flex-col items-center">
+                  <div className="w-full bg-gray-100 rounded-full h-4 mb-2">
+                    <div 
+                      className="bg-[#C43582] h-4 rounded-full transition-all duration-1000 ease-linear" 
+                      style={{ width: `${(timer / 30) * 100}%` }}
+                    ></div>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Aguarde {timer} segundos ou clique no botão quando seu perfil estiver público
+                  </p>
+                  
+                  <button 
+                    onClick={() => {
+                      setProfilePreviewData((prevData: ProfilePreviewData | null) => prevData ? ({ ...prevData, is_private: false }) : null);
+                      handleContinueAnalysis();
+                    }}
+                    disabled={timer > 0}
+                    className={`w-full py-2 rounded-full font-bold transition ${timer > 0 
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                      : 'bg-[#C43582] text-white hover:bg-[#a62c6c]'}`}
+                  >
+                    {timer > 0 ? `Aguarde ${timer}s` : 'Já coloquei meu perfil público'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex space-x-4">
+                <button 
+                  onClick={() => setShowProfilePreviewModal(false)}
+                  className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleContinueAnalysis}
+                  className="bg-[#C43582] text-white px-4 py-2 rounded-md hover:bg-[#a62c6c]"
+                >
+                  Continuar Análise
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -378,25 +468,76 @@ export default function ProfileAnalyzerPage() {
     );
   };
 
+  // Estado para controlar o timer para perfis privados
+  const [timer, setTimer] = useState(30);
+
+  // Contador regressivo para o timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (profilePreviewData?.is_private && timer > 0) {
+      interval = setInterval(() => {
+        setTimer((prevTimer) => prevTimer - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [profilePreviewData?.is_private, timer]);
+
+  // Função para formatar o tempo
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   // Função para iniciar análise do perfil
   const startProfileAnalysis = async (username: string) => {
     try {
       setLoading(true);
       setError(null);
+      setTimer(30); // Reiniciar o timer para 30 segundos
 
-      // Buscar informações do perfil
-      const profileInfo = await fetchInstagramProfileInfo(username);
+      // Usar o graphql-check como verificador principal para aproveitar a rotação de APIs
+      const response = await fetch(`/api/instagram/graphql-check?username=${username}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Erro ao verificar perfil');
+      }
+
+      console.log('Resposta do graphql-check:', data);
+      console.log('Status do perfil:', data.is_private ? 'Privado' : 'Público');
       
+      // Formatar os dados do perfil
+      const profileInfo = {
+        username: data.username,
+        full_name: data.full_name,
+        biography: data.biography || '',
+        followers_count: data.follower_count,
+        following_count: data.following_count,
+        media_count: data.media_count || 0,
+        profile_pic_url: data.profile_pic_url,
+        is_verified: data.is_verified || false,
+        is_private: data.is_private,
+        source: data.source
+      };
+
+      // Se o perfil for privado, mostrar o modal
+      if (data.is_private) {
+        setProfilePreviewData(profileInfo);
+        setShowProfilePreviewModal(true);
+        return;
+      }
+
       // Atualizar estado com dados do perfil
       setProfileData({
         username: profileInfo.username,
         full_name: profileInfo.full_name,
         biography: profileInfo.biography,
-        followers_count: profileInfo.followers,
-        following_count: profileInfo.following,
-        media_count: profileInfo.totalPosts,
-        profile_pic_url: profileInfo.profilePicture,
-        is_verified: profileInfo.isVerified
+        followers_count: profileInfo.followers_count,
+        following_count: profileInfo.following_count,
+        media_count: profileInfo.media_count,
+        profile_pic_url: profileInfo.profile_pic_url,
+        is_verified: profileInfo.is_verified
       });
 
       // Buscar conteúdo do perfil

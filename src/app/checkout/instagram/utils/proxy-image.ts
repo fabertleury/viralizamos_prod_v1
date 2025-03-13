@@ -4,6 +4,11 @@ export function getProxiedImageUrl(originalUrl: string) {
     return '/images/placeholder.jpg';
   }
 
+  // Se a URL já estiver usando o proxy, retorná-la diretamente
+  if (originalUrl.startsWith('/api/proxy-image') || originalUrl.startsWith('/api/proxy/image')) {
+    return originalUrl;
+  }
+
   // Usar a URL diretamente se já tivermos ela da API
   if (originalUrl.includes('cdninstagram.com') || originalUrl.includes('fbcdn.net')) {
     return `/api/proxy/image?url=${encodeURIComponent(originalUrl)}`;

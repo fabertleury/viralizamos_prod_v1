@@ -50,371 +50,237 @@ export function PostSelector({
       const preSelectedPosts = posts.filter(post => 
         initialSelectedPosts.some(selectedPost => selectedPost.id === post.id)
       );
+      setSelectedPosts(preSelectedPosts);
+    }
+  }, [posts, initialSelectedPosts]);
+
+  useEffect(() => {
+    if (!initialPosts) {
+      fetchPosts();
+    } else {
+      setPosts(initialPosts);
+    }
+  }, [username, initialPosts]);
+  
+  useEffect(() => {
+    // Filtrar posts para excluir reels já selecionados
+    const reelIds = selectedReels.map(reel => reel.id);
+    const filtered = posts.filter(post => 
+      !post.is_reel && 
+      !post.product_type?.includes('clips') && 
+      !reelIds.includes(post.id)
+    );
+    setFilteredPosts(filtered);
+  }, [posts, selectedReels]);
+
+  const fetchPosts = async () => {
+    if (!username) return;
+    
+    try {
+      setLoading(true);
+      setSelectedPosts([]);
       
-      if (preSelectedPosts.length > 0) {
-        console.log('Restaurando posts selecionados:', preSelectedPosts.length);
-        setSelectedPosts(preSelectedPosts);
+      // Verificar se já temos os posts em cache
+      const cachedPosts = sessionStorage.getItem(`posts_${username}`);
+      if (cachedPosts) {
+        const parsedPosts = JSON.parse(cachedPosts);
+        setPosts(parsedPosts);
+        
+        // Filtrar para excluir reels
+        const filtered = parsedPosts.filter((post: InstagramPost) => 
+          !post.is_reel && 
+          !post.product_type?.includes('clips')
+        );
+        setFilteredPosts(filtered);
+        setLoading(false);
+        return;
       }
-    }
-  }, [posts, initialSelectedPosts, selectedPosts.length]);
-
-  // Atualizar selectedPosts quando as props mudarem
-  useEffect(() => {
-    if (initialSelectedPosts && JSON.stringify(initialSelectedPosts) !== JSON.stringify(selectedPosts)) {
-      setSelectedPosts(initialSelectedPosts);
-    }
-  }, [initialSelectedPosts]);
-
-  // Função para selecionar a melhor URL de imagem disponível
-  const selectBestImageUrl = (post: any): string => {
-    // Se for um carrossel, usar a imagem principal ou a primeira do carrossel
-    if (post.is_carousel && post.image_versions?.items?.[0]?.url) {
-      return post.image_versions.items[0].url;
-    }
-    
-    // Tentar obter a URL da imagem de várias propriedades possíveis
-    if (post.image_url) return post.image_url;
-    if (post.display_url) return post.display_url;
-    if (post.thumbnail_url) return post.thumbnail_url;
-    
-    // Verificar se temos image_versions
-    if (post.image_versions?.items?.[0]?.url) {
-      return post.image_versions.items[0].url;
-    }
-    
-    // Se nada funcionar, usar um placeholder
-    return '/images/placeholder-post.svg';
-  };
-
-  // Função para processar a URL da imagem através de um proxy
-  const getProxiedImageUrl = (url: string): string => {
-    if (!url || url.includes('placeholder-post.svg')) {
-      return '/images/placeholder-post.svg';
-    }
-    
-    // Usar o proxy de imagens para evitar problemas de CORS
-    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
-  };
-
-  // Função para extrair o código correto de um post do Instagram
-  const extractPostCode = (post: any): string => {
-    // Se o post já tem um código que não é numérico, usar esse código
-    if (post.code && !/^\d+$/.test(post.code)) {
-      console.log('✅ Usando código existente:', post.code);
-      return post.code;
-    }
-    
-    // Se tem shortcode, usar o shortcode
-    if (post.shortcode) {
-      console.log('✅ Usando shortcode:', post.shortcode);
-      return post.shortcode;
-    }
-    
-    // Se tem permalink ou link, extrair o código da URL
-    if (post.permalink || post.link) {
-      const url = post.permalink || post.link;
-      const match = url.match(/instagram\.com\/p\/([^\/]+)/);
-      if (match && match[1]) {
-        console.log('✅ Código extraído da URL:', match[1]);
-        return match[1];
+      
+      // Buscar posts da API
+      const response = await fetch(`/api/instagram/posts/${username}`);
+      
+      if (!response.ok) {
+        throw new Error(`Erro ao carregar posts (${response.status})`);
       }
-    }
-    
-    // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
-    console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
-    return post.id;
-  };
-
-  // Função para calcular curtidas por item
-  const calculateLikesPerItem = () => {
-    const totalSelectedItems = selectedPosts.length + selectedReels.length;
-    if (!totalSelectedItems) return 0;
-    return Math.floor(totalLikes / totalSelectedItems);
-  };
-
-  const handleSelectPost = (post: InstagramPost) => {
-    const totalSelectedItems = selectedPosts.length + selectedReels.length;
-    const isAlreadySelected = selectedPosts.some(selectedPost => selectedPost.id === post.id);
-
-    // Log detalhado do post selecionado
-    console.log('🔍 Post selecionado - dados completos:', {
-      id: post.id,
-      code: post.code,
-      shortcode: post.shortcode,
-      image_url: post.image_url,
-      caption: post.caption
-    });
-    
-    // Extrair o código correto
-    const postCode = extractPostCode(post);
-    console.log('🔍 Código extraído para o post:', postCode);
-
-    if (isAlreadySelected) {
-      // Se já selecionado, remover
-      const updatedSelectedPosts = selectedPosts.filter(selectedPost => selectedPost.id !== post.id);
-      setSelectedPosts(updatedSelectedPosts);
       
-      // Atualizar callbacks
-      if (onPostSelect) onPostSelect(updatedSelectedPosts);
-      return;
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        // Filtrar apenas posts (não reels)
+        const allPosts = data.data || [];
+        
+        // Salvar em cache
+        sessionStorage.setItem(`posts_${username}`, JSON.stringify(allPosts));
+        
+        setPosts(allPosts);
+        
+        // Filtrar para excluir reels
+        const filtered = allPosts.filter((post: InstagramPost) => 
+          !post.is_reel && 
+          !post.product_type?.includes('clips')
+        );
+        setFilteredPosts(filtered);
+      } else {
+        throw new Error('Falha ao carregar posts');
+      }
+    } catch (error) {
+      console.error('Erro ao carregar posts:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao carregar posts');
+    } finally {
+      setLoading(false);
     }
-
-    if (totalSelectedItems >= maxPosts) {
-      toast.warning(`Você pode selecionar no máximo ${maxPosts} itens entre posts e reels`);
-      return;
-    }
-
-    // Adicionar post com emoji de coração e código correto
-    const selectedPost = {
-      ...post,
-      code: postCode, // Usar o código extraído
-      shortcode: postCode,
-      selected: true,
-      displayName: `❤️ ${post.caption || 'Post sem legenda'}`
-    };
-
-    console.log('✅ Post adicionado à seleção:', {
-      id: selectedPost.id,
-      code: selectedPost.code,
-      url: `https://instagram.com/p/${selectedPost.code}`
-    });
-
-    const updatedSelectedPosts = [...selectedPosts, selectedPost];
-    setSelectedPosts(updatedSelectedPosts);
-    
-    // Atualizar callbacks
-    if (onPostSelect) onPostSelect(updatedSelectedPosts);
   };
 
-  useEffect(() => {
-    async function loadPosts() {
-      if (!username) return;
-      
-      const MAX_RETRIES = 3;
-      let retryCount = 0;
-
-      const fetchWithRetry = async () => {
-        try {
-          setLoading(true);
-          const response = await fetch(`/api/instagram/posts/${username}`, {
-            headers: {
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache',
-              'Expires': '0'
-            }
-          });
-          
-          if (!response.ok) {
-            const status = response.status;
-            const errorData = await response.json();
-
-            if (status === 429 && retryCount < MAX_RETRIES) {
-              // Exponential backoff
-              const delay = Math.pow(2, retryCount) * 1000;
-              retryCount++;
-              
-              console.warn(`Rate limit hit. Retrying in ${delay/1000} seconds. Attempt ${retryCount}`);
-              
-              await new Promise(resolve => setTimeout(resolve, delay));
-              return fetchWithRetry();
-            }
-
-            throw new Error(errorData.error || `Erro ao carregar posts (${status})`);
-          }
-          
-          const postsData = await response.json();
-          
-          console.log('Dados brutos dos posts:', JSON.stringify(postsData, null, 2));
-          console.log('Tipo de postsData:', typeof postsData);
-          console.log('Chaves de postsData:', Object.keys(postsData || {}));
-          // Processar posts
-          const allPosts = postsData || [];
-
-          console.log('Detalhes completos dos posts:', allPosts);
-
-          if (allPosts.length > 0) {
-            // Filtrar e formatar posts
-            const processedPosts = allPosts
-              .filter(post => {
-                // Log para depuração dos tipos de posts
-                console.log('Tipo de post:', {
-                  id: post.id,
-                  media_type: post.media_type,
-                  is_video: post.is_video,
-                  is_reel: post.is_reel || false,
-                  is_carousel: post.is_carousel || false,
-                  product_type: post.product_type
-                });
-                
-                // Filtrar apenas posts de imagem (não reels, não vídeos)
-                return (
-                  // Verificar se não é um reel (prioridade máxima)
-                  post.is_reel !== true &&
-                  // Verificar se não é um produto do tipo "clips" ou "reels"
-                  post.product_type !== 'clips' && 
-                  post.product_type !== 'reels' &&
-                  // Tipo 1 = imagem, Tipo 8 = carrossel
-                  (post.media_type === 1 || post.media_type === 8 || post.is_carousel) && 
-                  // Garantir que não é um vídeo (a menos que seja um carrossel)
-                  (!post.is_video || post.is_carousel) &&
-                  // Garantir que tem uma imagem válida
-                  (post.image_versions?.items?.[0]?.url || post.image_url)
-                );
-              })
-              .map(post => ({
-                ...post,
-                likes_count: post.like_count || post.likes_count || 0,
-                comments_count: post.comment_count || post.comments_count || 0,
-                image_url: post.image_versions?.items?.[0]?.url || post.image_url || ''
-              }));
-
-            console.log('Posts filtrados:', {
-              totalPosts: allPosts.length,
-              imagePosts: processedPosts.length
-            });
-
-            setPosts(processedPosts);
-          } else {
-            console.error('Nenhum post retornado da API:', postsData);
-            toast.warning('Nenhum post encontrado para este perfil.');
-          }
-        } catch (error) {
-          console.error('Erro ao carregar posts:', error);
-          
-          if (retryCount < MAX_RETRIES) {
-            const delay = Math.pow(2, retryCount) * 1000;
-            retryCount++;
-            
-            console.warn(`Erro detectado. Retrying in ${delay/1000} seconds. Attempt ${retryCount}`);
-            
-            await new Promise(resolve => setTimeout(resolve, delay));
-            return fetchWithRetry();
-          }
-          
-          toast.error('Erro ao carregar posts. Tente novamente.');
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      fetchWithRetry();
-    }
-
-    loadPosts();
-  }, [username]);
-
-  // Recalcular distribuição de curtidas quando a seleção mudar
-  useEffect(() => {
-    if (selectedPosts.length > 0) {
-      const likesPerItem = calculateLikesPerItem();
-      const updatedPosts = selectedPosts.map(post => ({
-        ...post,
-        likesDistribution: likesPerItem
-      }));
+  const togglePostSelection = (post: InstagramPost) => {
+    // Verificar se o post já está selecionado
+    const isSelected = selectedPosts.some(p => p.id === post.id);
+    
+    if (isSelected) {
+      // Remover o post da seleção
+      const updatedPosts = selectedPosts.filter(p => p.id !== post.id);
       setSelectedPosts(updatedPosts);
       
-      // Atualizar callbacks
-      if (onPostSelect) onPostSelect(updatedPosts);
+      // Notificar o componente pai
+      if (onPostSelect) {
+        onPostSelect(updatedPosts);
+      }
+      if (onSelectPosts) {
+        onSelectPosts(updatedPosts);
+      }
+    } else {
+      // Verificar se já atingiu o limite de seleção
+      if (selectedPosts.length >= maxPosts) {
+        toast.error(`Você só pode selecionar até ${maxPosts} posts`);
+        return;
+      }
+      
+      // Adicionar o post à seleção
+      const updatedPosts = [...selectedPosts, post];
+      setSelectedPosts(updatedPosts);
+      
+      // Notificar o componente pai
+      if (onPostSelect) {
+        onPostSelect(updatedPosts);
+      }
+      if (onSelectPosts) {
+        onSelectPosts(updatedPosts);
+      }
     }
-  }, [selectedPosts.length, totalLikes]);
+  };
 
-  // Renderização condicional baseada no estado de carregamento
-  if (loadingState || initialLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center p-8 space-y-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-500"></div>
-        <p className="text-gray-600 font-medium">Carregando posts...</p>
-      </div>
-    );
-  }
+  // Distribuir curtidas igualmente entre os posts selecionados
+  const calculateLikesForPost = () => {
+    if (selectedPosts.length === 0) return 0;
+    return Math.floor(totalLikes / selectedPosts.length);
+  };
 
-  // Se não há posts para mostrar
-  if (posts.length === 0) {
+  // Renderizar mensagem quando não há posts
+  if (!loadingState && filteredPosts.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 space-y-4">
-        <div className="text-5xl">📷</div>
-        <p className="text-gray-600 font-medium">Nenhum post de imagem encontrado</p>
+      <div className="p-4 bg-white rounded-lg shadow">
+        <div className="text-center py-8">
+          <p className="text-gray-500 mb-4">Nenhum post encontrado para este usuário</p>
+          <button 
+            onClick={fetchPosts} 
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
+          >
+            Tentar novamente
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-4 gap-2">
-      {posts.slice(0, 12).map((post, index) => (
-        <div 
-          key={post.id || post.pk || `post-${Math.random()}`}
-          onClick={() => handleSelectPost(post)}
-          className={`
-            relative cursor-pointer transition-all duration-300 
-            ${selectedPosts.some(selectedPost => selectedPost.id === post.id) 
-              ? 'border-4 border-pink-500' 
-              : 'hover:opacity-80'}
-          `}
-        >
-          <div className="relative">
-            <Image
-              src={getProxiedImageUrl(selectBestImageUrl(post))}
-              alt={post.caption?.text || 'Sem legenda'}
-              width={640}
-              height={640}
-              className={`w-full h-40 object-cover rounded
-                ${selectedPosts.some(selectedPost => selectedPost.id === post.id) 
-                  ? 'opacity-40' 
-                  : ''}
-              `}
-              onError={(e) => {
-                console.error('Erro ao carregar imagem do post:', e);
-                const target = e.target as HTMLImageElement;
-                // Verificar se já não estamos usando o placeholder para evitar loop
-                if (!target.src.includes('placeholder-post.svg')) {
-                  target.src = '/images/placeholder-post.svg';
-                }
-              }}
-              unoptimized={getProxiedImageUrl(post.image_url).includes('placeholder-post.svg')}
-            />
-            
-            {/* Indicador de carrossel */}
-            {post.is_carousel && (
-              <div className="absolute top-2 left-2 bg-white bg-opacity-70 text-black rounded-md px-2 py-1 text-xs flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
-                </svg>
-                {post.carousel_media_count || '+'} fotos
-              </div>
-            )}
-            
-            {selectedPosts.some(selectedPost => selectedPost.id === post.id) && (
-              <>
-                {/* Contador no canto superior direito */}
-                <div className="absolute top-2 right-2 bg-pink-500 text-white rounded-full px-2 py-1 text-xs">
-                  {selectedPosts.findIndex(p => p.id === post.id) + 1}/{selectedPosts.length + selectedReels.length}
-                </div>
-                
-                {/* Emoji de coração centralizado */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-4xl text-pink-500">❤️</div>
-                </div>
-                
-                {/* Contador de curtidas distribuídas */}
-                <div className="absolute bottom-8 left-0 right-0 text-center text-white font-bold bg-pink-500 bg-opacity-70 py-1">
-                  {formatNumber(calculateLikesPerItem())} curtidas
-                </div>
-              </>
-            )}
-            
-            <div className="absolute bottom-0 left-0 right-0 
-              bg-black bg-opacity-50 text-white p-1 
-              flex justify-between text-xs">
-              <span className="flex items-center">
-                ❤️ {formatNumber(post.likes_count || 0)}
-              </span>
-              <span className="flex items-center">
-                💬 {formatNumber(post.comments_count || 0)}
-              </span>
-            </div>
-          </div>
+    <div className="p-4 bg-white rounded-lg shadow">
+      <h2 className="text-xl font-semibold mb-4">Selecione os posts para receber curtidas</h2>
+      
+      {loadingState ? (
+        <div className="flex justify-center items-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+          <span className="ml-2 text-gray-600">Carregando posts...</span>
         </div>
-      ))}
+      ) : (
+        <>
+          <div className="mb-4">
+            <p className="text-sm text-gray-600">
+              {selectedPosts.length > 0 
+                ? `${selectedPosts.length} de ${maxPosts} posts selecionados (${formatNumber(calculateLikesForPost())} curtidas por post)` 
+                : `Selecione até ${maxPosts} posts para distribuir ${formatNumber(totalLikes)} curtidas`}
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            {filteredPosts.map((post) => {
+              const isSelected = selectedPosts.some(p => p.id === post.id);
+              
+              return (
+                <div 
+                  key={post.id} 
+                  className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
+                    isSelected ? 'border-blue-500 shadow-md' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => togglePostSelection(post)}
+                >
+                  <div className="relative pb-[100%]">
+                    <Image
+                      src={post.image_versions?.items?.[0]?.url || post.display_url || post.thumbnail_url || '/placeholder-image.jpg'}
+                      alt={typeof post.caption === 'string' ? post.caption : (post.caption?.text || 'Post do Instagram')}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 640px) 150px, 200px"
+                    />
+                    
+                    {post.is_video && (
+                      <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+                        Vídeo
+                      </div>
+                    )}
+                    
+                    {post.media_type === 8 && (
+                      <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+                        Carrossel
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 transition-all hover:bg-opacity-30">
+                    {isSelected && (
+                      <div className="bg-blue-500 rounded-full p-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2">
+                    <div className="flex items-center text-white text-xs">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                      </svg>
+                      <span>{formatNumber(post.like_count)}</span>
+                      
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-2 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      <span>{formatNumber(post.comment_count)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          {filteredPosts.length > 0 && selectedPosts.length === 0 && (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-700">
+                Selecione pelo menos um post para receber curtidas
+              </p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
