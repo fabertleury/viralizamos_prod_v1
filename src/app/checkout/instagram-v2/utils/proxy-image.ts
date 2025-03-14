@@ -1,7 +1,7 @@
 export function getProxiedImageUrl(originalUrl: string) {
   // Se não tiver URL, retornar uma imagem padrão
   if (!originalUrl) {
-    return '/images/placeholder.jpg';
+    return '/images/placeholder-post.svg';
   }
 
   // Se a URL já estiver usando o proxy, retorná-la diretamente

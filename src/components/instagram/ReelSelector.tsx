@@ -24,48 +24,65 @@ interface Reel {
 }
 
 interface ReelSelectorProps {
-  reels: Reel[];
+  reels?: Reel[];
   loading: boolean;
-  loadingMessage: string;
-  maxSelectable: number;
-  onSelect: (selectedReels: Reel[]) => void;
-  selectedReels: Reel[];
+  loadingMessage?: string;
+  maxSelectable?: number;
+  onSelect?: (selectedReels: Reel[]) => void;
+  selectedReels?: Reel[];
   serviceType?: 'reels' | 'visualizacao' | 'comentarios' | 'curtidas';
+  username?: string;
+  onSelectReels?: (selectedReels: Reel[]) => void;
+  selectedPosts?: Reel[];
+  maxReels?: number;
+  totalComments?: number;
 }
 
 export default function ReelSelector({
-  reels,
+  reels = [],
   loading,
-  loadingMessage,
+  loadingMessage = 'Carregando reels...',
   maxSelectable,
   onSelect,
-  selectedReels,
-  serviceType = 'reels'
+  selectedReels = [],
+  serviceType = 'reels',
+  onSelectReels,
+  maxReels,
+  totalComments
 }: ReelSelectorProps) {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [hoveredReel, setHoveredReel] = useState<string | null>(null);
 
+  const effectiveMaxSelectable = maxReels || maxSelectable || 1;
+  
+  const handleSelect = (reels: Reel[]) => {
+    if (onSelectReels) {
+      onSelectReels(reels);
+    } else if (onSelect) {
+      onSelect(reels);
+    }
+  };
+
   useEffect(() => {
-    // Inicializar o estado selected com base nos reels já selecionados
     const initialSelected: Record<string, boolean> = {};
-    selectedReels.forEach(reel => {
-      initialSelected[reel.id] = true;
-    });
+    if (selectedReels && Array.isArray(selectedReels)) {
+      selectedReels.forEach(reel => {
+        initialSelected[reel.id] = true;
+      });
+    }
     setSelected(initialSelected);
   }, [selectedReels]);
 
   const handleReelClick = (reel: Reel) => {
     const newSelected = { ...selected };
     
-    // Se já está selecionado, desmarcar
     if (newSelected[reel.id]) {
       delete newSelected[reel.id];
     } 
-    // Se não está selecionado, verificar se já atingiu o limite
     else {
       const selectedCount = Object.keys(newSelected).length;
-      if (selectedCount >= maxSelectable) {
-        toast.warning(`Você só pode selecionar até ${maxSelectable} reels`);
+      if (selectedCount >= effectiveMaxSelectable) {
+        toast.warning(`Você só pode selecionar até ${effectiveMaxSelectable} reels`);
         return;
       }
       newSelected[reel.id] = true;
@@ -73,9 +90,8 @@ export default function ReelSelector({
     
     setSelected(newSelected);
     
-    // Atualizar a lista de reels selecionados
     const updatedSelectedReels = reels.filter(reel => newSelected[reel.id]);
-    onSelect(updatedSelectedReels);
+    handleSelect(updatedSelectedReels);
   };
 
   const getServiceLabel = () => {
@@ -97,7 +113,8 @@ export default function ReelSelector({
     return (
       <div className="flex flex-col items-center justify-center p-8">
         <Loader2 className="h-8 w-8 animate-spin text-purple-600 mb-4" />
-        <p className="text-gray-600">{loadingMessage || 'Carregando reels...'}</p>
+        <p className="text-gray-600">{loadingMessage}</p>
+        <p className="text-sm text-gray-500 mt-2">Isso pode levar alguns segundos...</p>
       </div>
     );
   }
@@ -115,15 +132,15 @@ export default function ReelSelector({
     <div>
       <div className="mb-4 flex justify-between items-center">
         <h3 className="text-lg font-semibold">
-          Selecione até {maxSelectable} reels para receber {getServiceLabel()}
+          Selecione até {effectiveMaxSelectable} reels para receber {getServiceLabel()}
         </h3>
         <span className="text-sm text-gray-600">
-          {Object.keys(selected).length} de {maxSelectable} selecionados
+          {Object.keys(selected).length} de {effectiveMaxSelectable} selecionados
         </span>
       </div>
       
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {reels.map((reel) => {
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+        {reels.slice(0, 12).map((reel) => {
           const isSelected = !!selected[reel.id];
           const isHovered = hoveredReel === reel.id;
           
@@ -144,16 +161,14 @@ export default function ReelSelector({
                   className="w-full h-full object-cover"
                   onError={(e) => {
                     const imgElement = e.target as HTMLImageElement;
-                    imgElement.src = '/placeholder-image.png';
+                    imgElement.src = '/images/placeholder-reel.svg';
                   }}
                 />
                 
-                {/* Ícone de play para indicar que é um reel */}
                 <div className="absolute top-2 right-2 bg-black bg-opacity-60 rounded-full p-1">
                   <FontAwesomeIcon icon={faPlay} className="h-3 w-3 text-white" />
                 </div>
                 
-                {/* Overlay para reels selecionados */}
                 {isSelected && (
                   <div className="absolute inset-0 bg-purple-600 bg-opacity-30 flex items-center justify-center">
                     <div className="bg-white rounded-full p-2">
@@ -164,7 +179,6 @@ export default function ReelSelector({
                   </div>
                 )}
                 
-                {/* Overlay para hover */}
                 {isHovered && !isSelected && (
                   <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center">
                     <div className="text-white text-center">
@@ -173,7 +187,6 @@ export default function ReelSelector({
                   </div>
                 )}
                 
-                {/* Contador de visualizações/curtidas */}
                 <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs p-1 flex justify-between">
                   <span className="flex items-center">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">

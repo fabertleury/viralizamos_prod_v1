@@ -34,257 +34,406 @@ interface ScapeCreatorsResponse {
 }
 
 export async function GET(request: NextRequest) {
-  const url = new URL(request.url);
-  const username = url.searchParams.get('username');
-  const type = url.searchParams.get('type');
-  const onlyReels = type === 'reels';
+  const { searchParams } = new URL(request.url);
+  const username = searchParams.get('username');
+  const type = searchParams.get('type');
 
   if (!username) {
-    return NextResponse.json(
-      { error: 'Username não fornecido' },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: 'Username is required' }, { status: 400 });
   }
 
   try {
-    console.log(`Buscando visualizações (posts e reels) para o usuário: ${username}`);
-    
+    console.log(`Iniciando busca de visualizações para o usuário ${username}`);
+
     // Buscar posts e reels com a API do ScapeCreators
-    const [postsData, reelsData] = await Promise.all([
+    const [postsResult, reelsResult] = await Promise.all([
       fetchPostsWithScapeCreatorsAPI(username),
       fetchReelsWithScapeCreatorsAPI(username)
     ]);
     
-    // Verificar se temos dados de posts ou reels
-    const hasPosts = postsData && postsData.items && postsData.items.length > 0;
-    const hasReels = reelsData && reelsData.items && reelsData.items.length > 0;
+    // Verificar se temos erros nas respostas
+    if ('error' in postsResult && 'error' in reelsResult) {
+      console.error(`Erro ao buscar posts e reels para ${username}`);
+      return NextResponse.json({ 
+        error: 'Erro ao buscar posts e reels do Instagram' 
+      }, { status: 500 });
+    }
     
-    // Se não temos nenhum dado, retornar mensagem de erro
+    // Verificar se temos dados de posts ou reels
+    const hasPosts = postsResult.items && postsResult.items.length > 0;
+    const hasReels = reelsResult.items && reelsResult.items.length > 0;
+    
+    // Se não temos nenhum dado, retornar lista vazia
     if (!hasPosts && !hasReels) {
-      console.warn('Nenhum post ou reel encontrado para o usuário');
+      console.warn(`Nenhum post ou reel encontrado para ${username}`);
       return NextResponse.json({ 
         posts: [],
+        reels: [],
         hasPosts: false,
         hasReels: false,
         postsCount: 0,
-        reelsCount: 0,
-        message: 'Nenhum post ou reel encontrado para este perfil',
-        status: 'success'
-      }, { status: 200 });
+        reelsCount: 0
+      });
     }
     
-    // Preparar os dados para retornar
-    const result = {
-      posts: hasPosts ? postsData.items : [],
-      reels: hasReels ? reelsData.items : [],
+    console.log(`Retornando ${hasPosts ? postsResult.items.length : 0} posts e ${hasReels ? reelsResult.items.length : 0} reels para ${username}`);
+    
+    return NextResponse.json({
+      posts: hasPosts ? postsResult.items : [],
+      reels: hasReels ? reelsResult.items : [],
       hasPosts,
       hasReels,
-      postsCount: hasPosts ? postsData.items.length : 0,
-      reelsCount: hasReels ? reelsData.items.length : 0,
-      status: 'success'
-    };
-    
-    console.log(`Dados de visualização processados: { postsCount: ${result.postsCount}, reelsCount: ${result.reelsCount}, hasPosts: ${result.hasPosts}, hasReels: ${result.hasReels} }`);
-    
-    return NextResponse.json(result);
+      postsCount: hasPosts ? postsResult.items.length : 0,
+      reelsCount: hasReels ? reelsResult.items.length : 0
+    });
   } catch (error) {
-    console.error('Erro ao buscar posts e reels:', error);
+    console.error(`Erro ao processar requisição para ${username}:`, error);
     return NextResponse.json(
-      { error: 'Erro ao buscar posts e reels do Instagram' },
+      { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
 }
 
-// Cache para armazenar resultados de consultas recentes
-const postsCache = new Map();
-const reelsCache = new Map();
-const CACHE_TTL = 30 * 60 * 1000; // 30 minutos em milissegundos
-
 async function fetchPostsWithScapeCreatorsAPI(username: string) {
   try {
-    // Verificar se temos dados em cache para este usuário
-    const cachedData = postsCache.get(username);
+    console.log('Iniciando fetchPostsWithScapeCreatorsAPI para username:', username);
     
-    if (cachedData && (Date.now() - cachedData.timestamp < CACHE_TTL)) {
-      console.log(`Usando dados em cache para posts de ${username}`);
-      return cachedData.data;
-    }
+    // Obter a chave da API do ScapeCreators - usar o valor fixo da memória
+    const apiKey = "WbMAsgUCfyNxhn8FuDaqXs9hfwN2"; // Valor da memória
     
-    console.log(`Buscando posts para o usuário ${username} com ScapeCreators API`);
-    
-    // Configurar a API key do ScapeCreators
-    const apiKey = process.env.NEXT_PUBLIC_SCRAPECREATORS_API_KEY;
+    // Verificar se a chave da API está configurada
     if (!apiKey) {
-      throw new Error('NEXT_PUBLIC_SCRAPECREATORS_API_KEY não está configurada nas variáveis de ambiente');
+      console.error('Chave da API ScapeCreators não configurada');
+      return { error: 'API key not configured' };
     }
     
-    // Configurar a URL da API
+    console.log('API Key configurada:', apiKey.substring(0, 5) + '...');
+    
+    // URL da API - corrigida para v2 conforme documentação
     const apiUrl = 'https://api.scrapecreators.com/v2/instagram/user/posts';
     
-    // Fazer a requisição para a API ScapeCreators
+    console.log('Fazendo requisição para a API ScapeCreators:', apiUrl);
+    console.log('Parâmetros:', { handle: username, limit: 50 });
+    
+    // Fazer a requisição para a API
     const response = await axios.get(apiUrl, {
       params: {
-        handle: username
+        handle: username,
+        limit: 50
       },
       headers: {
         'x-api-key': apiKey
       },
-      timeout: 30000 // 30 segundos de timeout
+      timeout: 60000
     });
     
-    // Verificar se a resposta tem o formato esperado
+    console.log('Resposta recebida da API ScapeCreators');
+    console.log('Status da resposta:', response.status);
+    
+    // Verificar se temos dados na resposta
     if (!response.data) {
-      console.log('Nenhum post encontrado para o usuário ' + username + ' com ScapeCreators API');
-      return { items: [] };
+      console.error('Resposta da API ScapeCreators sem dados');
+      return { error: 'No data in response' };
     }
     
-    // Processar os posts para o formato esperado pela aplicação
-    const processedData = processScapeCreatorsPostsResponse(response.data);
+    // Log da estrutura da resposta
+    console.log('Estrutura da resposta:', Object.keys(response.data));
+    console.log('Quantidade de itens na resposta:', response.data.items?.length || 0);
     
-    // Armazenar em cache
-    postsCache.set(username, {
-      data: processedData,
-      timestamp: Date.now()
-    });
+    // Se temos itens, mostrar um exemplo
+    if (response.data.items && response.data.items.length > 0) {
+      console.log('Exemplo de item na resposta:', JSON.stringify(response.data.items[0], null, 2));
+    }
     
-    return processedData;
+    // Filtrar apenas os posts da resposta (não reels)
+    const postsOnly = {
+      ...response.data,
+      items: response.data.items.filter((item: any) => {
+        // Filtrar apenas itens que não são reels/vídeos
+        const isNotReel = 
+          item.media_type !== 2 && 
+          item.product_type !== 'clips' && 
+          item.is_video !== true &&
+          !(item.video_versions && item.video_versions.length > 0) &&
+          !(item.video_url && item.video_url.length > 0) &&
+          !(item.video_dash_manifest && item.video_dash_manifest.length > 0);
+        
+        // Log detalhado para debug
+        console.log(`Item ${item.id || item.pk}: isNotReel=${isNotReel}, media_type=${item.media_type}, product_type=${item.product_type}, is_video=${item.is_video}`);
+        
+        return isNotReel;
+      })
+    };
+    
+    console.log(`Filtrados ${postsOnly.items.length} posts de ${response.data.items.length} itens`);
+    
+    // Processar a resposta para o formato esperado pela aplicação
+    const processedResponse = processPostsResponse(postsOnly);
+    
+    console.log(`Retornando ${processedResponse.items.length} posts processados`);
+    
+    return processedResponse;
   } catch (error) {
     console.error('Erro ao buscar posts com ScapeCreators API:', error);
-    return { items: [] };
+    
+    // Log detalhado do erro
+    if (axios.isAxiosError(error)) {
+      console.error('Detalhes do erro Axios:');
+      console.error('Status:', error.response?.status);
+      console.error('Dados:', error.response?.data);
+      console.error('Cabeçalhos:', error.response?.headers);
+      console.error('Configuração:', error.config);
+    }
+    
+    return { error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
 async function fetchReelsWithScapeCreatorsAPI(username: string) {
   try {
-    // Verificar se temos dados em cache para este usuário
-    const cachedData = reelsCache.get(username);
+    console.log('Iniciando fetchReelsWithScapeCreatorsAPI para username:', username);
     
-    if (cachedData && (Date.now() - cachedData.timestamp < CACHE_TTL)) {
-      console.log(`Usando dados em cache para reels de ${username}`);
-      return cachedData.data;
-    }
+    // Obter a chave da API do ScapeCreators - usar o valor fixo da memória
+    const apiKey = "WbMAsgUCfyNxhn8FuDaqXs9hfwN2"; // Valor da memória
     
-    console.log(`Buscando reels para o usuário ${username} com ScapeCreators API`);
-    
-    // Configurar a API key do ScapeCreators
-    const apiKey = process.env.NEXT_PUBLIC_SCRAPECREATORS_API_KEY;
+    // Verificar se a chave da API está configurada
     if (!apiKey) {
-      throw new Error('NEXT_PUBLIC_SCRAPECREATORS_API_KEY não está configurada nas variáveis de ambiente');
+      console.error('Chave da API ScapeCreators não configurada');
+      return { error: 'API key not configured' };
     }
     
-    // Configurar a URL da API - Usando o endpoint correto para reels
-    const apiUrl = 'https://api.scrapecreators.com/v1/instagram/user/reels';
+    console.log('API Key configurada:', apiKey.substring(0, 5) + '...');
     
-    // Fazer a requisição para a API ScapeCreators
+    // URL da API - corrigida para v2 conforme documentação
+    const apiUrl = 'https://api.scrapecreators.com/v2/instagram/user/posts';
+    
+    console.log('Fazendo requisição para a API ScapeCreators:', apiUrl);
+    console.log('Parâmetros:', { handle: username, limit: 50 });
+    
+    // Fazer a requisição para a API
     const response = await axios.get(apiUrl, {
       params: {
-        user_id: username
+        handle: username,
+        limit: 50
       },
       headers: {
         'x-api-key': apiKey
       },
-      timeout: 30000 // 30 segundos de timeout
+      timeout: 60000
     });
     
-    // Verificar se a resposta tem o formato esperado
-    if (!response.data || !response.data.items || !Array.isArray(response.data.items)) {
-      console.log('Nenhum reel encontrado para o usuário ' + username + ' com ScapeCreators API');
-      return { items: [] };
+    console.log('Resposta recebida da API ScapeCreators');
+    console.log('Status da resposta:', response.status);
+    
+    // Verificar se temos dados na resposta
+    if (!response.data) {
+      console.error('Resposta da API ScapeCreators sem dados');
+      return { error: 'No data in response' };
     }
     
-    // Processar os reels para o formato esperado pela aplicação
-    const processedData = processScapeCreatorsReelsResponse(response.data);
+    // Log da estrutura da resposta
+    console.log('Estrutura da resposta:', Object.keys(response.data));
+    console.log('Quantidade de itens na resposta:', response.data.items?.length || 0);
     
-    // Armazenar em cache
-    reelsCache.set(username, {
-      data: processedData,
-      timestamp: Date.now()
-    });
+    // Se temos itens, mostrar um exemplo
+    if (response.data.items && response.data.items.length > 0) {
+      console.log('Exemplo de item na resposta:', JSON.stringify(response.data.items[0], null, 2));
+    }
     
-    return processedData;
+    // Filtrar apenas os reels da resposta
+    const reelsOnly = {
+      ...response.data,
+      items: response.data.items.filter((item: any) => {
+        // Filtrar apenas itens que são reels/vídeos
+        const isReel = 
+          item.media_type === 2 || 
+          item.product_type === 'clips' || 
+          item.is_video === true ||
+          (item.video_versions && item.video_versions.length > 0) ||
+          (item.video_url && item.video_url.length > 0) ||
+          (item.video_dash_manifest && item.video_dash_manifest.length > 0);
+        
+        // Log detalhado para debug
+        if (isReel) {
+          console.log(`Item ${item.id || item.pk}: identificado como REEL`);
+          console.log(`  media_type: ${item.media_type}, product_type: ${item.product_type}`);
+          console.log(`  is_video: ${item.is_video}, tem video_versions: ${!!(item.video_versions && item.video_versions.length > 0)}`);
+        }
+        
+        return isReel;
+      })
+    };
+    
+    console.log(`Filtrados ${reelsOnly.items.length} reels de ${response.data.items.length} itens`);
+    
+    // Processar a resposta para o formato esperado pela aplicação
+    const processedResponse = processReelsResponse(reelsOnly);
+    
+    console.log(`Retornando ${processedResponse.items.length} reels processados`);
+    
+    return processedResponse;
   } catch (error) {
     console.error('Erro ao buscar reels com ScapeCreators API:', error);
-    return { items: [] };
+    
+    // Log detalhado do erro
+    if (axios.isAxiosError(error)) {
+      console.error('Detalhes do erro Axios:');
+      console.error('Status:', error.response?.status);
+      console.error('Dados:', error.response?.data);
+      console.error('Cabeçalhos:', error.response?.headers);
+      console.error('Configuração:', error.config);
+    }
+    
+    return { error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
-function processScapeCreatorsPostsResponse(data: any): any {
-  // Verificar se temos os itens na resposta
-  if (!data.items || !Array.isArray(data.items)) {
-    return { items: [] };
+// Processar resposta de posts da ScapeCreators API
+const processPostsResponse = (data: any) => {
+  console.log('Processando resposta de posts da ScapeCreators API');
+  
+  if (!data || !data.items || !Array.isArray(data.items)) {
+    console.error('Formato de resposta inválido para posts:', data);
+    return { items: [], more_available: false, next_max_id: null };
   }
   
-  // Filtrar apenas posts (não reels)
-  const postsOnly = data.items.filter((item: any) => {
-    const isReel = item.media_type === 2 || item.product_type === 'clips' || 
-                  (item.video_url && item.video_duration > 0) ||
-                  (item.is_video === true);
-    return !isReel;
-  });
+  console.log(`Processando ${data.items.length} posts da resposta`);
   
-  // Processar cada item para o formato esperado pela aplicação
-  const processedItems = postsOnly.map((item: any) => {
-    return {
-      id: item.id,
-      code: item.shortcode || item.code,
-      shortcode: item.shortcode || item.code,
-      media_type: item.media_type || 1,
-      is_video: false,
-      is_carousel: item.carousel_media_count > 0 || item.carousel_media?.length > 0,
-      is_reel: false,
-      like_count: item.like_count || 0,
-      comment_count: item.comment_count || 0,
-      views_count: 0,
-      caption: typeof item.caption === 'string' ? { text: item.caption } : item.caption,
-      image_url: item.display_url || item.thumbnail_src,
-      display_url: item.display_url || item.thumbnail_src,
-      thumbnail_url: item.thumbnail_src || item.display_url,
-      link: item.permalink || `https://www.instagram.com/p/${item.shortcode || item.code}/`,
-      carousel_media: item.carousel_media,
-      carousel_media_count: item.carousel_media_count
-    };
-  });
-  
-  return {
-    items: processedItems,
-    num_results: processedItems.length,
-    more_available: data.more_available
-  };
-}
-
-function processScapeCreatorsReelsResponse(data: any): any {
-  // Verificar se temos os itens na resposta
-  if (!data.items || !Array.isArray(data.items)) {
-    return { items: [] };
-  }
-  
-  // Processar cada item para o formato esperado pela aplicação
   const processedItems = data.items.map((item: any) => {
-    return {
+    // Extrair URL da imagem
+    const imageUrl = item.display_url || 
+                    item.thumbnail_url || 
+                    item.image_url || 
+                    (item.image_versions2?.candidates?.[0]?.url);
+    
+    // Extrair código/shortcode para URL
+    const code = item.shortcode || 
+                item.code || 
+                (item.permalink ? item.permalink.split('/').filter(Boolean).pop() : null) || 
+                item.id;
+    
+    // Extrair legenda
+    const caption = item.caption?.text || 
+                   item.edge_media_to_caption?.edges?.[0]?.node?.text || 
+                   item.caption || 
+                   '';
+    
+    // Extrair contadores
+    const likeCount = item.like_count || 
+                     item.likes?.count || 
+                     item.edge_liked_by?.count || 
+                     item.edge_media_preview_like?.count || 
+                     0;
+    
+    const commentCount = item.comment_count || 
+                        item.comments?.count || 
+                        item.edge_media_to_comment?.count || 
+                        0;
+    
+    // Criar objeto de post processado
+    const processedItem = {
       id: item.id || item.pk,
-      code: item.code,
-      shortcode: item.code,
-      media_type: 2, // Reels são sempre vídeos
-      is_video: true,
-      is_carousel: false,
-      is_reel: true,
-      like_count: item.like_count || 0,
-      comment_count: item.comment_count || 0,
-      views_count: item.play_count || item.view_count || 0,
-      caption: item.caption,
-      image_url: item.display_uri || item.image_versions2?.candidates?.[0]?.url,
-      display_url: item.display_uri || item.image_versions2?.candidates?.[0]?.url,
-      thumbnail_url: item.display_uri || item.image_versions2?.candidates?.[0]?.url,
-      link: `https://www.instagram.com/reel/${item.code}/`,
-      video_url: item.video_versions?.[0]?.url,
-      product_type: 'clips'
+      code: code,
+      shortcode: item.shortcode || code,
+      image_url: imageUrl,
+      thumbnail_url: imageUrl,
+      display_url: imageUrl,
+      caption: caption,
+      like_count: likeCount,
+      comment_count: commentCount,
+      is_reel: false
     };
+    
+    // Log detalhado para depuração
+    console.log(`Post processado: id=${processedItem.id}, code=${processedItem.code}`);
+    
+    return processedItem;
   });
   
   return {
     items: processedItems,
-    num_results: processedItems.length,
-    more_available: data.more_available
+    more_available: data.more_available || false,
+    next_max_id: data.next_max_id || null
   };
-}
+};
+
+// Processar resposta de reels da ScapeCreators API
+const processReelsResponse = (data: any) => {
+  console.log('Processando resposta de reels da ScapeCreators API');
+  
+  if (!data || !data.items || !Array.isArray(data.items)) {
+    console.error('Formato de resposta inválido para reels:', data);
+    return { items: [], more_available: false, next_max_id: null };
+  }
+  
+  console.log(`Processando ${data.items.length} reels da resposta`);
+  
+  const processedItems = data.items.map((item: any) => {
+    // Extrair URL do vídeo ou thumbnail
+    const videoUrl = item.video_url || 
+                    (item.video_versions && item.video_versions.length > 0 ? item.video_versions[0].url : null);
+    
+    // Extrair URL da thumbnail
+    const thumbnailUrl = item.thumbnail_url || 
+                        item.image_url || 
+                        item.display_url || 
+                        (item.image_versions2?.candidates?.[0]?.url);
+    
+    // Extrair código/shortcode para URL
+    const code = item.shortcode || 
+                item.code || 
+                (item.permalink ? item.permalink.split('/').filter(Boolean).pop() : null) || 
+                item.id;
+    
+    // Extrair legenda
+    const caption = item.caption?.text || 
+                   item.edge_media_to_caption?.edges?.[0]?.node?.text || 
+                   item.caption || 
+                   '';
+    
+    // Extrair contadores
+    const viewCount = item.view_count || 
+                     item.video_view_count || 
+                     item.play_count || 
+                     0;
+    
+    const likeCount = item.like_count || 
+                     item.likes?.count || 
+                     item.edge_liked_by?.count || 
+                     item.edge_media_preview_like?.count || 
+                     0;
+    
+    const commentCount = item.comment_count || 
+                        item.comments?.count || 
+                        item.edge_media_to_comment?.count || 
+                        0;
+    
+    // Criar objeto de reel processado
+    const processedItem = {
+      id: item.id || item.pk,
+      code: code,
+      shortcode: item.shortcode || code,
+      image_url: thumbnailUrl,
+      thumbnail_url: thumbnailUrl,
+      display_url: thumbnailUrl,
+      video_url: videoUrl,
+      caption: caption,
+      like_count: likeCount,
+      comment_count: commentCount,
+      view_count: viewCount,
+      is_reel: true
+    };
+    
+    // Log detalhado para depuração
+    console.log(`Reel processado: id=${processedItem.id}, code=${processedItem.code}`);
+    
+    return processedItem;
+  });
+  
+  return {
+    items: processedItems,
+    more_available: data.more_available || false,
+    next_max_id: data.next_max_id || null
+  };
+};

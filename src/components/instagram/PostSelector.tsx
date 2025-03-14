@@ -21,29 +21,47 @@ interface Post {
 }
 
 interface PostSelectorProps {
-  posts: Post[];
+  posts?: Post[];
   loading: boolean;
-  loadingMessage: string;
-  maxSelectable: number;
-  onSelect: (selectedPosts: Post[]) => void;
-  selectedPosts: Post[];
+  loadingMessage?: string;
+  maxSelectable?: number;
+  onSelect?: (selectedPosts: Post[]) => void;
+  selectedPosts?: Post[];
   serviceType?: 'curtidas' | 'visualizacao' | 'comentarios';
+  username?: string;
+  onPostSelect?: (selectedPosts: Post[]) => void;
+  selectedReels?: Post[];
+  maxPosts?: number;
+  service?: any;
+  totalComments?: number;
 }
 
 export default function PostSelector({
-  posts,
+  posts = [],
   loading,
-  loadingMessage,
+  loadingMessage = 'Carregando posts...',
   maxSelectable,
   onSelect,
-  selectedPosts,
-  serviceType = 'curtidas'
+  selectedPosts = [],
+  serviceType = 'curtidas',
+  onPostSelect,
+  maxPosts,
+  totalComments
 }: PostSelectorProps) {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [hoveredPost, setHoveredPost] = useState<string | null>(null);
 
+  const effectiveMaxSelectable = maxPosts || maxSelectable || 1;
+
+  const handleSelect = (posts: Post[]) => {
+    if (onPostSelect) {
+      onPostSelect(posts);
+    } else if (onSelect) {
+      onSelect(posts);
+    }
+  };
+
   useEffect(() => {
-    // Inicializar o estado selected com base nos posts já selecionados
     const initialSelected: Record<string, boolean> = {};
     selectedPosts.forEach(post => {
       initialSelected[post.id] = true;
@@ -53,26 +71,22 @@ export default function PostSelector({
 
   const handlePostClick = (post: Post) => {
     const newSelected = { ...selected };
-    
-    // Se já está selecionado, desmarcar
+
     if (newSelected[post.id]) {
       delete newSelected[post.id];
-    } 
-    // Se não está selecionado, verificar se já atingiu o limite
-    else {
+    } else {
       const selectedCount = Object.keys(newSelected).length;
-      if (selectedCount >= maxSelectable) {
-        toast.warning(`Você só pode selecionar até ${maxSelectable} posts`);
+      if (selectedCount >= effectiveMaxSelectable) {
+        toast.warning(`Você só pode selecionar até ${effectiveMaxSelectable} posts`);
         return;
       }
       newSelected[post.id] = true;
     }
-    
+
     setSelected(newSelected);
-    
-    // Atualizar a lista de posts selecionados
+
     const updatedSelectedPosts = posts.filter(post => newSelected[post.id]);
-    onSelect(updatedSelectedPosts);
+    handleSelect(updatedSelectedPosts);
   };
 
   const getServiceLabel = () => {
@@ -92,7 +106,8 @@ export default function PostSelector({
     return (
       <div className="flex flex-col items-center justify-center p-8">
         <Loader2 className="h-8 w-8 animate-spin text-purple-600 mb-4" />
-        <p className="text-gray-600">{loadingMessage || 'Carregando posts...'}</p>
+        <p className="text-gray-600">{loadingMessage}</p>
+        <p className="text-sm text-gray-500 mt-2">Isso pode levar alguns segundos...</p>
       </div>
     );
   }
@@ -110,20 +125,20 @@ export default function PostSelector({
     <div>
       <div className="mb-4 flex justify-between items-center">
         <h3 className="text-lg font-semibold">
-          Selecione até {maxSelectable} posts para receber {getServiceLabel()}
+          Selecione até {effectiveMaxSelectable} posts para receber {getServiceLabel()}
         </h3>
         <span className="text-sm text-gray-600">
-          {Object.keys(selected).length} de {maxSelectable} selecionados
+          {Object.keys(selected).length} de {effectiveMaxSelectable} selecionados
         </span>
       </div>
-      
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {posts.map((post) => {
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+        {posts.slice(0, 12).map((post) => {
           const isSelected = !!selected[post.id];
           const isHovered = hoveredPost === post.id;
-          
+
           return (
-            <Card 
+            <Card
               key={post.id}
               className={`overflow-hidden cursor-pointer transition-all duration-200 ${
                 isSelected ? 'ring-2 ring-purple-500 scale-[1.02]' : ''
@@ -139,10 +154,10 @@ export default function PostSelector({
                   className="w-full h-full object-cover"
                   onError={(e) => {
                     const imgElement = e.target as HTMLImageElement;
-                    imgElement.src = '/placeholder-image.png';
+                    imgElement.src = '/images/placeholder-post.svg';
                   }}
                 />
-                
+
                 {/* Overlay para posts selecionados */}
                 {isSelected && (
                   <div className="absolute inset-0 bg-purple-600 bg-opacity-30 flex items-center justify-center">
@@ -153,7 +168,7 @@ export default function PostSelector({
                     </div>
                   </div>
                 )}
-                
+
                 {/* Overlay para hover */}
                 {isHovered && !isSelected && (
                   <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center">
@@ -162,7 +177,7 @@ export default function PostSelector({
                     </div>
                   </div>
                 )}
-                
+
                 {/* Contador de curtidas */}
                 <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs p-1 flex justify-between">
                   <span className="flex items-center">
