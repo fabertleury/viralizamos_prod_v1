@@ -300,7 +300,7 @@ export default function CurtidasPage() {
 
                           {isServiceSelected(service.id) && (
                             <Link 
-                              href={`/checkout/instagram/curtidas/step1?service_id=${service.id}&quantity=${selectedServices[service.id]}`}
+                              href={`/checkout/instagram-v2/curtidas/step1?service_id=${service.id}&quantity=${selectedServices[service.id]}`}
                               className="w-full mt-auto"
                             >
                               <Button 

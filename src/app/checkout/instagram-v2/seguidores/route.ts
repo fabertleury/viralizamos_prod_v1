@@ -29,10 +29,10 @@ export async function GET(request: NextRequest) {
     console.log(`Buscando informações do perfil para o usuário: ${username}`);
     
     // Buscar informações do perfil com a API do ScapeCreators
-    const profileData = await fetchWithScapeCreatorsAPI(username);
+    const profileData = await fetchProfileWithScapeCreatorsAPI(username);
     
     if (!profileData) {
-      console.warn(`Nenhuma informação de perfil encontrada para o usuário`);
+      console.warn(`Nenhuma informação de perfil encontrada para o usuário ${username}`);
       return NextResponse.json({ 
         profile: null,
         hasProfile: false,
@@ -59,11 +59,10 @@ export async function GET(request: NextRequest) {
 const profileCache = new Map();
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutos em milissegundos
 
-async function fetchWithScapeCreatorsAPI(username: string) {
+async function fetchProfileWithScapeCreatorsAPI(username: string) {
   try {
     // Verificar se temos dados em cache para este usuário
-    const cacheKey = `${username}_profile`;
-    const cachedData = profileCache.get(cacheKey);
+    const cachedData = profileCache.get(username);
     
     if (cachedData && (Date.now() - cachedData.timestamp < CACHE_TTL)) {
       console.log(`Usando dados em cache para o perfil de ${username}`);
@@ -78,8 +77,8 @@ async function fetchWithScapeCreatorsAPI(username: string) {
       throw new Error('NEXT_PUBLIC_SCRAPECREATORS_API_KEY não está configurada nas variáveis de ambiente');
     }
     
-    // Configurar a URL da API - usamos o endpoint de informações do usuário
-    const apiUrl = `https://api.scrapecreators.com/v2/instagram/user/info`;
+    // Configurar a URL da API - endpoint específico para informações do usuário
+    const apiUrl = 'https://api.scrapecreators.com/v2/instagram/user/info';
     
     // Fazer a requisição para a API ScapeCreators
     const response = await axios.get(apiUrl, {
@@ -92,11 +91,10 @@ async function fetchWithScapeCreatorsAPI(username: string) {
       timeout: 30000 // 30 segundos de timeout
     });
     
-    console.log('Resposta da ScapeCreators API recebida');
-    
     // Verificar se a resposta tem o formato esperado
     if (!response.data || !response.data.user) {
-      throw new Error('Resposta vazia ou inválida da API ScapeCreators');
+      console.log('Nenhuma informação de perfil encontrada para o usuário ' + username + ' com ScapeCreators API');
+      return null;
     }
     
     // Processar os dados do perfil para o formato esperado pela aplicação
@@ -114,14 +112,14 @@ async function fetchWithScapeCreatorsAPI(username: string) {
     };
     
     // Armazenar em cache
-    profileCache.set(cacheKey, {
+    profileCache.set(username, {
       data: profileData,
       timestamp: Date.now()
     });
     
     return profileData;
   } catch (error) {
-    console.error('Erro ao buscar dados com ScapeCreators API:', error);
-    throw error;
+    console.error('Erro ao buscar dados do perfil com ScapeCreators API:', error);
+    return null;
   }
 }

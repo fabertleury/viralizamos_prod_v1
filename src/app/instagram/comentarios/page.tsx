@@ -306,7 +306,7 @@ export default function ComentariosPage() {
 
                       {isServiceSelected(service.id) && (
                         <Link 
-                          href={`/checkout/instagram/comentarios/step1?service_id=${service.id}&quantity=${selectedServices[service.id]}`}
+                          href={`/checkout/instagram-v2/comentarios/step1?service_id=${service.id}&quantity=${selectedServices[service.id]}`}
                           className="w-full mt-auto"
                         >
                           <Button 

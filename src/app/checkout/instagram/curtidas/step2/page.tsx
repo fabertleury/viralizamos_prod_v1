@@ -506,7 +506,7 @@ export default function Step2Page() {
           
           // Redirecionar para a etapa anterior após um breve atraso
           setTimeout(() => {
-            window.location.href = '/checkout/instagram/curtidas/step1';
+            window.location.href = '/checkout/instagram-v2/curtidas/step1';
           }, 2000);
           
           return;
@@ -529,7 +529,7 @@ export default function Step2Page() {
           
           // Redirecionar para a etapa anterior após um breve atraso
           setTimeout(() => {
-            window.location.href = '/checkout/instagram/curtidas/step1';
+            window.location.href = '/checkout/instagram-v2/curtidas/step1';
           }, 2000);
           
           return;
@@ -595,7 +595,7 @@ export default function Step2Page() {
         
         // Redirecionar para a etapa anterior após um breve atraso
         setTimeout(() => {
-          window.location.href = '/checkout/instagram/curtidas/step1';
+          window.location.href = '/checkout/instagram-v2/curtidas/step1';
         }, 2000);
       }
     } catch (error) {
@@ -604,7 +604,7 @@ export default function Step2Page() {
       
       // Redirecionar para a etapa anterior após um breve atraso
       setTimeout(() => {
-        window.location.href = '/checkout/instagram/curtidas/step1';
+        window.location.href = '/checkout/instagram-v2/curtidas/step1';
       }, 2000);
     }
   }, [reelsLoaded]);

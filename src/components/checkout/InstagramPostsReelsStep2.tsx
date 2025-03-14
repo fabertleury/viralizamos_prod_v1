@@ -224,8 +224,27 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
     }, 60000);
     
     try {
-      // Usar a nova API de visualização que combina posts e reels
-      const response = await fetch(`/api/instagram/visualizacao/${username}`, {
+      // Usar a nova rota de checkout para buscar dados
+      let apiUrl = '';
+      
+      // Determinar qual rota usar com base no tipo de serviço
+      switch (serviceType) {
+        case 'curtidas':
+          apiUrl = `/checkout/instagram-v2/curtidas?username=${username}`;
+          break;
+        case 'comentarios':
+          apiUrl = `/checkout/instagram-v2/comentarios?username=${username}`;
+          break;
+        case 'visualizacao':
+          apiUrl = `/checkout/instagram-v2/visualizacao?username=${username}`;
+          break;
+        default:
+          apiUrl = `/checkout/instagram-v2/curtidas?username=${username}`;
+      }
+      
+      console.log(`Buscando dados do Instagram em: ${apiUrl}`);
+      
+      const response = await fetch(apiUrl, {
         signal: controller.signal
       });
       
@@ -250,74 +269,103 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
         return null;
       }
       
-      // Verificar se temos mensagens de erro específicas da API
-      if (data.message) {
-        if (data.fromCache) {
-          console.log(`Usando dados em cache (${data.cacheAge}s atrás)`);
-        }
-        
-        // Exibir mensagem específica se não houver posts ou reels
-        if (!data.hasPosts && !data.hasReels) {
-          setError(`@${username} não possui posts ou reels públicos. Verifique se o nome de usuário está correto e se o perfil é público.`);
-        }
-      }
-      
       // Processar posts - verificar se posts existe e qual seu formato
       if (data.posts) {
         console.log('Tipo de data.posts:', typeof data.posts);
+        console.log('Quantidade de posts:', Array.isArray(data.posts) ? data.posts.length : 'não é array');
         
-        // Se posts for um array, usar diretamente
         if (Array.isArray(data.posts)) {
-          console.log('Posts recebidos como array:', data.posts.length);
-          setInstagramPosts(data.posts);
-        } 
-        // Se posts for um objeto com propriedades, pode ser que a API tenha mudado o formato
-        else if (typeof data.posts === 'object') {
-          console.log('Posts recebidos como objeto:', Object.keys(data.posts));
-          // Verificar se há uma propriedade que contém os posts
-          if (data.posts.items && Array.isArray(data.posts.items)) {
-            console.log('Posts encontrados em data.posts.items:', data.posts.items.length);
-            setInstagramPosts(data.posts.items);
-          } else {
-            console.error('Formato de posts desconhecido:', data.posts);
-            setInstagramPosts([]);
-          }
+          // Processar os posts
+          const formattedPosts = data.posts.map((post: any) => {
+            // Verificar se o post já tem o formato esperado
+            if (post.id && post.image_url) {
+              return {
+                ...post,
+                code: extractPostCode(post),
+                is_reel: false
+              };
+            }
+            
+            // Caso contrário, formatar o post
+            return {
+              id: post.id || post.shortcode || String(Math.random()),
+              code: extractPostCode(post),
+              shortcode: post.shortcode || post.code || '',
+              image_url: post.thumbnail_url || post.display_url || post.image || '',
+              caption: post.caption || post.text || '',
+              like_count: post.like_count || post.likes || 0,
+              comment_count: post.comment_count || post.comments || 0,
+              thumbnail_url: post.thumbnail_url || post.display_url || post.image || '',
+              display_url: post.display_url || post.thumbnail_url || post.image || '',
+              is_reel: false
+            };
+          });
+          
+          console.log(`${formattedPosts.length} posts formatados`);
+          setInstagramPosts(formattedPosts);
         } else {
-          console.error('Formato de posts desconhecido:', data.posts);
+          console.error('data.posts não é um array:', data.posts);
           setInstagramPosts([]);
         }
       } else {
-        console.log('Nenhum post recebido');
+        console.log('Nenhum post encontrado');
         setInstagramPosts([]);
       }
       
-      // Processar reels - verificar se reels existe e qual seu formato
+      // Processar reels
       if (data.reels) {
         console.log('Tipo de data.reels:', typeof data.reels);
+        console.log('Quantidade de reels:', Array.isArray(data.reels) ? data.reels.length : 'não é array');
         
-        // Se reels for um array, usar diretamente
         if (Array.isArray(data.reels)) {
-          console.log('Reels recebidos como array:', data.reels.length);
-          setInstagramReels(data.reels);
-        } 
-        // Se reels for um objeto com propriedades, pode ser que a API tenha mudado o formato
-        else if (typeof data.reels === 'object') {
-          console.log('Reels recebidos como objeto:', Object.keys(data.reels));
-          // Verificar se há uma propriedade que contém os reels
-          if (data.reels.items && Array.isArray(data.reels.items)) {
-            console.log('Reels encontrados em data.reels.items:', data.reels.items.length);
-            setInstagramReels(data.reels.items);
-          } else {
-            console.error('Formato de reels desconhecido:', data.reels);
-            setInstagramReels([]);
-          }
+          // Processar os reels
+          const formattedReels = data.reels.map((reel: any) => {
+            // Verificar se o reel já tem o formato esperado
+            if (reel.id && reel.image_url) {
+              return {
+                ...reel,
+                code: extractPostCode(reel),
+                is_reel: true
+              };
+            }
+            
+            // Caso contrário, formatar o reel
+            return {
+              id: reel.id || reel.shortcode || String(Math.random()),
+              code: extractPostCode(reel),
+              shortcode: reel.shortcode || reel.code || '',
+              image_url: reel.thumbnail_url || reel.display_url || reel.image || '',
+              caption: reel.caption || reel.text || '',
+              like_count: reel.like_count || reel.likes || 0,
+              comment_count: reel.comment_count || reel.comments || 0,
+              view_count: reel.view_count || reel.views || 0,
+              thumbnail_url: reel.thumbnail_url || reel.display_url || reel.image || '',
+              display_url: reel.display_url || reel.thumbnail_url || reel.image || '',
+              is_reel: true
+            };
+          });
+          
+          console.log(`${formattedReels.length} reels formatados`);
+          setInstagramReels(formattedReels);
         } else {
-          console.error('Formato de reels desconhecido:', data.reels);
+          console.error('data.reels não é um array:', data.reels);
           setInstagramReels([]);
         }
       } else {
-        console.log('Nenhum reel recebido');
+        console.log('Nenhum reel encontrado');
         setInstagramReels([]);
+      }
+      
+      // Atualizar o estado do perfil se disponível
+      if (data.profile) {
+        setProfileData({
+          username: data.profile.username || username,
+          full_name: data.profile.full_name || data.profile.fullName || '',
+          profile_pic_url: data.profile.profile_pic_url || data.profile.profilePicUrl || '',
+          follower_count: data.profile.followers_count || data.profile.followers || 0,
+          following_count: data.profile.following_count || data.profile.following || 0,
+          is_private: data.profile.is_private || data.profile.isPrivate || false
+        });
       }
       
       // Atualizar flags de carregamento
@@ -343,6 +391,37 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
       setReelsLoaded(true);
       
       return null;
+    }
+  };
+
+  // Buscar reels separadamente se necessário
+  const fetchReels = async (username: string) => {
+    setLoadingReels(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`/checkout/instagram-v2/reels?username=${username}`);
+      
+      if (!response.ok) {
+        throw new Error(`Erro ao buscar reels: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data && data.reels && Array.isArray(data.reels)) {
+        console.log(`${data.reels.length} reels encontrados`);
+        setInstagramReels(data.reels);
+      } else {
+        console.log('Nenhum reel encontrado');
+        setInstagramReels([]);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar reels:', error);
+      setInstagramReels([]);
+      setError("Não foi possível obter os reels do Instagram. Por favor, tente novamente mais tarde.");
+    } finally {
+      setReelsLoaded(true);
+      setLoadingReels(false);
     }
   };
 
@@ -956,16 +1035,17 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
       )}
 
       {/* Mensagem quando não há posts ou reels */}
-      {!error && postsLoaded && reelsLoaded && instagramPosts.length === 0 && instagramReels.length === 0 && username && (
-        <div className="mt-6 p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex items-start">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-500 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <p className="font-medium text-yellow-800">Nenhum conteúdo encontrado</p>
-              <p className="mt-1 text-sm text-yellow-700">
-                Não encontramos posts ou reels públicos para @{username}. Verifique se o nome de usuário está correto e se o perfil é público.
+      {!error && postsLoaded && reelsLoaded && instagramPosts.length === 0 && instagramReels.length === 0 && profileData?.username && (
+        <div className="mt-6 text-center">
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+            <div className="flex flex-col items-center justify-center">
+              <div className="text-yellow-600 mb-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <p className="text-sm text-gray-600">
+                Não encontramos posts ou reels públicos para @{profileData.username}. Verifique se o nome de usuário está correto e se o perfil é público.
               </p>
             </div>
           </div>

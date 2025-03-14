@@ -84,7 +84,7 @@ export function LikesPackages() {
 
   const handleBuyNow = () => {
     if (!selectedService) return;
-    router.push(`/checkout/instagram/curtidas/step1?service_id=${selectedService.id}`);
+    router.push(`/checkout/instagram-v2/curtidas/step1?service_id=${selectedService.id}`);
   };
 
   if (loading) {

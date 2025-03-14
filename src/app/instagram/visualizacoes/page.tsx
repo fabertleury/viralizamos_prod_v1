@@ -305,7 +305,7 @@ export default function VisualizacoesPage() {
 
                       {isServiceSelected(service.id) && (
                         <Link 
-                          href={`/checkout/instagram/${service.type === 'reels' ? 'reels' : 'visualizacao'}/step1?service_id=${service.id}&quantity=${selectedServices[service.id]}`}
+                          href={`/checkout/instagram-v2/${service.type === 'reels' ? 'reels' : 'visualizacao'}/step1?service_id=${service.id}&quantity=${selectedServices[service.id]}`}
                           className="w-full mt-auto"
                         >
                           <Button 
