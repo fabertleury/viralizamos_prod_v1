@@ -4,18 +4,17 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import PostSelector from '@/components/instagram/curtidas/PostSelector';
-import ReelSelector from '@/components/instagram/curtidas/ReelSelector';
+import PostSelector from '@/components/instagram/PostSelector';
+import ReelSelector from '@/components/instagram/ReelSelector';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import { getProxiedImageUrl } from '../../utils/proxy-image';
+import { getProxiedImageUrl } from '@/app/checkout/instagram-v2/utils/proxy-image';
 import { PaymentPixModal } from '@/components/payment/PaymentPixModal';
 import { CouponInput } from '@/components/checkout/CouponInput';
 import axios from 'axios';
-import { useInstagramAPI } from '@/hooks/useInstagramAPI';
 
 interface ProfileData {
   username: string;
@@ -44,20 +43,17 @@ interface Post {
   comment_count?: number;
   thumbnail_url?: string;
   display_url?: string;
-  image_versions?: any;
+  is_reel?: boolean;
+  view_count?: number;
 }
 
-interface InstagramPost {
-  id: string;
-  code: string;
-  shortcode: string;
-  image_url: string;
-  caption?: string;
+interface InstagramPostsReelsStep2Props {
+  serviceType: 'curtidas' | 'visualizacao' | 'comentarios';
+  title: string;
 }
 
-export default function Step2Page() {
+export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsReelsStep2Props) {
   const router = useRouter();
-  const { fetchInstagramPosts: fetchPostsFromAPI, fetchInstagramReels: fetchReelsFromAPI } = useInstagramAPI();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -65,7 +61,7 @@ export default function Step2Page() {
     phone: ''
   });
   const [service, setService] = useState<Service | null>(null);
-  const [selectedPosts, setSelectedPosts] = useState<InstagramPost[]>([]);
+  const [selectedPosts, setSelectedPosts] = useState<Post[]>([]);
   const [selectedReels, setSelectedReels] = useState<Post[]>([]);
   const [instagramPosts, setInstagramPosts] = useState<Post[]>([]);
   const [instagramReels, setInstagramReels] = useState<Post[]>([]);
@@ -84,16 +80,15 @@ export default function Step2Page() {
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [finalAmount, setFinalAmount] = useState<number | null>(null);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
-  const [loadingMessage, setLoadingMessage] = useState<string>('');
-  const [reelsLoadingMessage, setReelsLoadingMessage] = useState<string>('');
+  const [error, setError] = useState('');
 
   const supabase = createClient();
 
-  const handlePostSelect = useCallback((posts: InstagramPost[]) => {
+  const handlePostSelect = useCallback((posts: Post[]) => {
     setSelectedPosts(posts);
   }, []);
 
-  const handleReelSelect = useCallback((reels: InstagramPost[]) => {
+  const handleReelSelect = useCallback((reels: Post[]) => {
     setSelectedReels(reels);
   }, []);
 
@@ -101,22 +96,20 @@ export default function Step2Page() {
   const selectedItemsCount = selectedPosts.length + selectedReels.length;
   const maxTotalItems = 5; // Máximo de 5 itens no total entre posts e reels
   
-  // Calcular curtidas por item
-  const likesPerItem = service?.quantidade && selectedItemsCount > 0 
-    ? Math.floor(service.quantidade / selectedItemsCount) 
+  // Calcular comentários por item
+  const commentsPerItem = service?.quantidade && selectedItemsCount > 0
+    ? Math.floor(service.quantidade / selectedItemsCount)
     : 0;
 
   // Função para extrair o código correto de um post do Instagram
   const extractPostCode = (post: any): string => {
     // Se o post já tem um código que não é numérico, usar esse código
     if (post.code && !/^\d+$/.test(post.code)) {
-      console.log('✅ Usando código existente:', post.code);
       return post.code;
     }
     
     // Se tem shortcode, usar o shortcode
     if (post.shortcode) {
-      console.log('✅ Usando shortcode:', post.shortcode);
       return post.shortcode;
     }
     
@@ -125,297 +118,42 @@ export default function Step2Page() {
       const url = post.permalink || post.link;
       const match = url.match(/instagram\.com\/p\/([^\/]+)/);
       if (match && match[1]) {
-        console.log('✅ Código extraído da URL:', match[1]);
         return match[1];
       }
     }
     
     // Se nada funcionar, usar o ID (não ideal, mas é o que temos)
-    console.warn('⚠️ Não foi possível extrair um código curto válido, usando ID:', post.id);
     return post.id;
   };
 
-  const fetchInstagramPosts = async (username: string) => {
-    try {
-      // Se já carregou os posts, não precisa buscar novamente
-      if (postsLoaded && instagramPosts.length > 0) {
-        console.log('Usando posts em cache:', instagramPosts.length);
-        return instagramPosts;
-      }
-
-      console.log('Buscando posts do Instagram para:', username);
-      setLoadingPosts(true);
-      setLoadingMessage('Buscando posts...');
-      
-      // Usar o hook useInstagramAPI para buscar posts com a cascata de APIs
-      const posts = await fetchPostsFromAPI(username);
-      console.log('Posts encontrados com o hook useInstagramAPI:', posts.length);
-
-      // Filtrar para remover reels e vídeos
-      const filteredPosts = posts.filter((post: any) => {
-        // Log para depuração
-        console.log('Analisando post:', {
-          id: post.id,
-          code: post.code,
-          type: post.type,
-          media_type: post.media_type,
-          is_video: post.is_video
-        });
-        
-        // Filtrar apenas posts de imagem (não reels, não vídeos)
-        const isNotVideo = post.type !== 'video' && !post.is_video;
-        const isImageOrCarousel = post.type === 'image' || post.type === 'carousel';
-        
-        const shouldInclude = isNotVideo && isImageOrCarousel;
-        
-        if (!shouldInclude) {
-          console.log(`Excluindo post ${post.id}: ${!isNotVideo ? 'É um vídeo' : !isImageOrCarousel ? 'Não é imagem/carrossel' : 'Outro motivo'}`);
-        }
-        
-        return shouldInclude;
-      });
-      
-      console.log('Posts filtrados (sem reels):', filteredPosts.length);
-
-      // Mapear os posts para o formato esperado
-      const formattedPosts: Post[] = filteredPosts.map((post: any) => {
-        // Extrair o código correto do post para a URL
-        const postCode = post.code || extractPostCode(post);
-        
-        return {
-          id: post.id || '',
-          code: postCode,
-          shortcode: postCode,
-          image_url: post.media_url || post.thumbnail_url || '',
-          caption: post.caption 
-              ? (typeof post.caption === 'object' 
-                ? post.caption.text || 'Sem legenda'
-                : String(post.caption)) 
-              : 'Sem legenda',
-          like_count: post.likes_count || post.like_count || 0,
-          comment_count: post.comments_count || post.comment_count || 0,
-          thumbnail_url: post.thumbnail_url || post.media_url || '',
-          display_url: post.media_url || post.thumbnail_url || '',
-          image_versions: null
-        };
-      }).filter(post => post.image_url); // Remover posts sem imagem
-
-      console.log('Posts formatados:', formattedPosts.length);
-      setInstagramPosts(formattedPosts);
-      setPostsLoaded(true);
-      setLoadingPosts(false);
-      setLoadingMessage('');
-      
-      return formattedPosts;
-    } catch (error) {
-      console.error('Erro ao buscar posts do Instagram:', error);
-      setLoadingPosts(false);
-      setLoadingMessage('');
-      return [];
-    } finally {
-      setLoadingPosts(false);
-      setLoadingMessage('');
-    }
-  };
-
-  const fetchInstagramReels = async (username: string) => {
-    try {
-      // Se já carregou os reels, não precisa buscar novamente
-      if (reelsLoaded && instagramReels.length > 0) {
-        console.log('Usando reels em cache:', instagramReels.length);
-        return instagramReels;
-      }
-
-      setLoadingReels(true);
-      setReelsLoadingMessage('Buscando reels...');
-      
-      // Usar a API de visualização combinada para buscar reels
-      console.log('Buscando reels com a API de visualização combinada...');
-      const response = await fetch(`/api/instagram/visualizacao/${username}`);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Erro ao buscar reels (${response.status}):`, errorText);
-        throw new Error(`Erro ao buscar reels: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('Resposta da API de visualização combinada:', data);
-      
-      // Verificar se o usuário tem reels
-      if (!data.hasReels) {
-        console.log('Usuário não possui reels:', data.message);
-        toast.warning(data.message || 'Este perfil não possui reels disponíveis.');
-        setInstagramReels([]);
-        setReelsLoaded(true);
-        return [];
-      }
-      
-      // Obter os reels da resposta
-      let reelsData = [];
-      if (data.reels && Array.isArray(data.reels)) {
-        reelsData = data.reels;
-        console.log(`Encontrados ${reelsData.length} reels na API de visualização`);
-      } else {
-        console.log('Formato inesperado na resposta da API de visualização');
-        toast.warning('Não foi possível carregar os reels. Formato de resposta inesperado.');
-        setInstagramReels([]);
-        setReelsLoaded(true);
-        return [];
-      }
-      
-      // Mapear os reels para o formato esperado
-      const formattedReels = reelsData.map((reel: any) => {
-        // Extrair o código correto do reel para a URL
-        const reelCode = reel.code || reel.shortcode || '';
-        
-        return {
-          id: reel.id || '',
-          code: reelCode,
-          shortcode: reelCode,
-          image_url: reel.thumbnail_url || reel.media_url || '',
-          caption: reel.caption 
-              ? (typeof reel.caption === 'object' 
-                ? reel.caption.text || 'Sem legenda'
-                : String(reel.caption)) 
-              : 'Sem legenda',
-          like_count: reel.likes_count || reel.like_count || 0,
-          comment_count: reel.comments_count || reel.comment_count || 0,
-          thumbnail_url: reel.thumbnail_url || reel.media_url || '',
-          display_url: reel.media_url || reel.thumbnail_url || '',
-          image_versions: null,
-          is_video: true,
-          is_reel: true,
-          video_url: reel.video_url || '',
-          view_count: reel.views_count || reel.view_count || 0
-        };
-      }).filter(reel => reel.image_url); // Remover reels sem imagem
-      
-      console.log('Reels formatados:', formattedReels.length);
-      setInstagramReels(formattedReels);
-      setReelsLoaded(true);
-      setLoadingReels(false);
-      setReelsLoadingMessage('');
-      
-      return formattedReels;
-    } catch (error) {
-      console.error('Erro ao buscar reels do Instagram:', error);
-      toast.error(`Erro ao buscar reels: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
-      setLoadingReels(false);
-      setReelsLoadingMessage('');
-      return [];
-    } finally {
-      setLoadingReels(false);
-      setReelsLoadingMessage('');
-    }
-  };
-  
-  // Função auxiliar para processar dados de reels
-  const processReelsData = (reels: Record<string, any>[], username: string): Post[] => {
-    return reels.map(reel => {
-      // Extrair ID do reel
-      const id = reel.id || reel.pk || '';
-      
-      // Extrair código/shortcode
-      const code = reel.code || reel.shortcode || extractCodeFromUrl(reel.permalink || reel.link) || id;
-      
-      // Extrair contagem de visualizações
-      const viewsCount = 
-        reel.play_count || 
-        reel.view_count || 
-        reel.views_count || 
-        reel.video_play_count || 
-        0;
-      
-      // Extrair contagem de curtidas
-      const likeCount = 
-        reel.like_count || 
-        reel.likes_count || 
-        0;
-      
-      // Extrair contagem de comentários
-      const commentCount = 
-        reel.comment_count || 
-        reel.comments_count || 
-        0;
-      
-      // Extrair legenda
-      const caption = 
-        reel.caption?.text || 
-        (typeof reel.caption === 'string' ? reel.caption : '') || 
-        '';
-      
-      // Extrair URL da imagem
-      const imageUrl = 
-        reel.image_versions?.items?.[0]?.url || 
-        reel.thumbnail_url || 
-        reel.display_url || 
-        reel.cover_frame_url || 
-        '';
-      
-      // Extrair URL do vídeo
-      const videoUrl = reel.video_url || '';
-      
-      return {
-        id,
-        code,
-        shortcode: code,
-        is_reel: true,
-        product_type: 'clips',
-        media_type: 'video',
-        views_count: viewsCount,
-        like_count: likeCount,
-        comment_count: commentCount,
-        caption: { text: caption },
-        image_url: imageUrl,
-        thumbnail_url: imageUrl,
-        display_url: imageUrl,
-        video_url: videoUrl,
-        username: reel.user?.username || username
-      } as Post;
-    });
-  };
-  
-  // Função auxiliar para extrair código de URL
-  const extractCodeFromUrl = (url: string | undefined): string | null => {
-    if (!url) return null;
-    
-    // Tentar extrair código de URL de post
-    const postMatch = url.match(/instagram\.com\/p\/([^\/]+)/);
-    if (postMatch && postMatch[1]) return postMatch[1];
-    
-    // Tentar extrair código de URL de reel
-    const reelMatch = url.match(/instagram\.com\/reel\/([^\/]+)/);
-    if (reelMatch && reelMatch[1]) return reelMatch[1];
-    
-    return null;
-  };
-
-  const fetchService = async (externalId: string) => {
-    console.log('Buscando serviço com ID:', externalId);
-    
+  // Função para buscar serviço pelo ID
+  const fetchService = async (serviceId: string) => {
     try {
       const supabase = createClient();
       
-      // Verificar se temos uma quantidade específica no localStorage
-      const checkoutData = localStorage.getItem('checkoutProfileData');
-      let quantity = null;
+      // Limpar o serviceId para garantir que não tenha aspas extras
+      const cleanServiceId = serviceId ? serviceId.replace(/"/g, '') : '';
+      console.log('Service ID limpo:', cleanServiceId);
       
-      if (checkoutData) {
-        const parsedData = JSON.parse(checkoutData);
-        quantity = parsedData.quantity;
-        console.log('Quantidade encontrada no localStorage:', quantity);
+      // Verificar se o ID é válido
+      if (!cleanServiceId) {
+        console.error('ID de serviço inválido ou vazio');
+        return null;
       }
-
-      // Limpar o externalId para garantir que não tenha aspas extras
-      const cleanExternalId = externalId ? externalId.replace(/"/g, '') : '';
-      console.log('External ID limpo:', cleanExternalId);
+      
+      console.log('Buscando serviço pelo external_id:', cleanServiceId);
       
       // Buscar primeiro pelo external_id
       let { data, error } = await supabase
         .from('services')
         .select('*')
-        .eq('external_id', cleanExternalId);
+        .eq('external_id', cleanServiceId);
+      
+      console.log('Resultado da busca por external_id:', { 
+        encontrado: data && data.length > 0, 
+        quantidade: data?.length || 0,
+        erro: error ? error.message : null 
+      });
       
       // Se não encontrar pelo external_id, tentar pelo id
       if (!data || data.length === 0) {
@@ -423,10 +161,16 @@ export default function Step2Page() {
         const result = await supabase
           .from('services')
           .select('*')
-          .eq('id', cleanExternalId);
+          .eq('id', cleanServiceId);
           
         data = result.data;
         error = result.error;
+        
+        console.log('Resultado da busca por id:', { 
+          encontrado: data && data.length > 0, 
+          quantidade: data?.length || 0,
+          erro: error ? error.message : null 
+        });
       }
       
       // Verificar se encontramos o serviço
@@ -436,31 +180,27 @@ export default function Step2Page() {
       }
       
       if (!data || data.length === 0) {
-        console.error('Nenhum serviço encontrado');
+        console.error('Nenhum serviço encontrado para o ID:', cleanServiceId);
+        
+        // Tentar uma busca mais ampla para depuração
+        console.log('Realizando busca ampla para depuração...');
+        const { data: allServices, error: allError } = await supabase
+          .from('services')
+          .select('id, external_id, name')
+          .limit(5);
+          
+        if (allError) {
+          console.error('Erro ao buscar serviços para depuração:', allError);
+        } else {
+          console.log('Amostra de serviços disponíveis:', allServices);
+        }
+        
         return null;
       }
       
       // Pegar o primeiro serviço encontrado
       const serviceData = data[0];
       console.log('Serviço encontrado:', serviceData);
-      
-      // Se temos uma quantidade específica, atualizar o serviço
-      if (quantity) {
-        console.log('Atualizando quantidade do serviço para:', quantity);
-        serviceData.quantidade = parseInt(quantity);
-        
-        // Atualizar o preço se houver variações de preço
-        if (serviceData.service_variations && serviceData.service_variations.length > 0) {
-          const selectedVariation = serviceData.service_variations.find(
-            (v: any) => v.quantidade === parseInt(quantity)
-          );
-          
-          if (selectedVariation) {
-            console.log('Variação de preço encontrada:', selectedVariation);
-            serviceData.preco = selectedVariation.preco;
-          }
-        }
-      }
       
       return serviceData;
     } catch (error) {
@@ -469,174 +209,244 @@ export default function Step2Page() {
     }
   };
 
-  useEffect(() => {
-    const checkoutData = localStorage.getItem('checkoutProfileData');
-    console.log('Dados de checkout brutos:', checkoutData);
-
+  // Função para buscar posts e reels do Instagram em uma única chamada
+  const fetchInstagramData = async (username: string) => {
+    setLoadingPosts(true);
+    setLoadingReels(true);
+    setError(null);
+    
+    // Criar um controller para abortar a requisição em caso de timeout
+    const controller = new AbortController();
+    
+    // Configurar um timeout de 60 segundos
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 60000);
+    
     try {
+      // Usar a nova API de visualização que combina posts e reels
+      const response = await fetch(`/api/instagram/visualizacao/${username}`, {
+        signal: controller.signal
+      });
+      
+      // Limpar o timeout se a requisição completar antes
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`Erro ao buscar dados do Instagram: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('Dados do Instagram recebidos:', JSON.stringify(data));
+      
+      // Verificar se a resposta tem o formato esperado
+      if (!data) {
+        console.error('Resposta vazia da API');
+        setInstagramPosts([]);
+        setInstagramReels([]);
+        setPostsLoaded(true);
+        setReelsLoaded(true);
+        setError("Não foi possível obter dados do Instagram. Por favor, tente novamente mais tarde.");
+        return null;
+      }
+      
+      // Verificar se temos mensagens de erro específicas da API
+      if (data.message) {
+        if (data.fromCache) {
+          console.log(`Usando dados em cache (${data.cacheAge}s atrás)`);
+        }
+        
+        // Exibir mensagem específica se não houver posts ou reels
+        if (!data.hasPosts && !data.hasReels) {
+          setError(`@${username} não possui posts ou reels públicos. Verifique se o nome de usuário está correto e se o perfil é público.`);
+        }
+      }
+      
+      // Processar posts - verificar se posts existe e qual seu formato
+      if (data.posts) {
+        console.log('Tipo de data.posts:', typeof data.posts);
+        
+        // Se posts for um array, usar diretamente
+        if (Array.isArray(data.posts)) {
+          console.log('Posts recebidos como array:', data.posts.length);
+          setInstagramPosts(data.posts);
+        } 
+        // Se posts for um objeto com propriedades, pode ser que a API tenha mudado o formato
+        else if (typeof data.posts === 'object') {
+          console.log('Posts recebidos como objeto:', Object.keys(data.posts));
+          // Verificar se há uma propriedade que contém os posts
+          if (data.posts.items && Array.isArray(data.posts.items)) {
+            console.log('Posts encontrados em data.posts.items:', data.posts.items.length);
+            setInstagramPosts(data.posts.items);
+          } else {
+            console.error('Formato de posts desconhecido:', data.posts);
+            setInstagramPosts([]);
+          }
+        } else {
+          console.error('Formato de posts desconhecido:', data.posts);
+          setInstagramPosts([]);
+        }
+      } else {
+        console.log('Nenhum post recebido');
+        setInstagramPosts([]);
+      }
+      
+      // Processar reels - verificar se reels existe e qual seu formato
+      if (data.reels) {
+        console.log('Tipo de data.reels:', typeof data.reels);
+        
+        // Se reels for um array, usar diretamente
+        if (Array.isArray(data.reels)) {
+          console.log('Reels recebidos como array:', data.reels.length);
+          setInstagramReels(data.reels);
+        } 
+        // Se reels for um objeto com propriedades, pode ser que a API tenha mudado o formato
+        else if (typeof data.reels === 'object') {
+          console.log('Reels recebidos como objeto:', Object.keys(data.reels));
+          // Verificar se há uma propriedade que contém os reels
+          if (data.reels.items && Array.isArray(data.reels.items)) {
+            console.log('Reels encontrados em data.reels.items:', data.reels.items.length);
+            setInstagramReels(data.reels.items);
+          } else {
+            console.error('Formato de reels desconhecido:', data.reels);
+            setInstagramReels([]);
+          }
+        } else {
+          console.error('Formato de reels desconhecido:', data.reels);
+          setInstagramReels([]);
+        }
+      } else {
+        console.log('Nenhum reel recebido');
+        setInstagramReels([]);
+      }
+      
+      // Atualizar flags de carregamento
+      setPostsLoaded(true);
+      setReelsLoaded(true);
+      
+      return data;
+    } catch (fetchError: unknown) {
+      // Limpar o timeout em caso de erro
+      clearTimeout(timeoutId);
+      
+      // Verificar se foi um erro de timeout
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.error('Timeout ao buscar dados do Instagram');
+        setError('O tempo limite foi excedido ao buscar os dados do Instagram. Por favor, tente novamente.');
+      } else {
+        console.error('Erro ao buscar dados do Instagram:', fetchError);
+        setError('Ocorreu um erro ao buscar os dados do Instagram. Por favor, tente novamente mais tarde.');
+      }
+      
+      // Atualizar flags de carregamento mesmo em caso de erro
+      setPostsLoaded(true);
+      setReelsLoaded(true);
+      
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    try {
+      // Recuperar dados do checkout do localStorage
+      const checkoutData = localStorage.getItem('checkoutProfileData');
+      
       if (checkoutData) {
         const parsedCheckoutData = JSON.parse(checkoutData);
-        console.log('Dados de checkout parseados:', parsedCheckoutData);
-
-        // Recuperar o external_id com mais flexibilidade
-        const externalId = 
-          parsedCheckoutData.external_id || 
-          parsedCheckoutData.serviceId || 
-          localStorage.getItem('serviceId') || 
-          localStorage.getItem('external_id');
+        console.log('Dados do checkout recuperados:', parsedCheckoutData);
         
-        // Recuperar a quantidade, se disponível
-        const quantity = parsedCheckoutData.quantity;
+        // Verificar se temos um external_id válido
+        let externalId = parsedCheckoutData.external_id;
+        if (!externalId) {
+          // Tentar buscar de outros campos possíveis
+          externalId = parsedCheckoutData.serviceId || parsedCheckoutData.service_id;
+          console.log('External ID alternativo encontrado:', externalId);
+        }
         
-        console.log('External ID recuperado:', externalId);
-        console.log('Quantidade recuperada:', quantity);
-
-        // Recuperar o perfil do usuário
+        if (!externalId) {
+          console.error('External ID não encontrado nos dados de checkout');
+          toast.error('ID do serviço não encontrado. Por favor, volte à etapa anterior.');
+          return;
+        }
+        
+        // Recuperar dados do perfil
         const profileData = 
           parsedCheckoutData.profileData || 
-          parsedCheckoutData.profile || 
           parsedCheckoutData.user;
 
         console.log('Perfil recuperado:', profileData);
 
-        // Verificar se temos dados suficientes para prosseguir
-        if (!profileData || !profileData.username) {
-          console.error('Dados de perfil ausentes ou incompletos');
-          toast.error('Dados de perfil incompletos. Por favor, volte à etapa anterior.');
-          
-          // Redirecionar para a etapa anterior após um breve atraso
-          setTimeout(() => {
-            window.location.href = '/checkout/instagram/curtidas/step1';
-          }, 2000);
-          
+        if (profileData) {
+          setProfileData(profileData);
+          // Atualizar formData com dados do perfil, se disponíveis
+          setFormData({
+            name: parsedCheckoutData.name || '',
+            email: parsedCheckoutData.email || '',
+            phone: parsedCheckoutData.phone || ''
+          });
+        } else {
+          console.error('Dados do perfil não encontrados');
+          toast.error('Dados do perfil não encontrados. Por favor, volte à etapa anterior.');
           return;
         }
 
-        // Definir os dados do perfil
-        setProfileData(profileData);
-        
-        // Atualizar formData com dados do perfil, se disponíveis
-        setFormData({
-          name: parsedCheckoutData.name || '',
-          email: parsedCheckoutData.email || '',
-          phone: parsedCheckoutData.phone || ''
-        });
-
-        // Verificar se temos o ID do serviço
-        if (!externalId) {
-          console.error('ID do serviço ausente');
-          toast.error('ID do serviço não encontrado. Por favor, volte à etapa anterior.');
+        if (externalId && profileData?.username) {
+          console.log('Iniciando busca de serviço e posts para o usuário:', profileData.username);
+          console.log('External ID para busca de serviço:', externalId);
           
-          // Redirecionar para a etapa anterior após um breve atraso
-          setTimeout(() => {
-            window.location.href = '/checkout/instagram/curtidas/step1';
-          }, 2000);
-          
-          return;
-        }
-
-        // Verificar se temos informações diretas do serviço no localStorage
-        if (parsedCheckoutData.serviceName && parsedCheckoutData.servicePrice) {
-          console.log('Usando informações do serviço do localStorage');
-          
-          // Criar um objeto de serviço com as informações disponíveis
-          const serviceFromCheckout = {
-            id: externalId,
-            name: parsedCheckoutData.serviceName,
-            description: parsedCheckoutData.serviceDescription || '',
-            preco: parsedCheckoutData.servicePrice,
-            quantidade: quantity,
-            service_details: parsedCheckoutData.serviceDetails || [],
-            provider_id: '1' // Valor padrão
-          };
-          
-          setService(serviceFromCheckout);
-          
-          // Ainda buscar o serviço completo, mas já temos uma versão básica para exibir
-          console.log('Serviço pré-carregado do localStorage:', serviceFromCheckout);
-        }
-
-        console.log('Iniciando busca de serviço e posts para o usuário:', profileData.username);
-        
-        // Buscar serviço e posts em paralelo
-        Promise.all([
-          fetchService(externalId),
-          fetchInstagramPosts(profileData.username)
-        ]).then(([serviceData, postsData]) => {
-          if (serviceData) {
-            // Definir o ID do provedor padrão se não estiver presente
-            if (!serviceData.provider_id) {
-              serviceData.provider_id = '1';
+          // Buscar serviço e posts em paralelo
+          Promise.all([
+            fetchService(externalId),
+            fetchInstagramData(profileData.username)
+          ]).then(([serviceData, instagramData]) => {
+            if (serviceData) {
+              // Definir o ID do provedor padrão se não estiver presente
+              if (!serviceData.provider_id) {
+                serviceData.provider_id = '1';
+              }
+              console.log('Serviço encontrado e configurado:', serviceData);
+              setService(serviceData);
+            } else {
+              console.error('Serviço não encontrado para o ID:', externalId);
+              toast.error('Serviço não encontrado. Por favor, tente novamente.');
             }
-            setService(serviceData);
-            
-            // Iniciar busca de reels após obter o serviço
-            if (profileData.username && !reelsLoaded) {
-              fetchInstagramReels(profileData.username)
-                .then(reelsData => {
-                  console.log(`Reels carregados: ${reelsData.length}`);
-                })
-                .catch(error => {
-                  console.error('Erro ao carregar reels:', error);
-                  // Não exibir erro para o usuário, pois é aceitável não ter reels
-                });
-            }
-          } else {
-            console.error('Serviço não encontrado');
-            toast.error('Serviço não encontrado. Por favor, tente novamente.');
-          }
-        }).catch(error => {
-          console.error('Erro ao buscar dados:', error);
-          toast.error('Erro ao carregar dados. Por favor, tente novamente.');
-        });
+          }).catch(error => {
+            console.error('Erro ao buscar dados:', error);
+            toast.error('Erro ao carregar dados. Por favor, tente novamente.');
+          });
+        } else {
+          console.error('Dados insuficientes para buscar serviço e posts');
+          toast.error('Dados insuficientes. Por favor, volte à etapa anterior.');
+        }
       } else {
         console.error('Nenhum dado de checkout encontrado');
         toast.error('Nenhum dado de checkout encontrado. Por favor, volte à etapa anterior.');
-        
-        // Redirecionar para a etapa anterior após um breve atraso
-        setTimeout(() => {
-          window.location.href = '/checkout/instagram/curtidas/step1';
-        }, 2000);
       }
     } catch (error) {
       console.error('Erro ao processar dados de checkout:', error);
       toast.error('Erro ao processar dados. Por favor, tente novamente.');
-      
-      // Redirecionar para a etapa anterior após um breve atraso
-      setTimeout(() => {
-        window.location.href = '/checkout/instagram/curtidas/step1';
-      }, 2000);
     }
-  }, [reelsLoaded]);
+  }, []);
+
+  useEffect(() => {
+    const fetchReels = async () => {
+      try {
+        if (profileData?.username && !reelsLoaded) {
+          setLoadingReels(true);
+          await fetchInstagramData(profileData.username);
+          setLoadingReels(false);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar reels:', error);
+      }
+    };
+
+    fetchReels();
+  }, [profileData, reelsLoaded]);
 
   useEffect(() => {
     if (activeTab === 'reels' && !reelsLoaded && profileData?.username) {
-      console.log('Mudança para aba de reels detectada, carregando reels...');
-      setLoadingReels(true);
-      setReelsLoadingMessage('Buscando reels...');
-      
-      fetchInstagramReels(profileData.username)
-        .then(reelsData => {
-          console.log(`Reels carregados na mudança de aba: ${reelsData.length}`);
-          setLoadingReels(false);
-          setReelsLoadingMessage('');
-          
-          // Se não houver reels, exibir mensagem informativa
-          if (reelsData.length === 0) {
-            toast.info('Este perfil não possui reels disponíveis.');
-          }
-        })
-        .catch(error => {
-          console.error('Erro ao carregar reels na mudança de aba:', error);
-          setLoadingReels(false);
-          setReelsLoadingMessage('');
-          
-          // Exibir mensagem de erro apenas se for um erro inesperado
-          // Não exibir erro para casos em que o usuário simplesmente não tem reels
-          if (error.message && !error.message.includes('não possui reels')) {
-            toast.error(`Erro ao carregar reels: ${error.message}`);
-          }
-        });
+      fetchInstagramData(profileData.username);
     }
   }, [activeTab, reelsLoaded, profileData]);
 
@@ -646,11 +456,11 @@ export default function Step2Page() {
       return null;
     }
 
-    // Calcular quantidade de likes por post
+    // Calcular quantidade de comentários por post
     const totalItems = selectedPosts.length + selectedReels.length;
-    const totalLikes = service.quantidade;
-    const likesPerItem = Math.floor(totalLikes / totalItems);
-    const remainingLikes = totalLikes % totalItems;
+    const totalComments = service.quantidade;
+    const commentsPerItem = Math.floor(totalComments / totalItems);
+    const remainingComments = totalComments % totalItems;
 
     // Preparar metadados dos posts
     const postsMetadata = selectedPosts.map((post, index) => {
@@ -660,7 +470,7 @@ export default function Step2Page() {
         postId: post.id,
         postCode: postCode,
         postLink: `https://instagram.com/p/${postCode}`,
-        likes: index === 0 ? likesPerItem + remainingLikes : likesPerItem,
+        comments: index === 0 ? commentsPerItem + remainingComments : commentsPerItem,
         type: 'post' // Adicionar tipo explícito para posts
       };
     });
@@ -672,7 +482,7 @@ export default function Step2Page() {
         postId: reel.id,
         postCode: reelCode,
         postLink: `https://instagram.com/reel/${reelCode}`,
-        likes: likesPerItem,
+        comments: commentsPerItem,
         type: 'reel' // Adicionar tipo explícito para reels
       };
     });
@@ -680,7 +490,7 @@ export default function Step2Page() {
     return {
       user_id: formData.name || null,
       order_id: paymentData.paymentId,
-      type: 'curtidas',
+      type: serviceType,
       amount: service.preco,
       status: 'pending',
       payment_method: 'pix',
@@ -829,83 +639,6 @@ export default function Step2Page() {
     setPaymentData(null);
   };
 
-  const renderContentSelector = () => {
-    if (activeTab === 'posts') {
-      return (
-        <div className="mt-4">
-          {loadingPosts ? (
-            <div className="p-4 bg-white rounded-lg shadow">
-              <div className="flex justify-center items-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                <span className="ml-2 text-gray-600">{loadingMessage || 'Carregando posts...'}</span>
-              </div>
-            </div>
-          ) : instagramPosts.length === 0 ? (
-            <div className="p-4 bg-white rounded-lg shadow">
-              <div className="text-center py-8">
-                <p className="text-yellow-600 mb-4">Nenhum post encontrado para este perfil.</p>
-                <button 
-                  onClick={() => fetchInstagramPosts(profileData?.username || '')} 
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
-                >
-                  Tentar novamente
-                </button>
-              </div>
-            </div>
-          ) : (
-            <PostSelector 
-              username={profileData?.username || ''}
-              onSelectPosts={handlePostSelect}
-              maxPosts={maxTotalItems - selectedReels.length}
-              totalLikes={service?.quantidade || 0}
-              loading={loadingPosts}
-              loadingMessage={loadingMessage}
-              selectedReels={selectedReels}
-              selectedPosts={selectedPosts}
-            />
-          )}
-        </div>
-      );
-    } else {
-      return (
-        <div className="mt-4">
-          {loadingReels ? (
-            <div className="p-4 bg-white rounded-lg shadow">
-              <div className="flex justify-center items-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                <span className="ml-2 text-gray-600">{reelsLoadingMessage || 'Carregando reels...'}</span>
-              </div>
-            </div>
-          ) : instagramReels.length === 0 ? (
-            <div className="p-4 bg-white rounded-lg shadow">
-              <div className="text-center py-8">
-                <p className="text-yellow-600 mb-4">Este perfil não possui reels disponíveis.</p>
-                <button 
-                  onClick={() => fetchInstagramReels(profileData?.username || '')} 
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
-                >
-                  Tentar novamente
-                </button>
-              </div>
-            </div>
-          ) : (
-            <ReelSelector
-              username={profileData?.username || ''}
-              onSelectReels={handleReelSelect}
-              maxReels={maxTotalItems - selectedPosts.length}
-              totalViews={service?.quantidade || 0}
-              loading={loadingReels}
-              loadingMessage={reelsLoadingMessage}
-              selectedPosts={selectedPosts}
-              selectedReels={selectedReels}
-              showReelsOnly={true}
-            />
-          )}
-        </div>
-      );
-    }
-  };
-
   return (
     <div>
       <Header />
@@ -936,7 +669,7 @@ export default function Step2Page() {
                     setActiveTab('posts');
                     // Garantir que os posts estejam carregados
                     if (!postsLoaded && profileData?.username) {
-                      fetchInstagramPosts(profileData.username);
+                      fetchInstagramData(profileData.username);
                     }
                   }}
                   className={`
@@ -959,7 +692,7 @@ export default function Step2Page() {
                     setActiveTab('reels');
                     // Carregar reels se ainda não foram carregados
                     if (!reelsLoaded && profileData?.username) {
-                      fetchInstagramReels(profileData.username);
+                      fetchInstagramData(profileData.username);
                     }
                   }}
                   className={`
@@ -979,7 +712,29 @@ export default function Step2Page() {
                 </button>
               </div>
 
-              {renderContentSelector()}
+              {activeTab === 'posts' ? (
+                <PostSelector 
+                  username={profileData.username}
+                  onPostSelect={handlePostSelect}
+                  selectedPosts={selectedPosts}
+                  selectedReels={selectedReels}
+                  maxPosts={maxTotalItems}
+                  service={service}
+                  posts={instagramPosts}
+                  totalComments={service?.quantidade || 100}
+                  loading={loadingPosts}
+                />
+              ) : (
+                <ReelSelector 
+                  username={profileData.username}
+                  onSelectReels={handleReelSelect}
+                  selectedReels={selectedReels}
+                  selectedPosts={selectedPosts}
+                  maxReels={maxTotalItems}
+                  totalComments={service?.quantidade || 100}
+                  loading={loadingReels}
+                />
+              )}
             </Card>
 
             {/* Informações do Pedido */}
@@ -1006,13 +761,13 @@ export default function Step2Page() {
                   
                   <div className="pt-4 border-t space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>Quantidade de curtidas:</span>
+                      <span>Quantidade de {serviceType === 'curtidas' ? 'curtidas' : serviceType === 'visualizacao' ? 'visualizações' : 'comentários'}:</span>
                       <span>{service.quantidade.toLocaleString()}</span>
                     </div>
                     {(selectedPosts.length + selectedReels.length) > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span>Curtidas por item:</span>
-                        <span>{likesPerItem.toLocaleString()}</span>
+                        <span>{serviceType === 'curtidas' ? 'Curtidas' : serviceType === 'visualizacao' ? 'Visualizações' : 'Comentários'} por item:</span>
+                        <span>{commentsPerItem.toLocaleString()}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm">
@@ -1121,7 +876,7 @@ export default function Step2Page() {
                         `}
                       >
                         {loading ? (
-                          <span className="flex items-center justify-center">
+                          <span className="flex items-center">
                             <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                             Processando...
                           </span>
@@ -1162,6 +917,60 @@ export default function Step2Page() {
           />
         </div>
       ) : null}
+
+      {(loadingPosts || loadingReels) && (
+        <div className="fixed top-0 left-0 right-0 bottom-0 bg-gray-100 bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+            <div className="flex items-center justify-center mb-4">
+              <svg className="animate-spin h-10 w-10 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <p className="text-center text-lg font-medium text-gray-700">Buscando dados do Instagram</p>
+            <p className="text-center text-sm text-gray-500 mt-2">Isso pode levar até 60 segundos. Por favor, aguarde...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Mensagem de erro */}
+      {error && (
+        <div className="fixed top-0 left-0 right-0 bottom-0 bg-red-100 bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+            <div className="flex items-center justify-center mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <p className="text-center text-lg font-medium text-red-700">{error}</p>
+            <div className="mt-4 flex justify-center">
+              <button
+                onClick={() => setError(null)}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mensagem quando não há posts ou reels */}
+      {!error && postsLoaded && reelsLoaded && instagramPosts.length === 0 && instagramReels.length === 0 && username && (
+        <div className="mt-6 p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-start">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-500 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <p className="font-medium text-yellow-800">Nenhum conteúdo encontrado</p>
+              <p className="mt-1 text-sm text-yellow-700">
+                Não encontramos posts ou reels públicos para @{username}. Verifique se o nome de usuário está correto e se o perfil é público.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

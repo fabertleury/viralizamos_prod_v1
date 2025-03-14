@@ -16,7 +16,6 @@ interface Service {
 
 interface PostSelectorProps {
   username: string;
-  onSelectPosts?: (posts: InstagramPost[]) => void;
   onPostSelect?: (posts: InstagramPost[]) => void;
   maxPosts?: number;
   service?: Service;
@@ -24,6 +23,7 @@ interface PostSelectorProps {
   selectedReels?: InstagramPost[];
   totalLikes?: number; // Adicionado para distribuir curtidas
   loading?: boolean;
+  loadingMessage?: string; // Adicionado para mostrar mensagens personalizadas
   selectedPosts?: InstagramPost[]; // Adicionado para manter seleções
 }
 
@@ -36,6 +36,7 @@ export function PostSelector({
   selectedReels = [],
   totalLikes = 100, // Valor padrão se não for fornecido
   loading: initialLoading = false,
+  loadingMessage = '', // Mensagem de carregamento personalizada
   selectedPosts: initialSelectedPosts = [] // Inicializar com valor padrão
 }: PostSelectorProps) {
   const [loadingState, setLoading] = useState(initialLoading);
@@ -96,8 +97,8 @@ export function PostSelector({
         return;
       }
       
-      // Buscar posts da API
-      const response = await fetch(`/api/instagram/posts/${username}`);
+      // Buscar posts da API de visualização combinada
+      const response = await fetch(`/api/instagram/visualizacao/${username}`);
       
       if (!response.ok) {
         throw new Error(`Erro ao carregar posts (${response.status})`);
@@ -106,8 +107,17 @@ export function PostSelector({
       const data = await response.json();
       
       if (data.status === 'success') {
-        // Filtrar apenas posts (não reels)
-        const allPosts = data.data || [];
+        // Extrair os posts dos dados combinados
+        const allPosts = data.data?.posts || [];
+        
+        // Verificar se há posts disponíveis
+        if (allPosts.length === 0) {
+          console.log('Nenhum post encontrado para este usuário');
+          // Não exibir erro, apenas informar que não há posts
+          if (!data.hasPosts) {
+            toast.info(data.message?.posts || 'Este perfil não possui posts disponíveis.');
+          }
+        }
         
         // Salvar em cache
         sessionStorage.setItem(`posts_${username}`, JSON.stringify(allPosts));
@@ -121,7 +131,7 @@ export function PostSelector({
         );
         setFilteredPosts(filtered);
       } else {
-        throw new Error('Falha ao carregar posts');
+        throw new Error(data.message || 'Falha ao carregar posts');
       }
     } catch (error) {
       console.error('Erro ao carregar posts:', error);
@@ -131,41 +141,54 @@ export function PostSelector({
     }
   };
 
+  // Função para selecionar/deselecionar um post
   const togglePostSelection = (post: InstagramPost) => {
-    // Verificar se o post já está selecionado
-    const isSelected = selectedPosts.some(p => p.id === post.id);
-    
-    if (isSelected) {
-      // Remover o post da seleção
-      const updatedPosts = selectedPosts.filter(p => p.id !== post.id);
-      setSelectedPosts(updatedPosts);
+    if (selectedPosts.some(p => p.id === post.id)) {
+      // Se o post já está selecionado, remova-o
+      const updatedSelection = selectedPosts.filter(p => p.id !== post.id);
+      setSelectedPosts(updatedSelection);
       
-      // Notificar o componente pai
+      // Notificar o componente pai sobre a mudança na seleção
       if (onPostSelect) {
-        onPostSelect(updatedPosts);
-      }
-      if (onSelectPosts) {
-        onSelectPosts(updatedPosts);
+        onPostSelect(updatedSelection);
       }
     } else {
-      // Verificar se já atingiu o limite de seleção
-      if (selectedPosts.length >= maxPosts) {
-        toast.error(`Você só pode selecionar até ${maxPosts} posts`);
+      // Verificar se já atingiu o limite máximo de posts selecionados
+      if (selectedPosts.length + selectedReels.length >= maxPosts) {
+        toast.warning(`Você já selecionou o máximo de ${maxPosts} itens (posts + reels).`);
         return;
       }
       
       // Adicionar o post à seleção
-      const updatedPosts = [...selectedPosts, post];
-      setSelectedPosts(updatedPosts);
+      const updatedSelection = [...selectedPosts, post];
+      setSelectedPosts(updatedSelection);
       
-      // Notificar o componente pai
+      // Notificar o componente pai sobre a mudança na seleção
       if (onPostSelect) {
-        onPostSelect(updatedPosts);
-      }
-      if (onSelectPosts) {
-        onSelectPosts(updatedPosts);
+        onPostSelect(updatedSelection);
       }
     }
+  };
+
+  // Renderizar a imagem do post
+  const renderPostImage = (post: InstagramPost) => {
+    let imageUrl = post.image_url || post.thumbnail_url || '';
+    
+    // Tentar obter a melhor imagem disponível
+    if (post.image_versions && Array.isArray(post.image_versions) && post.image_versions.length > 0) {
+      // Usar a primeira imagem disponível
+      imageUrl = post.image_versions[0]?.url || imageUrl;
+    }
+    
+    return (
+      <Image
+        src={imageUrl}
+        alt={typeof post.caption === 'string' ? post.caption : (post.caption?.text || 'Post do Instagram')}
+        fill
+        className="object-cover"
+        sizes="(max-width: 640px) 150px, 200px"
+      />
+    );
   };
 
   // Distribuir curtidas igualmente entre os posts selecionados
@@ -198,7 +221,7 @@ export function PostSelector({
       {loadingState ? (
         <div className="flex justify-center items-center py-8">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-2 text-gray-600">Carregando posts...</span>
+          <span className="ml-2 text-gray-600">{loadingMessage || 'Carregando posts...'}</span>
         </div>
       ) : (
         <>
@@ -223,13 +246,7 @@ export function PostSelector({
                   onClick={() => togglePostSelection(post)}
                 >
                   <div className="relative pb-[100%]">
-                    <Image
-                      src={post.image_versions?.items?.[0]?.url || post.display_url || post.thumbnail_url || '/placeholder-image.jpg'}
-                      alt={typeof post.caption === 'string' ? post.caption : (post.caption?.text || 'Post do Instagram')}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 640px) 150px, 200px"
-                    />
+                    {renderPostImage(post)}
                     
                     {post.is_video && (
                       <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">

@@ -162,52 +162,115 @@ export default function Step2Page() {
 
         console.log('Perfil recuperado:', profileData);
 
-        if (profileData) {
-          setProfileData(profileData);
-          // Atualizar formData com dados do perfil, se disponíveis
-          setFormData({
-            name: parsedCheckoutData.name || '',
-            email: parsedCheckoutData.email || '',
-            phone: parsedCheckoutData.phone || ''
-          });
+        // Verificar se temos dados suficientes para prosseguir
+        if (!profileData || !profileData.username) {
+          console.error('Dados de perfil ausentes ou incompletos');
+          toast.error('Dados de perfil incompletos. Por favor, volte à etapa anterior.');
+          
+          // Redirecionar para a etapa anterior após um breve atraso
+          setTimeout(() => {
+            window.location.href = '/checkout/instagram/visualizacao/step1';
+          }, 2000);
+          
+          return;
         }
 
-        if (externalId && profileData?.username) {
-          console.log('Iniciando busca de serviço e posts para o usuário:', profileData.username);
+        // Definir os dados do perfil
+        setProfileData(profileData);
+        
+        // Atualizar formData com dados do perfil, se disponíveis
+        setFormData({
+          name: parsedCheckoutData.name || '',
+          email: parsedCheckoutData.email || '',
+          phone: parsedCheckoutData.phone || ''
+        });
+
+        // Verificar se temos o ID do serviço
+        if (!externalId) {
+          console.error('ID do serviço ausente');
+          toast.error('ID do serviço não encontrado. Por favor, volte à etapa anterior.');
           
-          // Buscar serviço e posts em paralelo
-          Promise.all([
-            fetchService(externalId),
-            fetchInstagramPosts(profileData.username)
-          ]).then(([serviceData, postsData]) => {
-            if (serviceData) {
-              // Definir o ID do provedor padrão se não estiver presente
-              if (!serviceData.provider_id) {
-                serviceData.provider_id = '1';
-              }
-              setService(serviceData);
-              setFinalAmount(serviceData.preco);
-            } else {
-              console.error('Serviço não encontrado');
-              toast.error('Serviço não encontrado. Por favor, tente novamente.');
-            }
-          }).catch(error => {
-            console.error('Erro ao buscar dados:', error);
-            toast.error('Erro ao carregar dados. Por favor, tente novamente.');
-          });
-        } else {
-          console.error('Dados insuficientes para buscar serviço e posts');
-          toast.error('Dados insuficientes. Por favor, volte à etapa anterior.');
+          // Redirecionar para a etapa anterior após um breve atraso
+          setTimeout(() => {
+            window.location.href = '/checkout/instagram/visualizacao/step1';
+          }, 2000);
+          
+          return;
         }
+
+        // Verificar se temos informações diretas do serviço no localStorage
+        if (parsedCheckoutData.serviceName && parsedCheckoutData.servicePrice) {
+          console.log('Usando informações do serviço do localStorage');
+          
+          // Criar um objeto de serviço com as informações disponíveis
+          const serviceFromCheckout = {
+            id: externalId,
+            name: parsedCheckoutData.serviceName,
+            description: parsedCheckoutData.serviceDescription || '',
+            preco: parsedCheckoutData.servicePrice,
+            quantidade: quantity,
+            service_details: parsedCheckoutData.serviceDetails || [],
+            provider_id: '1' // Valor padrão
+          };
+          
+          setService(serviceFromCheckout);
+          
+          // Ainda buscar o serviço completo, mas já temos uma versão básica para exibir
+          console.log('Serviço pré-carregado do localStorage:', serviceFromCheckout);
+        }
+
+        console.log('Iniciando busca de serviço e posts para o usuário:', profileData.username);
+        
+        // Buscar serviço e posts em paralelo
+        Promise.all([
+          fetchService(externalId),
+          fetchInstagramPosts(profileData.username)
+        ]).then(([serviceData, postsData]) => {
+          if (serviceData) {
+            // Definir o ID do provedor padrão se não estiver presente
+            if (!serviceData.provider_id) {
+              serviceData.provider_id = '1';
+            }
+            setService(serviceData);
+            
+            // Iniciar busca de reels após obter o serviço
+            if (profileData.username && !reelsLoaded) {
+              fetchInstagramReels(profileData.username)
+                .then(reelsData => {
+                  console.log(`Reels carregados: ${reelsData.length}`);
+                })
+                .catch(error => {
+                  console.error('Erro ao carregar reels:', error);
+                  // Não exibir erro para o usuário, pois é aceitável não ter reels
+                });
+            }
+          } else {
+            console.error('Serviço não encontrado');
+            toast.error('Serviço não encontrado. Por favor, tente novamente.');
+          }
+        }).catch(error => {
+          console.error('Erro ao buscar dados:', error);
+          toast.error('Erro ao carregar dados. Por favor, tente novamente.');
+        });
       } else {
         console.error('Nenhum dado de checkout encontrado');
         toast.error('Nenhum dado de checkout encontrado. Por favor, volte à etapa anterior.');
+        
+        // Redirecionar para a etapa anterior após um breve atraso
+        setTimeout(() => {
+          window.location.href = '/checkout/instagram/visualizacao/step1';
+        }, 2000);
       }
     } catch (error) {
       console.error('Erro ao processar dados de checkout:', error);
       toast.error('Erro ao processar dados. Por favor, tente novamente.');
+      
+      // Redirecionar para a etapa anterior após um breve atraso
+      setTimeout(() => {
+        window.location.href = '/checkout/instagram/visualizacao/step1';
+      }, 2000);
     }
-  }, []);
+  }, [reelsLoaded]);
 
   useEffect(() => {
     const fetchReels = async () => {

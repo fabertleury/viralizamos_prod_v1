@@ -63,7 +63,8 @@ export async function GET(
 ) {
   try {
     // Obter o nome de usuário da URL
-    const username = context.params.username;
+    const params = await context.params;
+    const username = params.username;
     
     if (!username) {
       return NextResponse.json(
@@ -134,35 +135,50 @@ export async function GET(
   }
 }
 
+// Cache para armazenar resultados de consultas recentes
+const reelsCache = new Map();
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutos em milissegundos
+
 async function fetchWithApifyAPI(username: string): Promise<ProcessedReel[]> {
   try {
-    const apiKey = process.env.APIFY_API_KEY || process.env.NEXT_PUBLIC_APIFY_API_KEY;
+    // Verificar se temos dados em cache para este usuário
+    const cacheKey = `${username}_reels`;
+    const cachedData = reelsCache.get(cacheKey);
+    
+    if (cachedData && (Date.now() - cachedData.timestamp < CACHE_TTL)) {
+      console.log(`Usando dados em cache para reels de ${username}`);
+      return cachedData.data;
+    }
+    
+    const apiKey = process.env.APIFY_API_KEY;
     if (!apiKey) {
-      throw new Error('Apify API key não encontrada');
+      throw new Error('APIFY_API_KEY não está configurada nas variáveis de ambiente');
     }
 
     console.log('Buscando reels com Apify API para:', username);
     
-    // Preparar o input para o Apify Actor específico para reels
+    // Configurar o input para o ator do Apify
     const input = {
-      addParentData: false,
-      directUrls: [
-        `https://www.instagram.com/${username}`
-      ],
-      enhanceUserSearchWithFacebookPage: false,
-      isUserReelFeedURL: false,
-      isUserTaggedFeedURL: false,
-      resultsLimit: 12,
-      resultsType: "stories",
-      searchLimit: 1,
-      searchType: "hashtag",
-      username: username
+      username: username,
+      resultsLimit: 12, // Limitar o número de resultados para melhorar o desempenho
+      resultsType: "reels",
+      proxy: {
+        useApifyProxy: true,
+        apifyProxyGroups: ['RESIDENTIAL']
+      },
+      maxRequestRetries: 3, // Reduzir o número de tentativas para evitar longos tempos de espera
+      maxConcurrency: 5 // Aumentar a concorrência para acelerar o processamento
     };
     
-    // Chamar o Apify Actor para buscar reels
+    // Iniciar a execução do ator
     const response = await axios.post(
-      `https://api.apify.com/v2/acts/xMc5Ga1oCONPmWJIa/runs?token=${apiKey}`,
-      input,
+      `https://api.apify.com/v2/acts/apify~instagram-scraper/runs?token=${apiKey}`,
+      { 
+        ...input,
+        // Configurações adicionais para melhorar o desempenho
+        memoryMbytes: 2048, // Aumentar a memória disponível
+        timeoutSecs: 60 // Definir um timeout mais curto (60 segundos)
+      },
       {
         headers: {
           'Content-Type': 'application/json'
@@ -170,14 +186,14 @@ async function fetchWithApifyAPI(username: string): Promise<ProcessedReel[]> {
       }
     );
     
-    console.log('Resposta inicial da Apify API para reels recebida:', response.data);
+    console.log('Resposta inicial da Apify API recebida:', response.data);
     
     // Obter o ID da execução
     const runId = response.data.data.id;
     
     // Aguardar a conclusão da execução (polling)
     let runFinished = false;
-    let maxAttempts = 30; // Limite de tentativas para evitar loop infinito
+    let maxAttempts = 15; // Reduzir o número máximo de tentativas (30 segundos no total)
     let attempts = 0;
     
     while (!runFinished && attempts < maxAttempts) {
@@ -194,194 +210,103 @@ async function fetchWithApifyAPI(username: string): Promise<ProcessedReel[]> {
       if (status === 'SUCCEEDED') {
         runFinished = true;
       } else if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED-OUT') {
-        throw new Error(`Execução do Apify para reels falhou com status: ${status}`);
+        throw new Error(`Execução do Apify falhou com status: ${status}`);
       }
       
       attempts++;
     }
     
+    // Se não terminou, mas não houve erro, tentar obter os resultados parciais
     if (!runFinished) {
-      throw new Error('Tempo limite excedido ao aguardar a conclusão da execução do Apify para reels');
+      console.log('Tempo limite excedido, tentando obter resultados parciais para reels...');
     }
     
-    // Obter os resultados da execução
+    // Obter os resultados da execução (mesmo que parciais)
     const datasetResponse = await axios.get(
       `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${apiKey}`
     );
     
-    const responseData = datasetResponse.data;
-    console.log('Resposta completa da Apify API para reels:', JSON.stringify(responseData).substring(0, 500) + '...');
+    const apifyReels = datasetResponse.data;
+    console.log(`Recebidos ${apifyReels.length} reels do Apify`);
     
-    // Verificar se a resposta contém a propriedade hasReels
-    if (responseData && typeof responseData === 'object' && 'hasReels' in responseData) {
-      if (!responseData.hasReels) {
-        console.log('Usuário não possui reels disponíveis');
-        return [];
-      }
-      // Se tiver a propriedade hasReels e for true, continuar com o processamento dos reels
-      if (Array.isArray(responseData.reels)) {
-        console.log(`Recebidos ${responseData.reels.length} reels do Apify`);
-        const apifyReels = responseData.reels as ApifyReel[];
-        
-        if (apifyReels.length === 0) {
-          console.log('Nenhum reel encontrado para o usuário');
-          return [];
-        }
-        
-        // Processar os reels
-        const processedReels = apifyReels.map((reel: ApifyReel) => {
-          // Obter a URL da thumbnail do reel
-          let thumbnailUrl = '';
-          
-          if (reel.images && reel.images.length > 0) {
-            thumbnailUrl = reel.images[0];
-          } else if (reel.displayUrl) {
-            thumbnailUrl = reel.displayUrl;
-          }
-          
-          // Criar uma URL proxy para as imagens para evitar problemas de CORS
-          const proxyImageUrl = (url: string) => {
-            // Se a URL já for do seu domínio ou estiver vazia, retorne como está
-            if (!url || url.startsWith('/')) return url;
-            
-            // Usar uma URL de proxy para contornar as restrições de CORS
-            try {
-              // Retornar uma URL que será processada pelo servidor
-              return `/api/proxy-image?url=${encodeURIComponent(url)}`;
-            } catch (error) {
-              console.error('Erro ao processar URL de imagem:', error);
-              return url;
-            }
-          };
-          
-          const processedThumbnailUrl = proxyImageUrl(thumbnailUrl);
-          
-          // Formatar o reel no formato esperado pela aplicação
-          return {
-            id: reel.id?.toString() || '',
-            code: reel.shortCode || '',
-            shortcode: reel.shortCode || '',
-            media_type: 2, // Vídeo
-            is_video: true,
-            is_carousel: false,
-            is_reel: true,
-            like_count: reel.likesCount || 0,
-            comment_count: reel.commentsCount || 0,
-            views_count: reel.videoViewCount || 0,
-            caption: { 
-              text: reel.caption || 'Sem legenda'
-            },
-            link: reel.url || `https://www.instagram.com/reel/${reel.shortCode}/`,
-            image_versions: {
-              items: [{ url: processedThumbnailUrl }]
-            },
-            display_url: processedThumbnailUrl,
-            thumbnail_url: processedThumbnailUrl,
-            video_url: reel.videoUrl || '',
-            video_duration: reel.videoDuration || 0,
-            type: 'video',
-            product_type: 'clips',
-            timestamp: reel.timestamp || new Date().toISOString(),
-            owner: {
-              username: reel.ownerUsername || username,
-              full_name: reel.ownerFullName || '',
-              id: reel.ownerId?.toString() || ''
-            }
-          };
-        });
-
-        console.log('Reels processados:', processedReels.map(reel => ({
-          id: reel.id,
-          views_count: reel.views_count,
-          like_count: reel.like_count,
-          comment_count: reel.comment_count
-        })));
-
-        return processedReels;
-      }
-    }
-    
-    // Caso a resposta não tenha a estrutura esperada com hasReels, tentar processar como array direto
-    const apifyReels = Array.isArray(responseData) ? responseData : [];
-    console.log(`Recebidos ${apifyReels.length} reels do Apify (formato alternativo)`);
-    
-    if (!apifyReels || apifyReels.length === 0) {
-      console.log('Nenhum reel encontrado para o usuário');
-      return [];
+    // Se não temos dados e não terminou, aí sim lançamos erro
+    if (apifyReels.length === 0 && !runFinished) {
+      throw new Error('Tempo limite excedido ao aguardar a conclusão da execução do Apify para reels');
     }
     
     // Processar os reels recebidos do Apify
-    const processedReels = apifyReels.map((reel: ApifyReel) => {
-      // Obter a URL da thumbnail do reel
-      let thumbnailUrl = '';
-      
-      if (reel.images && reel.images.length > 0) {
-        thumbnailUrl = reel.images[0];
-      } else if (reel.displayUrl) {
-        thumbnailUrl = reel.displayUrl;
-      }
-      
-      // Criar uma URL proxy para as imagens para evitar problemas de CORS
-      const proxyImageUrl = (url: string) => {
-        // Se a URL já for do seu domínio ou estiver vazia, retorne como está
-        if (!url || url.startsWith('/')) return url;
-        
-        // Usar uma URL de proxy para contornar as restrições de CORS
-        try {
-          // Retornar uma URL que será processada pelo servidor
-          return `/api/proxy-image?url=${encodeURIComponent(url)}`;
-        } catch (error) {
-          console.error('Erro ao processar URL de imagem:', error);
-          return url;
-        }
-      };
-      
-      const processedThumbnailUrl = proxyImageUrl(thumbnailUrl);
-      
-      // Formatar o reel no formato esperado pela aplicação
-      return {
-        id: reel.id?.toString() || '',
-        code: reel.shortCode || '',
-        shortcode: reel.shortCode || '',
-        media_type: 2, // Vídeo
-        is_video: true,
-        is_carousel: false,
-        is_reel: true,
-        like_count: reel.likesCount || 0,
-        comment_count: reel.commentsCount || 0,
-        views_count: reel.videoViewCount || 0,
-        caption: { 
-          text: reel.caption || 'Sem legenda'
-        },
-        link: reel.url || `https://www.instagram.com/reel/${reel.shortCode}/`,
-        image_versions: {
-          items: [{ url: processedThumbnailUrl }]
-        },
-        display_url: processedThumbnailUrl,
-        thumbnail_url: processedThumbnailUrl,
-        video_url: reel.videoUrl || '',
-        video_duration: reel.videoDuration || 0,
-        type: 'video',
-        product_type: 'clips',
-        timestamp: reel.timestamp || new Date().toISOString(),
-        owner: {
-          username: reel.ownerUsername || username,
-          full_name: reel.ownerFullName || '',
-          id: reel.ownerId?.toString() || ''
-        }
-      };
+    const formattedReels = apifyReels
+      .filter((reel: ApifyReel) => {
+        // Verificar se é realmente um reel
+        return reel.productType === 'clips' || 
+               (reel.type === 'Video' && reel.url && reel.url.includes('/reel/'));
+      })
+      .map((reel: ApifyReel) => {
+        return processReel(reel);
+      });
+    
+    // Armazenar no cache
+    reelsCache.set(cacheKey, {
+      data: formattedReels,
+      timestamp: Date.now()
     });
-
-    console.log('Reels processados:', processedReels.map(reel => ({
-      id: reel.id,
-      views_count: reel.views_count,
-      like_count: reel.like_count,
-      comment_count: reel.comment_count
-    })));
-
-    return processedReels;
+    
+    return formattedReels;
   } catch (error) {
     console.error('Erro na Apify API para reels:', error);
     throw error;
   }
+}
+
+// Função auxiliar para processar um reel
+function processReel(reel: ApifyReel): ProcessedReel {
+  // Extrair shortcode
+  const shortCode = reel.shortCode || '';
+  
+  // Criar uma URL proxy para as imagens para evitar problemas de CORS
+  const proxyImageUrl = (url: string) => {
+    // Se a URL já for do seu domínio ou estiver vazia, retorne como está
+    if (!url || url.startsWith('/')) return url;
+    
+    // Usar uma URL de proxy para contornar as restrições de CORS
+    try {
+      // Retornar uma URL que será processada pelo servidor
+      return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+    } catch (error) {
+      console.error('Erro ao processar URL de imagem:', error);
+      return url;
+    }
+  };
+  
+  const displayUrl = proxyImageUrl(reel.displayUrl || '');
+  
+  return {
+    id: reel.id?.toString() || '',
+    code: shortCode,
+    shortcode: shortCode,
+    media_type: 2, // Vídeo
+    is_video: true,
+    is_carousel: false,
+    is_reel: true,
+    like_count: reel.likesCount || 0,
+    comment_count: reel.commentsCount || 0,
+    views_count: reel.videoViewCount || 0,
+    caption: { text: reel.caption || '' },
+    link: reel.url || `https://www.instagram.com/reel/${shortCode}/`,
+    image_versions: {
+      items: [{ url: displayUrl }]
+    },
+    display_url: displayUrl,
+    thumbnail_url: displayUrl,
+    video_url: reel.videoUrl || '',
+    video_duration: reel.videoDuration || 0,
+    type: 'video',
+    product_type: 'clips',
+    timestamp: reel.timestamp || new Date().toISOString(),
+    owner: {
+      username: reel.ownerUsername || '',
+      full_name: reel.ownerFullName || '',
+      id: reel.ownerId?.toString() || ''
+    }
+  };
 }

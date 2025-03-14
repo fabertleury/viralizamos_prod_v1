@@ -14,13 +14,16 @@ interface InstagramLikeUser {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { shortcode: string } }
+  context: { params: { shortcode: string } }
 ) {
-  const { shortcode } = params;
-  const count = request.nextUrl.searchParams.get('count') || '24';
-  const max_id = request.nextUrl.searchParams.get('max_id') || null;
-
   try {
+    // Extrair o shortcode diretamente dos parâmetros
+    const params = await context.params;
+    const shortcode = params.shortcode;
+    
+    const count = request.nextUrl.searchParams.get('count') || '24';
+    const max_id = request.nextUrl.searchParams.get('max_id') || null;
+
     console.log('Buscando curtidas com RocketAPI...');
     const likesData = await fetchLikesWithRocketAPI(shortcode, parseInt(count), max_id);
     return NextResponse.json(likesData);

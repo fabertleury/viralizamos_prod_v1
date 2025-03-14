@@ -49,18 +49,20 @@ async function checkProfileWithRocketAPI(username: string) {
 
 export async function GET(
   request: Request,
-  { params }: { params: { username: string } }
+  context: { params: { username: string } }
 ) {
-  const username = params.username;
-
-  if (!username) {
-    return NextResponse.json(
-      { error: 'Nome de usuário é obrigatório' },
-      { status: 400 }
-    );
-  }
-
   try {
+    // Extrair o username diretamente dos parâmetros
+    const params = await context.params;
+    const username = params.username;
+
+    if (!username) {
+      return NextResponse.json(
+        { error: 'Nome de usuário é obrigatório' },
+        { status: 400 }
+      );
+    }
+
     // Tentar com RocketAPI (nossa API principal após as mudanças)
     try {
       const profileData = await checkProfileWithRocketAPI(username);
@@ -68,8 +70,9 @@ export async function GET(
     } catch (error) {
       console.error('Falha ao verificar com RocketAPI:', error);
       
-      // Se falhar, tentar com a API de perfil genérica
-      const fallbackResponse = await fetch(`/api/instagram/profile?username=${username}`);
+      // Se falhar, tentar com a API de perfil genérica usando URL absoluta
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const fallbackResponse = await fetch(`${baseUrl}/api/instagram/profile?username=${username}`);
       
       if (!fallbackResponse.ok) {
         throw new Error(`API de fallback respondeu com status ${fallbackResponse.status}`);

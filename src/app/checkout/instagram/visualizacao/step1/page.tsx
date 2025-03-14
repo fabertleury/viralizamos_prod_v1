@@ -188,8 +188,14 @@ export default function Step1Page() {
         profileData: profileInfo,
         serviceId: serviceId,
         external_id: service?.external_id || serviceId, // Armazenar tanto o serviceId quanto o external_id
-        quantity: quantity || service?.quantidade
+        quantity: quantity || service?.quantidade,
+        // Adicionar mais informações do serviço para exibição na próxima etapa
+        serviceName: service?.name,
+        serviceDescription: service?.description,
+        servicePrice: service?.preco,
+        serviceDetails: service?.service_details || service?.metadata?.serviceDetails
       };
+      console.log('Dados de checkout a serem armazenados:', checkoutData);
       localStorage.setItem('checkoutProfileData', JSON.stringify(checkoutData));
       
       router.push(`/checkout/instagram/visualizacao/step2?username=${encodeURIComponent(usernameToCheck)}`);

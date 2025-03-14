@@ -12,7 +12,9 @@ interface ReelSelectorProps {
   maxReels?: number;
   selectedPosts?: InstagramPost[];
   totalViews?: number;
+  totalLikes?: number;
   loading?: boolean;
+  loadingMessage?: string;
   selectedReels?: InstagramPost[];
   showReelsOnly?: boolean;
 }
@@ -23,15 +25,18 @@ function ReelSelector({
   maxReels = 5,
   selectedPosts = [],  
   totalViews = 100, 
+  totalLikes = 100,
   loading: initialLoading = false,
+  loadingMessage = '',
   selectedReels: initialSelectedReels = [],
-  showReelsOnly = false
+  showReelsOnly = true
 }: ReelSelectorProps) {
   const [reels, setReels] = useState<InstagramPost[]>([]);
   const [filteredReels, setFilteredReels] = useState<InstagramPost[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedReels, setSelectedReels] = useState<InstagramPost[]>(initialSelectedReels);
   const [loading, setLoading] = useState(initialLoading);
+  const [noReelsMessage, setNoReelsMessage] = useState<string>('');
 
   // Inicializar selectedReels com os valores recebidos via props
   useEffect(() => {
@@ -71,53 +76,38 @@ function ReelSelector({
         return;
       }
       
-      // Buscar posts da API (que inclui reels)
-      const response = await fetch(`/api/instagram/posts/${username}`);
+      // Usar a nova API de visualização combinada que retorna posts e reels
+      console.log('Buscando reels com a API de visualização combinada para:', username);
+      const response = await fetch(`/api/instagram/visualizacao/${username}`);
       
       if (!response.ok) {
         throw new Error(`Erro ao carregar reels (${response.status})`);
       }
       
       const data = await response.json();
-      console.log('Resposta da API de posts/reels:', data);
+      console.log('Resposta da API de visualização combinada:', data);
       
       // Verificar se a resposta tem a estrutura esperada
       if (data && typeof data === 'object') {
-        // Se não tem posts/reels
-        if (data.hasPosts === false || data.hasReels === false) {
-          console.log('Nenhum conteúdo encontrado para o usuário:', data.message);
-          toast.warning(data.message || 'Nenhum conteúdo encontrado para este perfil.');
+        // Verificar se o usuário tem reels
+        if (!data.hasReels) {
+          console.log('Usuário não possui reels:', data.message);
+          setNoReelsMessage(data.message || 'Este perfil não possui reels disponíveis.');
           setReels([]);
+          setLoading(false);
           return;
         }
         
-        // Determinar onde estão os dados dos posts/reels na resposta
+        // Determinar onde estão os dados dos reels na resposta
         let reelsData: any[] = [];
         
-        if (Array.isArray(data)) {
+        if (data.reels && Array.isArray(data.reels)) {
+          console.log('Resposta tem a propriedade reels com', data.reels.length, 'itens');
+          reelsData = data.reels;
+        } else if (Array.isArray(data)) {
           // Se a resposta é um array direto
           console.log('Resposta é um array direto com', data.length, 'itens');
           reelsData = data;
-        } else if (data.posts && Array.isArray(data.posts)) {
-          // Se a resposta tem a propriedade posts (API de posts)
-          console.log('Resposta tem a propriedade posts com', data.posts.length, 'itens');
-          reelsData = data.posts;
-        } else if (data.posts && data.posts.data && data.posts.data.items && Array.isArray(data.posts.data.items)) {
-          // Se a resposta tem a estrutura posts.data.items
-          console.log('Resposta tem a estrutura posts.data.items com', data.posts.data.items.length, 'itens');
-          reelsData = data.posts.data.items;
-        } else if (data.reels && Array.isArray(data.reels)) {
-          // Se a resposta tem a propriedade reels (API de reels)
-          console.log('Resposta tem a propriedade reels com', data.reels.length, 'itens');
-          reelsData = data.reels;
-        } else if (data.curtidas && Array.isArray(data.curtidas)) {
-          // Se a resposta tem a propriedade curtidas (API de curtidas)
-          console.log('Resposta tem a propriedade curtidas com', data.curtidas.length, 'itens');
-          reelsData = data.curtidas;
-        } else if (data.data && data.data.items && Array.isArray(data.data.items)) {
-          // Se a resposta tem a estrutura data.items (formato Apify direto)
-          console.log('Resposta tem a estrutura data.items com', data.data.items.length, 'itens');
-          reelsData = data.data.items;
         } else {
           console.error('Formato de resposta inesperado:', data);
           toast.error('Formato de resposta inesperado. Por favor, tente novamente mais tarde.');
@@ -137,8 +127,9 @@ function ReelSelector({
           
           if (reelsOnly.length === 0) {
             console.log('Nenhum reel encontrado para o usuário');
-            toast.warning('Nenhum reel encontrado para este perfil.');
+            setNoReelsMessage('Nenhum reel encontrado para este perfil.');
             setReels([]);
+            setLoading(false);
             return;
           }
           
@@ -146,15 +137,15 @@ function ReelSelector({
           reelsData = reelsOnly;
         }
         
-        // Processar os posts/reels para o formato esperado pelo componente
+        // Processar os reels para o formato esperado pelo componente
         const processedReels = reelsData.map((reel: any) => {
           // Verificar se já está no formato esperado
           if (reel.id && reel.thumbnail_url && reel.like_count !== undefined) {
             return reel;
           }
           
-          // Extrair informações do post/reel
-          const id = reel.id || reel.pk || reel.shortCode || `post_${Math.random().toString(36).substring(2, 11)}`;
+          // Extrair informações do reel
+          const id = reel.id || reel.pk || reel.shortCode || `reel_${Math.random().toString(36).substring(2, 11)}`;
           const code = reel.code || reel.shortCode || '';
           const caption = typeof reel.caption === 'string' ? reel.caption : (reel.caption?.text || '');
           
@@ -169,9 +160,7 @@ function ReelSelector({
           // Extrair contagens
           const likeCount = reel.like_count || reel.likesCount || 0;
           const commentCount = reel.comment_count || reel.commentsCount || 0;
-          
-          // Determinar se é um reel ou um post normal
-          const isReel = reel.is_reel || reel.isReel || reel.is_video || reel.media_type === 'VIDEO';
+          const viewsCount = reel.views_count || reel.view_count || reel.videoViewCount || 0;
           
           return {
             id,
@@ -183,12 +172,14 @@ function ReelSelector({
             caption,
             like_count: likeCount,
             comment_count: commentCount,
-            is_reel: isReel,
-            video_url: reel.videoUrl || reel.video_url || ''
+            is_reel: true,
+            is_video: true,
+            video_url: reel.videoUrl || reel.video_url || '',
+            views_count: viewsCount
           };
         });
         
-        console.log(`Encontrados ${processedReels.length} reels de ${reelsData.length} posts`);
+        console.log(`Processados ${processedReels.length} reels`);
         
         // Salvar em cache
         sessionStorage.setItem(`reels_${username}`, JSON.stringify(processedReels));
@@ -202,6 +193,7 @@ function ReelSelector({
     } catch (error) {
       console.error('Erro ao carregar reels:', error);
       setError(error instanceof Error ? error.message : 'Erro desconhecido');
+      toast.error(`Erro ao carregar reels: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     } finally {
       setLoading(false);
     }
@@ -245,11 +237,11 @@ function ReelSelector({
   };
 
   // Renderizar mensagem quando não há reels
-  if (!loading && filteredReels.length === 0) {
+  if (!loading && filteredReels.length === 0 && noReelsMessage) {
     return (
       <div className="p-4 bg-white rounded-lg shadow">
         <div className="text-center py-8">
-          <p className="text-gray-500 mb-4">Nenhum reel encontrado para este usuário</p>
+          <p className="text-yellow-600 mb-4">{noReelsMessage}</p>
           <button 
             onClick={fetchReels} 
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
@@ -268,7 +260,7 @@ function ReelSelector({
       {loading ? (
         <div className="flex justify-center items-center py-8">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-2 text-gray-600">Carregando reels...</span>
+          <span className="ml-2 text-gray-600">{loadingMessage || 'Carregando reels...'}</span>
         </div>
       ) : (
         <>

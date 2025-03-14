@@ -25,6 +25,10 @@ interface ComentariosContent {
   };
 }
 
+// Cache para armazenar resultados de consultas recentes
+const comentariosCache = new Map();
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutos em milissegundos
+
 export async function GET(
   request: NextRequest,
   context: { params: { username: string } }
@@ -33,19 +37,42 @@ export async function GET(
 
   try {
     // Extrair o username diretamente dos parâmetros
-    const username = await context.params.username;
+    const params = await context.params;
+    const username = params.username;
     
     console.log(`Buscando comentários (posts e reels) para o usuário: ${username}`);
     
+    // Verificar se temos dados em cache para este usuário
+    const cacheKey = `comentarios_${username}`;
+    const cachedData = comentariosCache.get(cacheKey);
+    
+    if (cachedData && (Date.now() - cachedData.timestamp < CACHE_TTL)) {
+      console.log(`Usando dados em cache para comentários de ${username}`);
+      return NextResponse.json({
+        ...cachedData.data,
+        fromCache: true,
+        cacheAge: Math.round((Date.now() - cachedData.timestamp) / 1000) // Idade do cache em segundos
+      });
+    }
+    
+    // Verificar se a API key do ScapeCreators está configurada
+    if (!process.env.NEXT_PUBLIC_SCRAPECREATORS_API_KEY) {
+      console.error('NEXT_PUBLIC_SCRAPECREATORS_API_KEY não está configurada');
+      return NextResponse.json(
+        { error: 'Configuração de API incompleta' },
+        { status: 500 }
+      );
+    }
+    
     // Buscar posts e reels simultaneamente
     const [postsData, reelsData] = await Promise.all([
-      fetchPostsWithApifyAPI(username),
-      fetchReelsWithApifyAPI(username)
+      fetchPostsWithScapeCreatorsAPI(username),
+      fetchReelsWithScapeCreatorsAPI(username)
     ]);
     
     // Verificar se os dados foram obtidos com sucesso
     if (!postsData && !reelsData) {
-      throw new Error('Falha ao obter posts e reels com Apify API');
+      throw new Error('Falha ao obter posts e reels com ScapeCreators API');
     }
     
     // Processar os dados de posts
@@ -88,6 +115,12 @@ export async function GET(
       hasPosts: response.hasPosts,
       hasReels: response.hasReels
     });
+    
+    // Armazenar no cache
+    comentariosCache.set(cacheKey, {
+      data: response,
+      timestamp: Date.now()
+    });
 
     return NextResponse.json(response);
   } catch (error) {
@@ -113,55 +146,82 @@ export async function GET(
   }
 }
 
-// Função para buscar posts usando a API do Apify
-async function fetchPostsWithApifyAPI(username: string) {
+// Função para buscar posts usando a API do ScapeCreators
+async function fetchPostsWithScapeCreatorsAPI(username: string) {
   try {
-    // Usar a API de posts existente com URL relativa
-    const response = await fetch(`/api/instagram/posts/${username}`);
+    console.log(`Buscando posts para o usuário ${username} com ScapeCreators API`);
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Erro ao buscar posts: ${errorData.error || response.statusText}`);
+    // Chamar a API do ScapeCreators
+    const apiUrl = 'https://api.scrapecreators.com/v2/instagram/user/posts';
+    const response = await axios.get(apiUrl, {
+      params: {
+        handle: username
+      },
+      headers: {
+        'x-api-key': process.env.NEXT_PUBLIC_SCRAPECREATORS_API_KEY
+      },
+      timeout: 30000 // 30 segundos
+    });
+    
+    if (!response.data || !response.data.data || response.data.data.length === 0) {
+      console.warn(`Nenhum post encontrado para o usuário ${username} com ScapeCreators API`);
+      return [];
     }
     
-    const data = await response.json();
-    return data;
+    console.log(`Encontrados ${response.data.data.length} posts com ScapeCreators API`);
+    
+    // Processar os dados recebidos para o formato esperado pela interface
+    return response.data.data.map((item: any) => ({
+      id: item.id || `post_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      code: item.shortcode || item.code || '',
+      comment_count: item.comment_count || item.comments || 0,
+      display_url: item.display_url || item.thumbnail_url || item.thumbnail_src || '',
+      image_versions: {
+        items: [{ url: item.display_url || item.thumbnail_url || item.thumbnail_src || '' }]
+      }
+    }));
   } catch (error) {
-    console.error('Erro ao buscar posts:', error);
-    return null;
+    console.error('Erro ao buscar posts com ScapeCreators API:', error);
+    return [];
   }
 }
 
-// Função para buscar reels usando a API do Apify
-async function fetchReelsWithApifyAPI(username: string) {
+// Função para buscar reels usando a API do ScapeCreators
+async function fetchReelsWithScapeCreatorsAPI(username: string) {
   try {
-    // Usar a API de reels existente com URL relativa
-    const response = await fetch(`/api/instagram/reels/${username}`);
+    console.log(`Buscando reels para o usuário ${username} com ScapeCreators API`);
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Erro ao buscar reels: ${errorData.error || response.statusText}`);
+    // Chamar a API do ScapeCreators
+    const apiUrl = 'https://api.scrapecreators.com/v2/instagram/user/reels';
+    const response = await axios.get(apiUrl, {
+      params: {
+        handle: username
+      },
+      headers: {
+        'x-api-key': process.env.NEXT_PUBLIC_SCRAPECREATORS_API_KEY
+      },
+      timeout: 30000 // 30 segundos
+    });
+    
+    if (!response.data || !response.data.data || response.data.data.length === 0) {
+      console.warn(`Nenhum reel encontrado para o usuário ${username} com ScapeCreators API`);
+      return [];
     }
     
-    const data = await response.json();
+    console.log(`Encontrados ${response.data.data.length} reels com ScapeCreators API`);
     
-    // Verificar se a resposta tem a nova estrutura (com hasReels e message)
-    if (data && typeof data === 'object' && 'hasReels' in data) {
-      if (!data.hasReels) {
-        console.log('Nenhum reel encontrado para o usuário:', data.message);
-        return [];
+    // Processar os dados recebidos para o formato esperado pela interface
+    return response.data.data.map((item: any) => ({
+      id: item.id || `reel_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      code: item.shortcode || item.code || '',
+      comment_count: item.comment_count || item.comments || 0,
+      display_url: item.display_url || item.thumbnail_url || item.thumbnail_src || '',
+      image_versions: {
+        items: [{ url: item.display_url || item.thumbnail_url || item.thumbnail_src || '' }]
       }
-      
-      // Se tem a propriedade reels, retornar ela
-      if (Array.isArray(data.reels)) {
-        return data.reels;
-      }
-    }
-    
-    // Caso contrário, assumir que a resposta é um array direto de reels (formato antigo)
-    return Array.isArray(data) ? data : [];
+    }));
   } catch (error) {
-    console.error('Erro ao buscar reels:', error);
+    console.error('Erro ao buscar reels com ScapeCreators API:', error);
     return [];
   }
 }

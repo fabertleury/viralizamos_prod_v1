@@ -7,12 +7,11 @@ import { useInstagramAPI } from '@/hooks/useInstagramAPI';
 import { toast } from 'sonner';
 import { Header } from '@/components/layout/header';
 import { useForm } from 'react-hook-form';
-import { fetchInstagramProfile } from '@/lib/services/instagram-profile';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faCoffee, faLemon, faCar, faHeart, faStar, faClock, faCheck, 
   faShield, faRocket, faGlobe, faUsers, faThumbsUp, faEye, faComment, 
-  faBolt, faMedal, faTrophy, faGem, faCrown, faFire, faSmile, faLock, faUnlock 
+  faBolt, faMedal, faTrophy, faGem, faCrown, faFire, faSmile, faLock, faUnlock, faPlay 
 } from '@fortawesome/free-solid-svg-icons';
 import { createClient } from '@/lib/supabase/client';
 import { ProfileVerificationModal } from '@/components/modals/ProfileVerificationModal';
@@ -57,7 +56,21 @@ interface ProfileData {
   is_private: boolean;
 }
 
-export default function Step1Page() {
+interface InstagramStep1Props {
+  serviceType: 'curtidas' | 'visualizacao' | 'comentarios' | 'seguidores' | 'reels';
+  step1Title: string;
+  step2Title: string;
+  serviceIcon?: React.ReactNode;
+  quantityLabel?: string;
+}
+
+export function InstagramStep1({
+  serviceType,
+  step1Title,
+  step2Title,
+  serviceIcon,
+  quantityLabel = 'curtidas'
+}: InstagramStep1Props) {
   const [username, setUsername] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,7 +233,7 @@ export default function Step1Page() {
       console.log('Dados de checkout a serem armazenados:', checkoutData);
       localStorage.setItem('checkoutProfileData', JSON.stringify(checkoutData));
       
-      router.push(`/checkout/instagram/curtidas/step2?username=${encodeURIComponent(usernameToCheck)}`);
+      router.push(`/checkout/instagram-v2/${serviceType}/step2?username=${encodeURIComponent(usernameToCheck)}`);
     } catch (error: any) {
       console.error('Erro ao verificar perfil:', error);
       setError(error.message || 'Erro ao verificar o perfil');
@@ -246,6 +259,44 @@ export default function Step1Page() {
     await checkProfile(formData.instagram_username);
   };
 
+  // Função para renderizar o ícone do serviço
+  const renderServiceIcon = () => {
+    if (serviceIcon) {
+      return serviceIcon;
+    }
+
+    // Ícones padrão baseados no tipo de serviço
+    switch (serviceType) {
+      case 'curtidas':
+        return (
+          <svg 
+            xmlns="http://www.w3.org/2000/svg" 
+            width="24" 
+            height="24" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="2" 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            className="text-purple-600"
+          >
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+          </svg>
+        );
+      case 'visualizacao':
+        return <FontAwesomeIcon icon={faEye} className="text-purple-600" />;
+      case 'comentarios':
+        return <FontAwesomeIcon icon={faComment} className="text-purple-600" />;
+      case 'seguidores':
+        return <FontAwesomeIcon icon={faUsers} className="text-purple-600" />;
+      case 'reels':
+        return <FontAwesomeIcon icon={faPlay} className="text-purple-600" />;
+      default:
+        return <FontAwesomeIcon icon={faHeart} className="text-purple-600" />;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
@@ -254,7 +305,7 @@ export default function Step1Page() {
         <div className="w-full max-w-4xl">
           {/* Passos para Comprar */}
           <div className="mb-8 bg-white shadow-md rounded-xl p-6">
-            <h3 className="text-xl font-bold text-center mb-6 text-gray-800">Como Comprar Curtidas</h3>
+            <h3 className="text-xl font-bold text-center mb-6 text-gray-800">Como Comprar {service?.name}</h3>
             <div className="grid grid-cols-3 gap-4">
               <div className="flex flex-col items-center">
                 <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-xl font-bold mb-3">
@@ -269,9 +320,13 @@ export default function Step1Page() {
                 <div className="w-12 h-12 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-xl font-bold mb-3">
                   2
                 </div>
-                <h4 className="font-semibold text-gray-700 text-center">Escolher Posts</h4>
+                <h4 className="font-semibold text-gray-700 text-center">{step2Title}</h4>
                 <p className="text-sm text-gray-500 text-center mt-2">
-                  Selecione os posts para curtidas
+                  {serviceType === 'curtidas' && 'Selecione os posts para curtidas'}
+                  {serviceType === 'visualizacao' && 'Selecione posts e reels para visualizações'}
+                  {serviceType === 'comentarios' && 'Selecione posts e reels para comentários'}
+                  {serviceType === 'seguidores' && 'Confirme os detalhes do perfil'}
+                  {serviceType === 'reels' && 'Selecione os reels para engajamento'}
                 </p>
               </div>
               <div className="flex flex-col items-center">
@@ -280,7 +335,7 @@ export default function Step1Page() {
                 </div>
                 <h4 className="font-semibold text-gray-700 text-center">Finalizar Compra</h4>
                 <p className="text-sm text-gray-500 text-center mt-2">
-                  Pague e receba curtidas
+                  Pague e receba {serviceType === 'seguidores' ? 'seguidores' : serviceType}
                 </p>
               </div>
             </div>
@@ -291,20 +346,7 @@ export default function Step1Page() {
             <div className="bg-white rounded-xl shadow-lg p-6">
               <div className="flex items-center mb-4">
                 <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center mr-4">
-                  <svg 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    width="24" 
-                    height="24" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2" 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    className="text-purple-600"
-                  >
-                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
-                  </svg>
+                  {renderServiceIcon()}
                 </div>
                 <h2 className="text-xl font-bold text-gray-800">{service?.name}</h2>
               </div>
@@ -312,7 +354,7 @@ export default function Step1Page() {
               <div className="flex justify-between items-center">
                 <div>
                   <span className="text-sm text-gray-500">Quantidade</span>
-                  <p className="text-lg font-semibold text-gray-800">{quantity} curtidas</p>
+                  <p className="text-lg font-semibold text-gray-800">{quantity} {quantityLabel}</p>
                 </div>
                 <div className="text-right">
                   <span className="text-sm text-gray-500">Preço</span>
@@ -420,7 +462,7 @@ export default function Step1Page() {
           onClose={() => setShowModal(false)}
           onContinue={() => {
             if (profileData) {
-              router.push(`/checkout/instagram/curtidas/step2?username=${encodeURIComponent(profileData.username)}`);
+              router.push(`/checkout/instagram-v2/${serviceType}/step2?username=${encodeURIComponent(profileData.username)}`);
             }
           }}
           onRetryAfterPrivate={handleRetryAfterPrivate}

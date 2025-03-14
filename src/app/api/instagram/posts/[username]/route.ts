@@ -62,7 +62,8 @@ export async function GET(
 
   try {
     // Extrair o username diretamente dos parâmetros
-    const username = context.params.username;
+    const params = await context.params;
+    const username = params.username;
     
     // Verificar se queremos apenas reels
     const url = new URL(request.url);
@@ -98,35 +99,51 @@ export async function GET(
   }
 }
 
-async function fetchWithApifyAPI(username: string, onlyReels: boolean) {
-  try {
-    const apiKey = process.env.APIFY_API_KEY || process.env.NEXT_PUBLIC_APIFY_API_KEY;
-    if (!apiKey) {
-      throw new Error('Apify API key não encontrada');
-    }
+// Cache para armazenar resultados de consultas recentes
+const postsCache = new Map();
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutos em milissegundos
 
-    console.log('Buscando posts com Apify API para:', username);
+async function fetchWithApifyAPI(username: string, onlyReels: boolean = false) {
+  try {
+    // Verificar se temos dados em cache para este usuário
+    const cacheKey = `${username}_${onlyReels ? 'reels' : 'posts'}`;
+    const cachedData = postsCache.get(cacheKey);
     
-    // Preparar o input para o Apify Actor
+    if (cachedData && (Date.now() - cachedData.timestamp < CACHE_TTL)) {
+      console.log(`Usando dados em cache para ${username} (${onlyReels ? 'reels' : 'posts'})`);
+      return cachedData.data;
+    }
+    
+    console.log(`Buscando ${onlyReels ? 'reels' : 'posts'} para o usuário ${username} com Apify API`);
+    
+    // Configurar a API key do Apify
+    const apiKey = process.env.APIFY_API_KEY;
+    if (!apiKey) {
+      throw new Error('APIFY_API_KEY não está configurada nas variáveis de ambiente');
+    }
+    
+    // Configurar o input para o ator do Apify
     const input = {
-      addParentData: false,
-      directUrls: [
-        `https://www.instagram.com/${username}`
-      ],
-      enhanceUserSearchWithFacebookPage: false,
-      isUserReelFeedURL: onlyReels,
-      isUserTaggedFeedURL: false,
-      resultsLimit: 30,
-      resultsType: onlyReels ? "stories" : "posts",
-      searchLimit: 1,
-      searchType: "user",
-      username: username
+      username: username,
+      resultsLimit: 12, // Limitar o número de resultados para melhorar o desempenho
+      resultsType: onlyReels ? 'reels' : 'posts',
+      proxy: {
+        useApifyProxy: true,
+        apifyProxyGroups: ['RESIDENTIAL']
+      },
+      maxRequestRetries: 3, // Reduzir o número de tentativas para evitar longos tempos de espera
+      maxConcurrency: 5 // Aumentar a concorrência para acelerar o processamento
     };
     
-    // Chamar o Apify Actor para buscar posts
+    // Iniciar a execução do ator
     const response = await axios.post(
-      `https://api.apify.com/v2/acts/shu8hvrXbJbY3Eb9W/runs?token=${apiKey}`,
-      input,
+      `https://api.apify.com/v2/acts/apify~instagram-scraper/runs?token=${apiKey}`,
+      { 
+        ...input,
+        // Configurações adicionais para melhorar o desempenho
+        memoryMbytes: 2048, // Aumentar a memória disponível
+        timeoutSecs: 60 // Definir um timeout mais curto (60 segundos)
+      },
       {
         headers: {
           'Content-Type': 'application/json'
@@ -141,7 +158,7 @@ async function fetchWithApifyAPI(username: string, onlyReels: boolean) {
     
     // Aguardar a conclusão da execução (polling)
     let runFinished = false;
-    let maxAttempts = 30; // Limite de tentativas para evitar loop infinito
+    let maxAttempts = 15; // Reduzir o número máximo de tentativas (30 segundos no total)
     let attempts = 0;
     
     while (!runFinished && attempts < maxAttempts) {
@@ -164,11 +181,12 @@ async function fetchWithApifyAPI(username: string, onlyReels: boolean) {
       attempts++;
     }
     
+    // Se não terminou, mas não houve erro, tentar obter os resultados parciais
     if (!runFinished) {
-      throw new Error('Tempo limite excedido ao aguardar a conclusão da execução do Apify');
+      console.log('Tempo limite excedido, tentando obter resultados parciais...');
     }
     
-    // Obter os resultados da execução
+    // Obter os resultados da execução (mesmo que parciais)
     const datasetResponse = await axios.get(
       `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${apiKey}`
     );
@@ -176,129 +194,127 @@ async function fetchWithApifyAPI(username: string, onlyReels: boolean) {
     const apifyPosts = datasetResponse.data;
     console.log(`Recebidos ${apifyPosts.length} posts do Apify`);
     
-    // Processar os posts recebidos do Apify
-    const formattedPosts = apifyPosts.map((post: any) => {
-      // Determinar o tipo de mídia
-      const isVideo = post.type === 'Video' || post.videoUrl;
-      const isCarousel = post.type === 'Carousel' || (post.childPosts && post.childPosts.length > 0);
-      const isReel = post.type === 'ReelVideo' || post.productType === 'clips' || 
-                    (isVideo && post.url && post.url.includes('/reel/'));
-      
-      // Extrair shortcode
-      const shortCode = post.shortCode || '';
-      
-      // Processar itens do carrossel, se existirem
-      const carouselItems = post.childPosts ? post.childPosts.map((child: any) => {
-        const childIsVideo = child.type === 'Video' || child.videoUrl;
-        return {
-          id: child.id || '',
-          media_type: childIsVideo ? 2 : 1,
-          is_video: childIsVideo,
-          image_versions: {
-            items: [{ url: child.displayUrl || '' }]
-          },
-          video_url: child.videoUrl || ''
-        };
-      }) : [];
-      
-      // Criar uma URL proxy para as imagens para evitar problemas de CORS
-      const proxyImageUrl = (url: string) => {
-        // Se a URL já for do seu domínio ou estiver vazia, retorne como está
-        if (!url || url.startsWith('/')) return url;
-        
-        // Usar uma URL de proxy para contornar as restrições de CORS
-        try {
-          // Retornar uma URL que será processada pelo servidor
-          return `/api/proxy-image?url=${encodeURIComponent(url)}`;
-        } catch (error) {
-          console.error('Erro ao processar URL de imagem:', error);
-          return url;
-        }
-      };
-      
-      const displayUrl = proxyImageUrl(post.displayUrl || '');
-      
-      return {
-        id: post.id?.toString() || '',
-        code: shortCode,
-        shortcode: shortCode,
-        media_type: isVideo ? 2 : isCarousel ? 8 : 1,
-        is_video: isVideo,
-        is_carousel: isCarousel,
-        is_reel: isReel,
-        like_count: post.likesCount || 0,
-        comment_count: post.commentsCount || 0,
-        views_count: post.videoViewCount || 0,
-        caption: { text: post.caption || '' },
-        link: post.url || `https://www.instagram.com/p/${shortCode}/`,
-        image_versions: {
-          items: [{ url: displayUrl }]
-        },
-        display_url: displayUrl,
-        thumbnail_src: displayUrl,
-        video_url: post.videoUrl || '',
-        carousel_items: carouselItems,
-        carousel_media_count: carouselItems.length,
-        type: isVideo ? 'video' : (isCarousel ? 'carousel' : 'image'),
-        product_type: isReel ? 'clips' : undefined,
-        timestamp: post.timestamp || new Date().toISOString(),
-        owner: {
-          username: post.ownerUsername || username,
-          full_name: post.ownerFullName || '',
-          id: post.ownerId || ''
-        }
-      };
-    });
-    
-    // Filtrar apenas reels se necessário
-    const filteredPosts = onlyReels 
-      ? formattedPosts.filter((post: ProcessedPost) => post.is_reel)
-      : formattedPosts;
-    
-    // Limitar a apenas 12 posts
-    const limitedPosts = filteredPosts.slice(0, 12);
-    
-    // Extrair informações do perfil (se disponível)
-    let profileData = {};
-    if (limitedPosts.length > 0) {
-      const firstPost = limitedPosts[0];
-      profileData = {
-        username: firstPost.owner.username || username,
-        full_name: firstPost.owner.full_name || '',
-        biography: '',  // Apify não retorna biografia no endpoint de posts
-        followers_count: 0,  // Apify não retorna contagem de seguidores no endpoint de posts
-        following_count: 0,  // Apify não retorna contagem de seguidos no endpoint de posts
-        profile_pic_url: '',  // Apify não retorna foto de perfil no endpoint de posts
-        is_private: false,  // Apify não retorna status privado no endpoint de posts
-        is_verified: false,  // Apify não retorna status verificado no endpoint de posts
-        media_count: limitedPosts.length
-      };
-    } else {
-      profileData = {
-        username: username,
-        full_name: '',
-        biography: '',
-        followers_count: 0,
-        following_count: 0,
-        profile_pic_url: '',
-        is_private: false,
-        is_verified: false,
-        media_count: 0
-      };
+    // Se não temos dados e não terminou, aí sim lançamos erro
+    if (apifyPosts.length === 0 && !runFinished) {
+      throw new Error('Tempo limite excedido ao aguardar a conclusão da execução do Apify');
     }
     
-    console.log(`Total de posts processados: ${limitedPosts.length}`);
+    // Processar os posts recebidos do Apify
+    const formattedPosts = apifyPosts.map((post: any) => {
+      // Verificar se este é um reel (para filtrar se necessário)
+      const isReel = post.product_type === 'clips' || post.is_reel || 
+                    (post.media_type === 2 && post.product_type === 'feed');
+      
+      // Se estamos buscando apenas reels e este não é um reel, pular
+      if (onlyReels && !isReel) {
+        return null;
+      }
+      
+      // Se estamos buscando apenas posts e este é um reel, pular
+      if (!onlyReels && isReel) {
+        return null;
+      }
+      
+      // Processar o post
+      return processPost(post, isReel);
+    }).filter(Boolean); // Remover itens nulos
     
-    // Retornar no formato esperado pela aplicação
+    // Armazenar no cache
+    postsCache.set(cacheKey, {
+      data: formattedPosts,
+      timestamp: Date.now()
+    });
+    
     return {
       status: 'success',
       data: {
-        user: profileData,
-        items: limitedPosts
+        user: {
+          username: username,
+          full_name: '',
+          biography: '',
+          followers_count: 0,
+          following_count: 0,
+          profile_pic_url: '',
+          is_private: false,
+          is_verified: false,
+          media_count: formattedPosts.length
+        },
+        items: formattedPosts
       }
     };
   } catch (error) {
-    console.error('Erro na Apify API para posts:', error);
+    console.error(`Erro na Apify API para ${onlyReels ? 'reels' : 'posts'}:`, error);
     throw error;
   }
+}
+
+function processPost(post: any, isReel: boolean) {
+  // Determinar o tipo de mídia
+  const isVideo = post.type === 'Video' || post.videoUrl;
+  const isCarousel = post.type === 'Carousel' || (post.childPosts && post.childPosts.length > 0);
+  
+  // Extrair shortcode
+  const shortCode = post.shortCode || '';
+  
+  // Processar itens do carrossel, se existirem
+  const carouselItems = post.childPosts ? post.childPosts.map((child: any) => {
+    const childIsVideo = child.type === 'Video' || child.videoUrl;
+    return {
+      id: child.id || '',
+      media_type: childIsVideo ? 2 : 1,
+      is_video: childIsVideo,
+      image_versions: {
+        items: [{ url: child.displayUrl || '' }]
+      },
+      video_url: child.videoUrl || ''
+    };
+  }) : [];
+  
+  // Criar uma URL proxy para as imagens para evitar problemas de CORS
+  const proxyImageUrl = (url: string) => {
+    // Se a URL já for do seu domínio ou estiver vazia, retorne como está
+    if (!url || url.startsWith('/')) return url;
+    
+    // Usar uma URL de proxy para contornar as restrições de CORS
+    try {
+      // Retornar uma URL que será processada pelo servidor
+      return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+    } catch (error) {
+      console.error('Erro ao processar URL de imagem:', error);
+      return url;
+    }
+  };
+  
+  const displayUrl = proxyImageUrl(post.displayUrl || '');
+  
+  return {
+    id: post.id?.toString() || '',
+    code: shortCode,
+    shortcode: shortCode,
+    media_type: isVideo ? 2 : isCarousel ? 8 : 1,
+    is_video: isVideo,
+    is_carousel: isCarousel,
+    is_reel: isReel,
+    like_count: post.likesCount || 0,
+    comment_count: post.commentsCount || 0,
+    views_count: post.videoViewCount || 0,
+    caption: { text: post.caption || '' },
+    link: post.url || `https://www.instagram.com/p/${shortCode}/`,
+    image_versions: {
+      items: [{ url: displayUrl }]
+    },
+    display_url: displayUrl,
+    thumbnail_src: displayUrl,
+    video_url: post.videoUrl || '',
+    carousel_items: carouselItems,
+    carousel_media_count: carouselItems.length,
+    type: isVideo ? 'video' : (isCarousel ? 'carousel' : 'image'),
+    product_type: isReel ? 'clips' : undefined,
+    timestamp: post.timestamp || new Date().toISOString(),
+    owner: {
+      username: post.ownerUsername || '',
+      full_name: post.ownerFullName || '',
+      id: post.ownerId || ''
+    }
+  };
 }

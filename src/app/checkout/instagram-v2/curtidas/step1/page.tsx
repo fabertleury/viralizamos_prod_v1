@@ -7,7 +7,6 @@ import { useInstagramAPI } from '@/hooks/useInstagramAPI';
 import { toast } from 'sonner';
 import { Header } from '@/components/layout/header';
 import { useForm } from 'react-hook-form';
-import { fetchInstagramProfile } from '@/lib/services/instagram-profile';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faCoffee, faLemon, faCar, faHeart, faStar, faClock, faCheck, 
@@ -220,7 +219,7 @@ export default function Step1Page() {
       console.log('Dados de checkout a serem armazenados:', checkoutData);
       localStorage.setItem('checkoutProfileData', JSON.stringify(checkoutData));
       
-      router.push(`/checkout/instagram/curtidas/step2?username=${encodeURIComponent(usernameToCheck)}`);
+      router.push(`/checkout/instagram-v2/curtidas/step2?username=${encodeURIComponent(usernameToCheck)}`);
     } catch (error: any) {
       console.error('Erro ao verificar perfil:', error);
       setError(error.message || 'Erro ao verificar o perfil');
@@ -420,7 +419,7 @@ export default function Step1Page() {
           onClose={() => setShowModal(false)}
           onContinue={() => {
             if (profileData) {
-              router.push(`/checkout/instagram/curtidas/step2?username=${encodeURIComponent(profileData.username)}`);
+              router.push(`/checkout/instagram-v2/curtidas/step2?username=${encodeURIComponent(profileData.username)}`);
             }
           }}
           onRetryAfterPrivate={handleRetryAfterPrivate}
