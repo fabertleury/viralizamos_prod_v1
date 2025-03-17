@@ -95,13 +95,13 @@ async function fetchPostsWithScapeCreatorsAPI(username: string) {
     const apiUrl = 'https://api.scrapecreators.com/v2/instagram/user/posts';
     
     console.log('Fazendo requisição para a API ScapeCreators:', apiUrl);
-    console.log('Parâmetros:', { handle: username, limit: 50 });
+    console.log('Parâmetros:', { handle: username, limit: 100 });
     
     // Fazer a requisição para a API
     const response = await axios.get(apiUrl, {
       params: {
         handle: username,
-        limit: 50
+        limit: 100
       },
       headers: {
         'x-api-key': apiKey
@@ -190,13 +190,13 @@ async function fetchReelsWithScapeCreatorsAPI(username: string) {
     const apiUrl = 'https://api.scrapecreators.com/v2/instagram/user/posts';
     
     console.log('Fazendo requisição para a API ScapeCreators:', apiUrl);
-    console.log('Parâmetros:', { handle: username, limit: 50 });
+    console.log('Parâmetros:', { handle: username, limit: 100 });
     
     // Fazer a requisição para a API
     const response = await axios.get(apiUrl, {
       params: {
         handle: username,
-        limit: 50
+        limit: 100
       },
       headers: {
         'x-api-key': apiKey

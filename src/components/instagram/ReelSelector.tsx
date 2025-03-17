@@ -48,7 +48,8 @@ export default function ReelSelector({
   serviceType = 'reels',
   onSelectReels,
   maxReels,
-  totalComments
+  totalComments,
+  selectedPosts = []
 }: ReelSelectorProps) {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [hoveredReel, setHoveredReel] = useState<string | null>(null);
@@ -80,9 +81,10 @@ export default function ReelSelector({
       delete newSelected[reel.id];
     } 
     else {
-      const selectedCount = Object.keys(newSelected).length;
-      if (selectedCount >= effectiveMaxSelectable) {
-        toast.warning(`Você só pode selecionar até ${effectiveMaxSelectable} reels`);
+      // Verificar o limite total (posts + reels)
+      const totalSelectedItems = Object.keys(newSelected).length + (selectedPosts?.length || 0);
+      if (totalSelectedItems >= 5) {
+        toast.warning(`Você só pode selecionar até 5 itens no total (posts + reels)`);
         return;
       }
       newSelected[reel.id] = true;

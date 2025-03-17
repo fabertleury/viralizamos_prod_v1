@@ -16,6 +16,8 @@ import { PaymentPixModal } from '@/components/payment/PaymentPixModal';
 import { CouponInput } from '@/components/checkout/CouponInput';
 import axios from 'axios';
 
+const API_KEY = process.env.SCRAPECREATORS_API_KEY;
+
 interface ProfileData {
   username: string;
   full_name: string;
@@ -48,7 +50,7 @@ interface Post {
 }
 
 interface InstagramPostsReelsStep2Props {
-  serviceType: 'curtidas' | 'visualizacao' | 'comentarios';
+  serviceType: 'curtidas' | 'visualizacao' | 'comentarios' | 'reels';
   title: string;
 }
 
@@ -72,7 +74,7 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
     qrCodeBase64?: string;
   } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('reels');
   const [postsLoaded, setPostsLoaded] = useState(false);
   const [reelsLoaded, setReelsLoaded] = useState(false);
   const [loadingPosts, setLoadingPosts] = useState(false);
@@ -83,14 +85,6 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
   const [error, setError] = useState('');
 
   const supabase = createClient();
-
-  const handlePostSelect = useCallback((posts: Post[]) => {
-    setSelectedPosts(posts);
-  }, []);
-
-  const handleReelSelect = useCallback((reels: Post[]) => {
-    setSelectedReels(reels);
-  }, []);
 
   // Calcular o número total de itens selecionados
   const selectedItemsCount = selectedPosts.length + selectedReels.length;
@@ -210,7 +204,7 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
   };
 
   // Função para buscar posts e reels do Instagram em uma única chamada
-  const fetchInstagramData = async (type: 'posts' | 'reels') => {
+  const fetchInstagramData = async (type: 'posts' | 'reels', nextMaxId?: string) => {
     if (!profileData?.username) {
       console.error(`fetchInstagramData (${type}): profileData ou username não definido`, profileData);
       return;
@@ -235,6 +229,11 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
         
         if (response.data && response.data.items) {
           console.log(`Recebidos ${response.data.items.length} posts do Instagram`);
+          response.data.items.forEach(item => {
+            console.log(`Media Type: ${item.media_type}`);
+          });
+          const reels = response.data.items.filter(item => item.media_type === 2);
+          console.log(`Filtrados ${reels.length} reels do Instagram`);
           
           // Verificar e normalizar os dados recebidos
           const normalizedPosts = response.data.items.map((post: any) => {
@@ -270,53 +269,44 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
         }
       } else if (type === 'reels') {
         setLoadingReels(true);
-        const apiUrl = `/checkout/instagram-v2/curtidas?username=${profileData.username}&type=reels`;
+        const apiUrl = `https://api.scrapecreators.com/v2/instagram/user/posts?handle=${profileData.username}&next_max_id=${nextMaxId || ''}`;
+        console.log('Buscando reels do Instagram usando o endpoint específico:', apiUrl);
         
-        console.log('Buscando reels do Instagram:', apiUrl);
-        
-        const response = await axios.get(apiUrl);
+        const reelsResponse = await axios.get(apiUrl, {
+          headers: { 'x-api-key': process.env.NEXT_PUBLIC_SCRAPECREATORS_API_KEY }
+        });
         
         // Log detalhado da resposta
-        console.log('Resposta da API para reels:');
-        console.log('Status:', response.status);
-        console.log('Estrutura da resposta:', Object.keys(response.data));
-        console.log('Quantidade de itens:', response.data.items?.length || 0);
+        console.log('Resposta da API para reels:', reelsResponse.data);
+        console.log('Status:', reelsResponse.status);
+        console.log('Estrutura da resposta:', Object.keys(reelsResponse.data));
+        console.log('Quantidade de itens:', reelsResponse.data.items?.length || 0);
         
-        if (response.data && response.data.items) {
-          console.log(`Recebidos ${response.data.items.length} reels do Instagram`);
+        console.log('Resposta completa da API para reels:', reelsResponse.data); // Log da resposta completa
+        
+        if (reelsResponse.data && reelsResponse.data.items && reelsResponse.data.items.length > 0) {
+          console.log(`Recebidos ${reelsResponse.data.items.length} reels do Instagram`);
           
           // Verificar e normalizar os dados recebidos
-          const normalizedReels = response.data.items.map((reel: any) => {
-            // Log para cada reel
-            console.log(`Processando reel ${reel.id || reel.pk}:`, {
-              id: reel.id || reel.pk,
-              code: reel.code || reel.shortcode,
-              image_url: reel.image_url || reel.thumbnail_url || reel.display_url
-            });
-            
+          const normalizedReels = reelsResponse.data.items.map(reel => {
+            console.log(`Normalizando reel: ${reel.id}`, reel);
+            console.log(`Contagem de visualizações: ${reel.view_count}`); // Log para verificar o valor de visualizações
             return {
-              id: reel.id || reel.pk || '',
-              code: reel.code || reel.shortcode || '',
-              shortcode: reel.shortcode || reel.code || '',
-              image_url: reel.image_url || reel.thumbnail_url || reel.display_url || '',
-              caption: reel.caption || '',
+              id: reel.id,
+              code: reel.code,
+              image_url: reel.display_uri || reel.thumbnail_url || '', // Garantir que sempre tenha um valor
+              is_reel: true,
+              caption: reel.caption?.text || '',
               like_count: reel.like_count || 0,
-              comment_count: reel.comment_count || 0,
-              view_count: reel.view_count || 0,
-              thumbnail_url: reel.thumbnail_url || reel.image_url || reel.display_url || '',
-              display_url: reel.display_url || reel.image_url || reel.thumbnail_url || '',
-              video_url: reel.video_url || '',
-              is_reel: true
+              view_count: reel.view_count || 0, // Capturando contagem de visualizações
+              comment_count: reel.comment_count || 0
             };
           });
-          
-          console.log('Reels normalizados:', normalizedReels.slice(0, 2));
+          console.log('Reels normalizados:', normalizedReels);
           setInstagramReels(normalizedReels);
         } else {
-          console.error('Formato de resposta inválido para reels:', response.data);
-          if (response.data && response.data.error) {
-            console.error('Erro retornado pela API:', response.data.error);
-          }
+          console.error('Formato de resposta inválido para reels:', reelsResponse.data);
+          console.error('Verifique se o campo items está presente e contém dados.');
           setInstagramReels([]);
         }
       }
@@ -347,13 +337,12 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
     }
   };
 
-  // Efeito para buscar posts e reels quando profileData for definido
+  // Efeito para buscar apenas reels quando profileData for definido
   useEffect(() => {
     if (profileData?.username) {
-      console.log('profileData foi definido, buscando posts e reels para:', profileData.username);
+      console.log('profileData foi definido, buscando reels para:', profileData.username);
       
-      // Buscar posts e reels
-      fetchInstagramData('posts');
+      // Buscar apenas reels
       fetchInstagramData('reels');
     }
   }, [profileData]);
@@ -481,6 +470,8 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
       quantityType = 'visualizações';
     } else if (serviceType === 'comentarios') {
       quantityType = 'comentários';
+    } else if (serviceType === 'reels') {
+      quantityType = 'visualizações';
     }
 
     return {
@@ -633,35 +624,37 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
     setPaymentData(null);
   };
 
-  // Função para atualizar o estado de seleção com base na aba ativa
-  const updateSelectionState = () => {
-    // Nada a fazer aqui, as seleções já são atualizadas diretamente no handleTabChange
-    console.log(`Atualizando estado de seleção para aba: ${activeTab}`);
-    console.log(`Posts selecionados: ${selectedPosts.length}, Reels selecionados: ${selectedReels.length}`);
+  // Função para atualizar o estado de seleção quando o usuário troca entre as abas
+  const updateSelectionState = (activeTab: 'posts' | 'reels') => {
+    console.log('updateSelectionState chamado com activeTab:', activeTab);
+    setActiveTab(activeTab);
   };
 
-  // Função para alternar entre posts e reels
-  const handleTabChange = (tab: 'posts' | 'reels') => {
-    setActiveTab(tab);
-    
-    // Limpar seleções anteriores ao trocar de aba
-    if (tab === 'posts') {
-      setSelectedReels([]);
-      // Carregar posts se ainda não foram carregados
-      if (!postsLoaded && profileData?.username) {
-        fetchInstagramData('posts');
-      }
-    } else {
-      setSelectedPosts([]);
-      // Carregar reels se ainda não foram carregados
-      if (!reelsLoaded && profileData?.username) {
-        fetchInstagramData('reels');
-      }
-    }
-    
-    // Atualizar o estado de seleção para refletir a mudança de aba
-    updateSelectionState();
+  // Função para verificar se um item pode ser selecionado com base no limite total
+  const canSelectMoreItems = (currentTab: 'posts' | 'reels') => {
+    const totalSelected = selectedPosts.length + selectedReels.length;
+    return totalSelected < maxTotalItems;
   };
+
+  // Função para lidar com a seleção de posts
+  const handlePostSelect = useCallback((posts: Post[]) => {
+    const totalSelected = posts.length + selectedReels.length;
+    if (totalSelected > maxTotalItems) {
+      toast.error(`Você só pode selecionar até ${maxTotalItems} itens no total (posts + reels)`);
+      return;
+    }
+    setSelectedPosts(posts);
+  }, [selectedReels.length, maxTotalItems]);
+
+  // Função para lidar com a seleção de reels
+  const handleReelSelect = useCallback((reels: Post[]) => {
+    const totalSelected = selectedPosts.length + reels.length;
+    if (totalSelected > maxTotalItems) {
+      toast.error(`Você só pode selecionar até ${maxTotalItems} itens no total (posts + reels)`);
+      return;
+    }
+    setSelectedReels(reels);
+  }, [selectedPosts.length, maxTotalItems]);
 
   return (
     <div>
@@ -686,34 +679,12 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
                 </div>
               </div>
               
-              {/* Tabs de navegação */}
-              <div className="flex items-center justify-center space-x-4 mb-6">
-                <button 
-                  onClick={() => handleTabChange('posts')}
-                  className={`
-                    px-6 py-3 rounded-full font-bold text-sm uppercase tracking-wider 
-                    transition-all duration-300 ease-in-out transform 
-                    ${activeTab === 'posts' 
-                      ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-105 shadow-lg' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800'}
-                  `}
-                >
-                  <span className="flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-                    </svg>
-                    Posts ({instagramPosts?.length || 0})
-                  </span>
-                </button>
-                <button 
-                  onClick={() => handleTabChange('reels')}
-                  className={`
-                    px-6 py-3 rounded-full font-bold text-sm uppercase tracking-wider 
-                    transition-all duration-300 ease-in-out transform 
-                    ${activeTab === 'reels' 
-                      ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-105 shadow-lg' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800'}
-                  `}
+              {/* Título da seção de Reels */}
+              <div className="flex items-center justify-center mb-6">
+                <button
+                  className="px-6 py-3 rounded-full font-bold text-sm uppercase tracking-wider
+                    transition-all duration-300 ease-in-out transform
+                    bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-105 shadow-lg"
                 >
                   <span className="flex items-center">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -724,31 +695,23 @@ export function InstagramPostsReelsStep2({ serviceType, title }: InstagramPostsR
                 </button>
               </div>
 
-              {activeTab === 'posts' ? (
-                <PostSelector 
-                  username={profileData.username}
-                  onPostSelect={handlePostSelect}
-                  selectedPosts={selectedPosts}
-                  selectedReels={selectedReels}
-                  maxPosts={maxTotalItems}
-                  service={service}
-                  posts={instagramPosts}
-                  totalComments={service?.quantidade || 100}
-                  loading={loadingPosts}
-                  loadingMessage="BUSCANDO POSTS DO INSTAGRAM"
-                />
-              ) : (
-                <ReelSelector 
-                  username={profileData.username}
-                  onSelectReels={handleReelSelect}
-                  selectedReels={selectedReels}
-                  selectedPosts={selectedPosts}
-                  maxReels={maxTotalItems}
+              {/* Conteúdo de Reels */}
+              {instagramReels && instagramReels.length > 0 && (
+                <ReelSelector
                   reels={instagramReels}
-                  totalComments={service?.quantidade || 100}
                   loading={loadingReels}
-                  loadingMessage="BUSCANDO REELS DO INSTAGRAM"
+                  loadingMessage="Carregando reels do Instagram..."
+                  selectedReels={selectedReels}
+                  onSelectReels={handleReelSelect}
+                  maxReels={maxTotalItems}
+                  selectedPosts={selectedPosts}
+                  serviceType={serviceType}
                 />
+              )}
+              {instagramReels && instagramReels.length === 0 && (
+                <div className="text-center text-lg font-medium text-gray-700 mt-4">
+                  Não encontramos reels públicos para @{profileData.username}. Verifique se o nome de usuário está correto e se o perfil é público.
+                </div>
               )}
             </Card>
 

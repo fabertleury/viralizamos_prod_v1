@@ -46,7 +46,8 @@ export default function PostSelector({
   serviceType = 'curtidas',
   onPostSelect,
   maxPosts,
-  totalComments
+  totalComments,
+  selectedReels = []
 }: PostSelectorProps) {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [hoveredPost, setHoveredPost] = useState<string | null>(null);
@@ -75,9 +76,10 @@ export default function PostSelector({
     if (newSelected[post.id]) {
       delete newSelected[post.id];
     } else {
-      const selectedCount = Object.keys(newSelected).length;
-      if (selectedCount >= effectiveMaxSelectable) {
-        toast.warning(`Você só pode selecionar até ${effectiveMaxSelectable} posts`);
+      // Verificar o limite total (posts + reels)
+      const totalSelectedItems = Object.keys(newSelected).length + (selectedReels?.length || 0);
+      if (totalSelectedItems >= 5) {
+        toast.warning(`Você só pode selecionar até 5 itens no total (posts + reels)`);
         return;
       }
       newSelected[post.id] = true;

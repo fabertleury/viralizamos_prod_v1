@@ -1,10 +1,11 @@
 'use client';
 
-import { InstagramReelsStep2 } from '@/components/checkout/InstagramReelsStep2';
+import { InstagramPostsReelsStep2 } from '@/components/checkout/InstagramPostsReelsStep2';
 
 export default function ReelsStep2Page() {
   return (
-    <InstagramReelsStep2
+    <InstagramPostsReelsStep2
+      serviceType="reels"
       title="Comprar Visualizações para Reels"
     />
   );
